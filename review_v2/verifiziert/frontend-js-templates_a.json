@@ -1,0 +1,435 @@
+{
+ "modus": "verifizieren",
+ "dimension": "frontend-js-templates_a",
+ "ergebnis": [
+  {
+   "title": "Verschachtelte Formulare in Offene Posten: „bezahlt“-Button der ersten Zeile löst Batch-Mahnung aus",
+   "file": "sedo/templates/sedo/open_items.html",
+   "line": 86,
+   "severity": "hoch",
+   "description": "Das Batch-Formular `<form method=\"post\" action=\"{% url 'sedo:bulk_dunning' %}\" id=\"batch-form\">` (Zeile 59) umschließt die gesamte Tabelle. Innerhalb der Tabellenzeilen stehen weitere `<form>`-Elemente (Zeilen 86–88: „bezahlt“, „Erinnerung“, „Mahnung“). HTML erlaubt keine verschachtelten Formulare: Der Parser ignoriert das erste innere `<form>`-Start-Tag, dessen `</form>` schließt stattdessen das äußere `batch-form`. Folge: Der „bezahlt“-Button der ERSTEN Zeile mit offenem Betrag gehört zum Batch-Formular (Ziel `bulk_dunning`).",
+   "evidence": "Zeile 59: `<form method=\"post\" action=\"{% url 'sedo:bulk_dunning' %}\" id=\"batch-form\">` … Zeile 86: `<form method=\"post\" action=\"{% url 'sedo:invoice_mark_paid' i.pk %}\" class=\"inline-form\">{% csrf_token %}<input type=\"hidden\" name=\"next\" …><button class=\"btn small success\" type=\"submit\">bezahlt</button></form>` … Zeile 102: `</form>`. views.py 1222–1241 (`bulk_dunning`): `kind = request.POST.get('kind', 'auto')`",
+   "scenario": "Seite „Offene Posten“, keine Checkbox angehakt. Nutzer klickt in der ersten Zeile auf „bezahlt“ → POST geht an /offene-posten/batch-mahnung/ ohne `kind` und ohne `invoice_ids` → `bulk_dunning` fällt auf `kind='auto'` und ALLE Mahnkandidaten zurück → für jede überfällige Rechnung wird die nächste Mahnstufe erzeugt.",
+   "impact": "Ungewollte Mahnschreiben an potenziell alle säumigen Kunden durch einen einzigen Fehlklick; Mahndokumente sind GoBD-relevant und lassen sich nicht zurücknehmen.",
+   "fix": "Zeilenaktionen aus dem Batch-Formular herauslösen: Batch-Formular nur um die Auswahl-Buttons legen und Checkboxen per `form=\"batch-form\"`-Attribut zuordnen, Zeilen-Buttons in eigenen Formularen außerhalb der Tabelle (`<button form=\"row-form-…\">`).",
+   "effort": "M",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert. open_items.html 59 öffnet `#batch-form` (action bulk_dunning) um die ganze Tabelle; Zeile 86 öffnet innerhalb eines `<td>` ein weiteres `<form>`. Nach HTML-Parsing-Regeln wird das innere `<form>` ignoriert (form element pointer bereits gesetzt), sein `</form>` setzt den Pointer nur zurück – erst die Formulare in Zeile 87/88 werden wieder als echte Elemente erzeugt. Mit einer Nachbildung des Markups im Browser bestätigt: Button „bezahlt“ der ersten Zeile → `form.action = /batch`, „Erinnerung“/„Mahnung“ derselben Zeile und alle Buttons der Folgezeilen → ihre eigenen Actions. Der Button hat keinen `name`, also fehlt `kind`; views.py 1222–1233: `kind = request.POST.get('kind','auto')`, `selected = request.POST.getlist('invoice_ids')`, bei leerer Auswahl `get_dunning_candidates()` → `send_bulk_dunning(..., 'auto')`; dunning.py 201–230 erzeugt für jeden Kandidaten per `generate_dunning_document` die nächste Stufe. Schwere hoch ist im GoBD-/Aareon-Kontext angemessen (ungewollte Mahnschreiben an alle säumigen Kunden durch einen Fehlklick).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachgelesen: open_items.html Z.59 öffnet `#batch-form` (action bulk_dunning) um die ganze Tabelle, Z.86–88 enthalten drei innere `<form>` je Zeile, Z.102 schließt das äußere. Empirisch im Browser mit nachgebautem Markup verifiziert: Button „bezahlt“ der ERSTEN Zeile hat `form.action=/batch` (Batch-Formular), alle anderen Zeilen-Buttons gehören zu ihren eigenen Formularen (HTML-Parser ignoriert das erste verschachtelte `<form>`, das zugehörige `</form>` wird im td-Scope verworfen). views.py Z.1227–1234: ohne `kind` → 'auto', ohne `invoice_ids` → `get_dunning_candidates()` → für alle Kandidaten `generate_dunning_document`. Kein Test in sedo/tests/ deckt open_items ab; keine dokumentierte Entscheidung in CHANGELOG/DEPLOYMENT_SECURITY_NOTES.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Doppelte Rechnungen/Angebote durch Mehrfach-Submit; „Erstellen & versenden“ lässt die Formularseite stehen",
+   "file": "sedo/templates/sedo/invoice_form.html",
+   "line": 231,
+   "severity": "hoch",
+   "description": "Die vier Submit-Buttons werden nach dem Absenden weder deaktiviert noch gibt es ein Idempotenz-Token; `unsaved_guard.js` setzt bei `submit` nur ein Flag. Besonders kritisch: Bei `action=send` ohne SMTP antwortet der Server mit einer `FileResponse` (.eml-Download) – der Browser lädt die Datei herunter, die Rechnungsmaske bleibt mit allen Eingaben stehen, keine Navigation, keine sichtbare Erfolgsmeldung. Jeder weitere Klick erzeugt eine neue Rechnung mit der nächsten Nummer.",
+   "evidence": "invoice_form.html 228–231: `<button class=\"btn\" type=\"submit\" name=\"action\" value=\"preview\">Vorschau</button> … <button class=\"btn success\" type=\"submit\" name=\"action\" value=\"send\">Erstellen &amp; versenden</button>`; unsaved_guard.js 19: `form.addEventListener('submit', function () { submitting = true; });`; views.py 939–948: `if action == 'send': … return FileResponse(open(eml_path, 'rb'), as_attachment=True …)`",
+   "scenario": "SMTP nicht konfiguriert. Nutzer klickt „Erstellen & versenden“ → .eml wird heruntergeladen, Maske bleibt sichtbar. Nutzer denkt „hat nicht geklappt“ und klickt erneut → zweite Rechnung RE-…-0002 mit identischem Inhalt, Status „versendet“.",
+   "impact": "Doppelte, inhaltsgleiche Rechnungen mit fortlaufenden Nummern im GoBD-Nummernkreis; Bereinigung nur per Stornorechnung; Kunde erhält ggf. zwei Rechnungen.",
+   "fix": "(1) Clientseitig alle Submit-Buttons im `submit`-Handler deaktivieren und den geklickten Wert als Hidden-Input mitschicken. (2) `action=send` nach Post/Redirect/Get umbauen: Rechnung erzeugen → Redirect auf Detailseite mit Toast, dort Download-Link.",
+   "effort": "M",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert. invoice_form.html 228–231: vier Submit-Buttons ohne Deaktivierung; unsaved_guard.js 19 setzt im `submit`-Handler nur `submitting = true`, kein `disabled`, kein Token (grep nach Idempotenz/Doppelklick im Rechnungsformular ohne Treffer). views.py 939–948: bei `action == 'send'` wird die Rechnung erzeugt, Status auf `versendet` gesetzt, `messages.success` hinterlegt und dann eine `FileResponse(... as_attachment=True)` zurückgegeben – der Browser lädt die .eml, die Seite bleibt stehen, die Erfolgsmeldung erscheint erst beim nächsten Seitenaufruf. Jeder erneute Klick durchläuft `invoice_create` komplett neu inkl. `next_number('RE')` (Zeile 792) → nächste Rechnungsnummer mit identischem Inhalt. Schwere hoch passt (Doppelbelege im GoBD-Nummernkreis, Bereinigung nur per Storno).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "invoice_form.html Z.228–231: vier Submit-Buttons ohne Deaktivierung; unsaved_guard.js Z.19 setzt nur `submitting=true`. views.py Z.939–948: bei `action=='send'` wird die Rechnung gespeichert, Status 'versendet' gesetzt und eine `FileResponse(... as_attachment=True)` zurückgegeben – kein Redirect, die Maske bleibt stehen (unabhängig von SMTP, das wird in invoice_create gar nicht geprüft). `save_with_unique_number` verhindert nur Nummernkollisionen, nicht inhaltsgleiche Doppel-Rechnungen. Kein Idempotenz-Token, kein Test. Nicht widerlegbar.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Wizard versteckt Schritte per display:none – Pflichtfelder blockieren das Absenden ohne jede Meldung",
+   "file": "sedo/templates/sedo/invoice_form.html",
+   "line": 3,
+   "severity": "mittel",
+   "description": "wizard.js schaltet Schritte über `.wizard-ready .wizard-step{display:none}` um. Django rendert Pflichtfelder mit HTML-`required` (Rechnung: `issue_date`, `payment_days`, `vat_rate`); das Formular hat kein `novalidate`. Ist ein solches Feld leer und der Nutzer steht im Schritt „Prüfen“, verweigert der Browser den Submit, kann das unsichtbare Feld aber nicht fokussieren und zeigt keine Meldung. Im Browser verifiziert: `submitFired:false`, Konsole: „An invalid form control with name='issue_date' is not focusable.“",
+   "evidence": "invoice_form.html 3: `<form method=\"post\" id=\"invoice-form\">` (kein novalidate); app.css 375: `.wizard-ready .wizard-step{display:none}`; forms.py 31: `payment_days = forms.IntegerField(… min_value=0 …)`; gerendert: `REQUIRED FIELDS INVOICE FORM: ['issue_date', 'payment_days', 'vat_rate']`, `NOVALIDATE PRESENT: False`.",
+   "scenario": "Nutzer leert in Schritt 3 versehentlich das Zahlungsziel, geht mit „Weiter“ bis „Prüfen“, klickt „Rechnung erstellen“ → nichts passiert, kein Fehler, kein Sprung zum Feld.",
+   "impact": "Blockierter Arbeitsablauf ohne Rückmeldung; verleitet zu wiederholten Klicks.",
+   "fix": "`novalidate` am Formular setzen – Django validiert serverseitig und wizard.js springt zum ersten `.errorlist`-Schritt. Alternativ `invalid`-Listener (capture) im Wizard, der zum Schritt des ungültigen Feldes wechselt.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. invoice_form.html 3: `<form method=\"post\" id=\"invoice-form\">` ohne `novalidate`; app.css 375: `.wizard-ready .wizard-step{display:none}`; wizard.js 202 setzt `wizard-ready` und blendet alle Schritte außer dem aktiven aus. forms.py 31: `payment_days = forms.IntegerField(... min_value=0 ...)` ist required, ebenso die Model-Felder `issue_date`/`vat_rate` → Django rendert das `required`-Attribut. Ein leeres Pflichtfeld in Schritt 3 ist im Schritt „Prüfen“ `display:none`, damit nicht fokussierbar; Browser brechen die interaktive Validierung dann ohne sichtbare Meldung ab (Chrome: „An invalid form control ... is not focusable“). wizard.js springt nur bei serverseitigen `.errorlist` zum Fehler-Schritt (Zeile 184–191), was hier nie erreicht wird. Mittel ist angemessen (blockierter Ablauf ohne Rückmeldung, kein Datenschaden).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "invoice_form.html Z.3 `<form method=\"post\" id=\"invoice-form\">` ohne novalidate; app.css `.wizard-ready .wizard-step{display:none}` (Block v3.19.0); forms.py: `payment_days` IntegerField required, `issue_date`/`vat_rate` Modelfelder required → Django rendert `required`. Im Browser mit Testseite reproduziert: Submit auf Formular mit unsichtbarem required-Feld → `submitFired=false`, Konsole „An invalid form control with name='issue_date' is not focusable.“ wizard.js springt nur bei serverseitigen `.errorlist` zum Fehlerschritt (Z.183–191), nicht bei Browser-Validierung. test_wizard.py deckt das nicht ab.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Primärschlüssel ohne |unlocalize in Query-Strings: ab ID 1000 wird „?customer=1.234“ erzeugt → HTTP 500",
+   "file": "sedo/templates/sedo/customer_detail.html",
+   "line": 8,
+   "severity": "mittel",
+   "description": "settings.py 176–181 setzt `USE_THOUSAND_SEPARATOR = True` und warnt ausdrücklich, dass IDs in URLs `|unlocalize` brauchen. Trotzdem werden `{{ customer.pk }}`, `{{ c.pk }}` und `{{ offer.pk }}` ungeschützt in Query-Strings ausgegeben. Betroffen: customer_detail.html 8 (3×), 34, 40, 44; customer_list.html 5 (2×); offer_detail.html 2. Im Testlauf mit pk=1234 verifiziert: Link `?customer=1.234`, Aufruf wirft `ValueError: Field 'id' expected a number but got '1.234'.`",
+   "evidence": "customer_detail.html 8: `<a class=\"btn primary\" href=\"{% url 'sedo:invoice_create' %}?customer={{ customer.pk }}\">Rechnung</a>`; offer_detail.html 2: `href=\"{% url 'sedo:invoice_create' %}?from_offer={{ offer.pk }}\"`; views.py 787–789: `pre_customer = request.GET.get('customer')` … `get_object_or_404(Customer, pk=pre_customer)`.",
+   "scenario": "Der 1000. Kunde wird angelegt. Auf seiner Kundenakte klickt der Nutzer „Rechnung“ → 500-Fehlerseite. Dasselbe beim 1000. Angebot über „Als Rechnung bearbeiten“.",
+   "impact": "Kernfunktionen fallen für alle Datensätze ab ID 1000 aus.",
+   "fix": "Überall `{{ customer.pk|unlocalize }}` bzw. `{% localize off %}` verwenden (wie bereits in invoice_detail.html 96 und open_items.html 75). Zusätzlich GET-Parameter defensiv parsen. Template-Test mit pk ≥ 1000.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. settings.py 176–181: `USE_THOUSAND_SEPARATOR = True` mit ausdrücklicher Warnung. customer_detail.html 8 (3×), 34, 40, 44, customer_list.html 5 (2×) und offer_detail.html 2 geben `{{ customer.pk }}`, `{{ c.pk }}`, `{{ offer.pk }}` ohne `|unlocalize` in Query-Strings aus; Django lokalisiert Integer im Template → ab 1000 „1.234“. views.py 787/800: `pre_customer = request.GET.get('customer')` → `Customer.objects.get(pk=pre_customer)` wirft `ValueError` (kein get_object_or_404, kein try) → HTTP 500; `pre_offer` geht in `get_object_or_404(Offer, pk=...)` (Zeile 799), was bei „1.234“ ebenfalls `ValueError` statt 404 auslöst. Andere Templates (invoice_form.html 5–6, open_items.html 75) machen es korrekt mit `|unlocalize`. Mittel passt: bei 2 Nutzern erreichen Kunden selten ID 1000, Angebote über Jahre aber plausibel.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "settings.py: `LANGUAGE_CODE='de-de'`, `USE_THOUSAND_SEPARATOR=True` mit explizitem Warnkommentar. customer_detail.html Z.8/34/40/44, customer_list.html Z.5, offer_detail.html Z.2 geben `{{ customer.pk }}`/`{{ c.pk }}`/`{{ offer.pk }}` ohne unlocalize in Query-Strings aus. Mit Django-Template im Projekt-Setting geprüft: `{{ pk }}` mit 1234 → '1.234'. views.py Z.787–789/797/830: `get_object_or_404(Customer, pk='1.234')` → IntegerField.get_prep_value wirft ValueError (nicht von get_object_or_404 abgefangen) → 500. Kein Test mit pk ≥ 1000.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "„Abmelden“ ist ein GET-Link – Django 6 LogoutView akzeptiert nur POST → 405",
+   "file": "sedo/templates/sedo/base.html",
+   "line": 75,
+   "severity": "mittel",
+   "description": "Seit Django 5.0 erlaubt `LogoutView` kein GET mehr (`http_method_names = [\"post\", \"options\"]`). base.html verlinkt den Logout als normalen Anker. Im Testlauf verifiziert: `LOGOUT GET STATUS: 405`.",
+   "evidence": "base.html 75: `<a href=\"{% url 'logout' %}\"><span class=\"nav-ico\">…</span><span class=\"nav-text\">Abmelden</span></a>`; config/urls.py: `path('logout/', auth_views.LogoutView.as_view(), name='logout')`.",
+   "scenario": "Nutzer klickt im Menü „Abmelden“ → Browser zeigt „405 Method Not Allowed“, die Session bleibt gültig.",
+   "impact": "Abmelden ist unmöglich; im Tunnel-Betrieb und am gemeinsam genutzten Rechner bleibt die Sitzung bis zum Cookie-Ablauf aktiv.",
+   "fix": "Logout als POST-Formular rendern: `<form method=\"post\" action=\"{% url 'logout' %}\">{% csrf_token %}<button type=\"submit\">…Abmelden</button></form>`. Test ergänzen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. base.html 75: `<a href=\"{% url 'logout' %}\">…Abmelden</a>` – ein GET-Link. config/urls.py 10: `path('logout/', auth_views.LogoutView.as_view(), name='logout')`; sedo/urls.py definiert keinen eigenen Logout (grep ohne Treffer), es gibt keine Override-View. Seit Django 5.0 hat `LogoutView` `http_method_names = ['post','options']`, das Projekt läuft auf Django 6.0.8 → GET liefert 405, Session bleibt bestehen. Mittel ist angemessen (Abmelden funktional unmöglich; relevant bei Tunnel-Betrieb und geteiltem Rechner).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "config/urls.py Z.10: `auth_views.LogoutView.as_view()`; .venv django/contrib/auth/views.py Z.131: `http_method_names = [\"post\", \"options\"]` (Django 6.0.8). base.html Z.75 rendert `<a href=\"{% url 'logout' %}\">` → GET → 405. Keine Custom-View, kein Test für Logout in sedo/tests/, kein Hinweis in CHANGELOG/DEPLOYMENT_SECURITY_NOTES.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Toast fügt Meldungstext per innerHTML ein – Django-Messages mit Nutzereingaben werden als HTML interpretiert",
+   "file": "sedo/templates/sedo/base.html",
+   "line": 140,
+   "severity": "mittel",
+   "description": "`showToast` baut den Toast per Template-String und `innerHTML` und setzt den Text ungeschützt ein. Die Django-Messages werden nur mit `escapejs` in ein JS-Literal geschrieben – das schützt das Skript, nicht das HTML. Mehrere Messages enthalten Nutzereingaben oder Fremdtexte (views.py 938 `tmpl.title`, 586 Leistungsname, 1021 `recipient`, Exception-Texte aus SMTP/FinTS/Excel). Auch die KI-Skripte rufen `showToast(err.message)` mit Servertexten auf.",
+   "evidence": "base.html 140–144: `toast.innerHTML = \\`<span class=\"toast-icon\">${ICONS[level]}</span><span class=\"toast-text\">${text}</span>…\\``; base.html 97: `window.__sedoMessages = [{% for message in messages %}{\"text\":\"{{ message|escapejs }}\",…}]`; views.py 938: `messages.success(request, f'Abo-/Monatsrechnungsvorlage „{tmpl.title}“ wurde gespeichert.')`.",
+   "scenario": "Nutzer trägt als Vorlagenname `<img src=x onerror=alert(1)>` (oder harmlos `Reinigung <Haus A> & B`) ein. Nach dem Redirect erscheint der Toast: das Markup wird ausgeführt bzw. der Titel wird verstümmelt.",
+   "impact": "Skriptausführung im Kontext der App (Self-XSS); Fremdtexte aus SMTP-/Bank-/Excel-Fehlern landen ungefiltert im DOM.",
+   "fix": "Toast per `document.createElement` aufbauen und `textContent` setzen; Messages mit `{{ messages|json_script }}` ausgeben.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. base.html 140–144: `toast.innerHTML = \\`…<span class=\"toast-text\">${text}</span>…\\`` ohne Escaping; base.html 97 schreibt Messages nur mit `|escapejs` in ein JS-Literal (schützt das Script-Literal, nicht das spätere HTML). views.py 938: `messages.success(request, f'…„{tmpl.title}“ …')`, wobei `tmpl_title` aus `request.POST.get('recurring_title')` stammt (Zeile 936–937); ebenso 559/573 (`item.name`), 1021 (`recipient`), und Exception-Texte 1025/1320/1329/1461/2046. `<img src=x onerror=…>` im Vorlagennamen wird nach dem Redirect als Markup ausgeführt, `<Haus A>` wird verschluckt. Schwere korrigiert auf niedrig: Es ist Self-XSS bei 2 vertrauenswürdigen, authentifizierten Nutzern ohne fremden Eingabekanal; es gibt keinen realen Angriffspfad von außen. Fix trotzdem trivial (textContent).",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "base.html Z.97 schreibt `{{ message|escapejs }}` in ein JS-Literal; escapejs('<img …>') ergibt `<img …` – zur Laufzeit wieder `<img …>`. Z.140–144 setzt `toast.innerHTML = \\`…${text}…\\`` ohne Escaping. views.py Z.938 `messages.success(… „{tmpl.title}“ …)` mit `recurring_title` aus request.POST (Z.935–937). Damit wird Nutzereingabe als HTML interpretiert. Kein Test, keine Dokumentation. Als Self-XSS in 2-Nutzer-App ist „mittel“ angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Startskripte führen bei jedem Start `makemigrations sedo` auf Endnutzer-Rechnern aus",
+   "file": "START_WINDOWS.bat",
+   "line": 9,
+   "severity": "mittel",
+   "description": "START_WINDOWS.bat (Zeile 9) und START_HIER.command (Zeile 25) rufen `python manage.py makemigrations sedo` vor `migrate` auf. `makemigrations` ist ein Entwicklerwerkzeug: Es erzeugt lokal neue Migrationsdateien, sobald Modelle und Migrationen auseinanderlaufen. SEDO.app und desktop.py machen es richtig (nur `migrate`).",
+   "evidence": "START_WINDOWS.bat 9–10: `python manage.py makemigrations sedo` / `python manage.py migrate`; START_HIER.command 25–26: gleiche Zeilen; SEDO.app/Contents/MacOS/sedo: `python manage.py migrate --noinput` (kein makemigrations).",
+   "scenario": "Update-Release enthält eine Modelländerung, deren Migration vergessen wurde. Rechner A erzeugt lokal `00xx_auto_….py`. Das nächste Release liefert die offizielle Migration mit anderem Namen → „Conflicting migrations detected“, der Start bricht ab.",
+   "impact": "Startabbruch nach Update, divergierende Schemata zwischen den beiden Nutzer-Rechnern, manuelle Reparatur an der Live-DB.",
+   "fix": "`makemigrations` aus beiden Startskripten entfernen und nur `python manage.py migrate --noinput` ausführen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Belegt: START_WINDOWS.bat 9–10 und START_HIER.command 23–24 rufen `python manage.py makemigrations sedo` vor `migrate` auf; SEDO.app/Contents/MacOS/sedo 62 und desktop.py 73 nur `migrate`. Das Szenario (Modelländerung ohne mitgelieferte Migration → lokal erzeugte `00xx_…`-Datei auf dem Nutzer-Rechner → beim nächsten Release „Conflicting migrations detected“ bzw. auf zwei Rechnern verschiedene Schemata der Live-DB) ist mechanisch korrekt, tritt aber nur nach einem Entwicklerfehler ein; zusätzlich kann `makemigrations` bei fehlendem Default interaktiv nachfragen und den Start blockieren. Mittel bleibt vertretbar, weil die Folge (divergierende Live-Schemata, manuelle Reparatur) schwer wiegt; Aufwand des Fixes minimal.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "START_WINDOWS.bat Z.9 `python manage.py makemigrations sedo` vor Z.10 `migrate`; START_HIER.command Z.23–24 identisch; SEDO.app/Contents/MacOS/sedo Z.62 und desktop.py Z.73 nutzen nur `migrate`. Das Szenario (Release mit vergessener Migration → lokale Auto-Migration → späterer Konflikt) setzt einen Entwicklerfehler voraus, ist aber realistisch; im Normalfall ist der Aufruf ein No-Op. Keine dokumentierte Absicht in CHANGELOG. Schwere mittel vertretbar, da Folge ein Startabbruch mit Handarbeit an der Live-DB wäre.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "SMTP-Port als int in `<input type=number value=\"{{ smtp_port }}\">` – ab Port 1000 lokalisiert („2.525“)",
+   "file": "sedo/templates/sedo/settings.html",
+   "line": 28,
+   "severity": "mittel",
+   "description": "`settings_page` übergibt `smtp_cfg['port']` als int. Mit `USE_THOUSAND_SEPARATOR` wird 2525 im Template zu „2.525“ gerendert. Im Testlauf verifiziert: `name=\"smtp_port\" type=\"number\" value=\"2.525\"`. Beim Speichern kommt „2.525“ zurück; `_smtp_port()` fängt den `ValueError` und fällt still auf 587 zurück.",
+   "evidence": "settings.html 28: `<input name=\"smtp_port\" type=\"number\" value=\"{{ smtp_port }}\" placeholder=\"587\">`; mail.py 51–56: `raw = (AppSetting.get('smtp_port', '') or '').strip() … except ValueError: return DEFAULT_SMTP_PORT`; views.py 2001: `AppSetting.set('smtp_port', request.POST.get('smtp_port', '587').strip() or '587')`.",
+   "scenario": "Nutzer richtet einen Relay mit Port 2525 ein und speichert → Formular zeigt beim nächsten Öffnen „2.525“; beim Speichern anderer SMTP-Felder wird „2.525“ übernommen → Versand läuft unbemerkt über Port 587 und schlägt fehl.",
+   "impact": "Rechnungsversand bricht nach jedem Speichern der Einstellungen ab, Ursache nicht erkennbar. Standardports 25/465/587 nicht betroffen.",
+   "fix": "`value=\"{{ smtp_port|unlocalize }}\"` oder den Port im View als String übergeben; beim Speichern serverseitig validieren.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. views.py 2055/2065: `smtp_cfg = get_smtp_config()` → `'smtp_port': smtp_cfg['port']`, und mail.py 51–56 liefert `_smtp_port()` als `int`. settings.html 28: `<input name=\"smtp_port\" type=\"number\" value=\"{{ smtp_port }}\">` ohne `|unlocalize` → mit USE_THOUSAND_SEPARATOR wird 2525 zu „2.525“ gerendert (für type=number ein gültiger Float, wird angezeigt und so zurückgesendet). views.py 2001 speichert den String ungeprüft, mail.py 55–56 fängt `int('2.525')` → `ValueError` und fällt still auf 587 zurück. Mittel angemessen (nur Ports ≥ 1000, z. B. Relay-Port 2525; Fehlerbild schwer erkennbar).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py Z.2055/2065: `'smtp_port': smtp_cfg['port']` – `get_smtp_config()` liefert int aus `_smtp_port()` (mail.py Z.51–56). settings.html Z.28 `value=\"{{ smtp_port }}\"` ohne unlocalize; im Projekt-Setting geprüft: 2525 → '2.525'. `type=number` akzeptiert „2.525“ als Float und sendet es zurück; views.py Z.2001 speichert es ungeprüft; `_smtp_port()` fängt den ValueError und fällt still auf 587 zurück. Kein Test für smtp_port.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Race bei schneller Kundenauswahl: verspätete API-Antwort überschreibt Kopfdaten und Objektliste des zuletzt gewählten Kunden",
+   "file": "sedo/templates/sedo/invoice_form.html",
+   "line": 283,
+   "severity": "mittel",
+   "description": "Der `change`-Handler auf `#id_customer` startet pro Auswahl ein `fetch('/api/kunden/<pk>/daten/')` ohne AbortController oder Sequenznummer und schreibt die Antwort ungeprüft in die Felder (identisch offer_form.html). Treffen zwei Antworten in vertauschter Reihenfolge ein (Tunnel-Latenz), zeigen Name/Adresse und das Objekt-Dropdown Kunde A, während `id_customer` auf Kunde B steht. Ein aus der falschen Liste gewähltes Objekt wird ohne Zugehörigkeitsprüfung übernommen.",
+   "evidence": "invoice_form.html 296–298: `const resp = await fetch(\\`/api/kunden/${pk}/daten/\\`); if (!resp.ok) throw new Error('API Fehler'); const d = await resp.json(); fill('id_name', d.name); …`; 322–323: `customerObjectCache = d.objects || []; updateObjectDropdown(customerObjectCache);`",
+   "scenario": "Nutzer wählt per Enter Kunde A, merkt den Irrtum und wählt sofort Kunde B. Antwort A kommt 400 ms später als B → Kopfdaten und Objektliste zeigen A. Nutzer wählt „Objekt Musterhaus“ (gehört A) → Rechnung für Kunde B mit Leistungsort von Kunde A.",
+   "impact": "Falscher Leistungsort auf einer erzeugten E-Rechnung; selten, aber bei Tunnel-Betrieb realistisch.",
+   "fix": "Laufende Anfrage abbrechen (`AbortController`) oder Sequenzzähler und vor dem Befüllen `customerSel.value === pk` prüfen. Serverseitig `obj.customer_id == customer.pk` erzwingen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. invoice_form.html 283–329: `change`-Handler mit `await fetch(\\`/api/kunden/${pk}/daten/\\`)`, kein AbortController, keine Sequenznummer, kein Vergleich `customerSel.value === pk` vor `fill(...)`/`updateObjectDropdown(...)` (Zeilen 300–323). Serverseitig gibt es keine Zugehörigkeitsprüfung: forms.py 88 `obj = ModelChoiceField(queryset=CustomerObject.objects...all())`, kein `clean`/`clean_obj` in forms.py (grep „def clean“ ohne Treffer); views.py 234–236 `_object_from_invoice_form` übernimmt `cleaned_data['obj']` ungeprüft. Damit ist das Szenario (vertauschte Antworten → Objekt von Kunde A auf Rechnung für Kunde B) real, wenn auch selten. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 8,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "invoice_form.html Z.283–330: `change`-Handler mit `await fetch(\\`/api/kunden/${pk}/daten/\\`)` ohne AbortController/Sequenzprüfung; Z.301–323 befüllen Felder und `updateObjectDropdown` ungeprüft. Serverseitig: views.py Z.234–237 `_object_from_invoice_form` gibt `form.cleaned_data['obj']` zurück ohne Prüfung `obj.customer_id == customer.pk`; forms.py: `obj`-Queryset ist `CustomerObject.objects.all()`. Das Fehlerbild ist damit möglich, tritt aber nur bei vertauschter Antwortreihenfolge auf (selten). Nicht widerlegbar; „mittel“ wegen falschem Leistungsort in E-Rechnung akzeptabel.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Web-Speech-Fallback: Netzwerkfehler führt zu Endlos-Neustart mit Toast pro Versuch",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 308,
+   "severity": "niedrig",
+   "description": "Im Fallback ohne Whisper setzt `onerror` bei `network` nur einen Toast, lässt `recording` aber auf `true`. `onend` startet daraufhin `recognition.start()` sofort neu; Chrome liefert bei fehlender Verbindung zu Googles Speech-Dienst erneut `network` → Schleife mit einem Fehler-Toast pro Zyklus.",
+   "evidence": "offer_ai.js 298–299: `} else if (event.error === 'network') { notify('Netzwerkfehler bei der Spracherkennung. Bitte erneut versuchen.', 'error');` … 307–310: `recognition.onend = function () { if (recording && !stoppedByUser) { baseText = transcript.value; try { recognition.start(); return; } catch (e) { … } }`",
+   "scenario": "Rechner ohne Internet, faster-whisper nicht installiert. Nutzer klickt „Diktat starten“ → im Sekundentakt neue rote Toasts, Aufnahme-Indikator läuft weiter.",
+   "impact": "Toast-Spam, unklare Bedienlage; kein Datenschaden.",
+   "fix": "Bei `network`/`audio-capture`/`aborted` mit `stoppedByUser = true` beenden und `resetRecordBtn()` aufrufen, alternativ Retry-Zähler (max. 2).",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 9,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Code bestätigt: offer_ai.js 295–304 `onerror`: bei `network` nur `notify(...)`, `stoppedByUser` bleibt false und `recording` bleibt true; 307–311 `onend`: `if (recording && !stoppedByUser) { … recognition.start(); return; }`. Chrome feuert bei fehlender Verbindung zum Speech-Dienst `error(network)` gefolgt von `end`, danach beginnt der Zyklus erneut → Toast pro Durchlauf. Die Whisper-Weiche greift nur, wenn faster-whisper installiert ist. Der genaue Takt hängt vom Browser ab, das Schleifenverhalten ist aber im Code angelegt. Niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 9,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "offer_ai.js Z.298–299: bei `network` nur `notify(...)`, `stoppedByUser` bleibt false, `recording` (Z.35/104) bleibt true. Z.307–310 `onend`: `if (recording && !stoppedByUser) { … recognition.start(); return; }` → Neustart; bei weiterhin fehlender Verbindung erneut `network`-Fehler + Toast. Code bestätigt die Schleife; nur ein Toast pro Zyklus, kein Datenschaden – niedrig passt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Cache-Busting manuell und inkonsistent (gleiche Datei mit zwei Versions-Strings, login.css ohne Version)",
+   "file": "sedo/templates/sedo/invoice_detail.html",
+   "line": 97,
+   "severity": "niedrig",
+   "description": "Die Versions-Suffixe sind handgepflegte Konstanten je Template: base.html (`?v=3_23`, `?v=2_1`), invoice_form.html 552 `magic_tone.js?v=3_23`, invoice_detail.html 97 `magic_tone.js?v=3_21` (dieselbe Datei, zwei URLs), login.html lädt `app.css` ohne Version; offer_form.html mischt `{% static %}` und hartes `/static/…`. WhiteNoise liefert ohne Manifest-Storage `Cache-Control: max-age=60`.",
+   "evidence": "invoice_detail.html 97: `<script src=\"/static/sedo/magic_tone.js?v=3_21\"></script>`; invoice_form.html 552: `<script src=\"/static/sedo/magic_tone.js?v=3_23\"></script>`; login.html: `<link rel=\"stylesheet\" href=\"/static/sedo/app.css\">`; settings.py 166–167: `WHITENOISE_USE_FINDERS = True`, `WHITENOISE_AUTOREFRESH = True`.",
+   "scenario": "Update ändert wizard.js und base.html, der Entwickler vergisst `?v=` hochzuzählen → in der ersten Minute nach Neustart läuft altes JS gegen neues Markup.",
+   "impact": "Gering (60 s Revalidierung), aber schwer diagnostizierbare Sporadikfehler direkt nach Updates.",
+   "fix": "Einheitlich `{% static %}` nutzen und die Version zentral bereitstellen (Context-Processor `STATIC_VERSION`), oder Template-Tag mit Datei-Hash; login.html einbeziehen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 10,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Belegt: invoice_detail.html 97 `magic_tone.js?v=3_21` vs. invoice_form.html 552 `magic_tone.js?v=3_23`; registration/login.html 1 `<link rel=\"stylesheet\" href=\"/static/sedo/app.css\">` ohne Version; offer_form.html 495 `{% static %}` neben 500 hartem `/static/…`; WhiteNoise-Middleware aktiv (settings.py 119) mit `WHITENOISE_USE_FINDERS`/`AUTOREFRESH` (166–167), ohne Manifest-Storage → `max-age=60`. Auswirkung real, aber sehr gering: höchstens 60 s alter JS/CSS-Stand nach einem Update; zwei Versions-Strings für dieselbe Datei erzeugen nur zwei Cache-Einträge. Niedrig ist korrekt, kein Funktionsschaden.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belege stimmen: invoice_detail.html Z.97 `magic_tone.js?v=3_21`, invoice_form.html Z.552 `magic_tone.js?v=3_23`, base.html Z.7/92/93 `?v=3_23`/`?v=2_1`, registration/login.html lädt `/static/sedo/app.css` ohne Version, offer_form.html Z.493–500 mischt `{% static %}` und hartes `/static/…`. settings.py Z.166–167 WhiteNoise mit Findern/Autorefresh ohne Manifest-Storage. Auswirkung gering (kurze Cache-Lebensdauer), daher niedrig – korrekt eingestuft.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Barrierefreiheit: Labels ohne Zuordnung, Suchfeld und Checkboxen ohne Beschriftung",
+   "file": "sedo/templates/sedo/invoice_form.html",
+   "line": 57,
+   "severity": "niedrig",
+   "description": "Durchgängiges Muster `<label>{{ form.x.label }}</label>{{ form.x }}` ohne `for`-Attribut und ohne Umschließen in invoice_form, offer_form, recurring_template_form, service_catalog_form, customer_form, object_form, payment_manual. Kundensuche `#customer-search` hat nur Placeholder. Checkboxen `invoice_ids`, `template_ids` und `DELETE` haben keinen zugänglichen Namen. Ein Fund für das Muster.",
+   "evidence": "invoice_form.html 57: `<div><label>{{ form.name.label }} *</label>{{ form.name }}{{ form.name.errors }}</div>`; invoice_form.html 42: `<input type=\"search\" id=\"customer-search\" placeholder=\"Kunden suchen…\" autocomplete=\"off\">`; open_items.html 75: `<input type=\"checkbox\" name=\"invoice_ids\" value=\"{{ i.pk|unlocalize }}\" class=\"row-check\">`",
+   "scenario": "Screenreader-Nutzer im Rechnungsformular hört „Eingabefeld, leer“ ohne Feldnamen; Klick auf die Beschriftung fokussiert das Feld nicht.",
+   "impact": "Eingeschränkte Bedienbarkeit für assistive Technik; kein funktionaler Schaden.",
+   "fix": "`<label for=\"{{ form.name.id_for_label }}\">`, `aria-label` für Suchfeld und Checkboxen.",
+   "effort": "M",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 11,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belegt: invoice_form.html 40, 56–67, 106–115 `<label>{{ form.x.label }}</label>{{ form.x }}` ohne `for` und ohne Umschließen; Zeile 42 `<input type=\"search\" id=\"customer-search\" placeholder=…>` ohne Label/aria-label; open_items.html 75 Checkbox `invoice_ids` ohne zugänglichen Namen (nur `#check-all` hat `title`). Konsequenz (kein Fokus per Label-Klick, kein Feldname für Screenreader) tritt ein. Niedrig, ein Fund fürs Muster – angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 11,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "invoice_form.html Z.57 `<label>{{ form.name.label }} *</label>{{ form.name }}` ohne `for` (Muster über Z.56–67, 89–93, 106–115); Z.42 Suchfeld nur mit Placeholder; open_items.html Z.75 Checkbox `invoice_ids` ohne Label/aria-label (nur `#check-all` hat `title`). Reine Barrierefreiheitsschwäche ohne funktionalen Schaden – als niedrig korrekt; nicht widerlegbar, aber Grenzfall zur Stilkritik.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "SEDO.vbs: 300-Sekunden-Timeout ist bei der Erstinstallation zu kurz → Fehlerdialog trotz laufender Einrichtung",
+   "file": "SEDO.vbs",
+   "line": 59,
+   "severity": "niedrig",
+   "description": "Beim Erststart startet SEDO.vbs START_WINDOWS.bat (venv anlegen, `pip install -r requirements.txt` inkl. faster-whisper – leicht > 5 Minuten) und wartet dann nur 300 × 1 s auf den Server. Danach erscheint „Der SEDO-Server ist nicht gestartet“, obwohl die Installation noch läuft; das App-Fenster wird nicht mehr automatisch geöffnet.",
+   "evidence": "SEDO.vbs 59–62: `For i = 1 To 300 / If ServerUp() Then Exit For / WScript.Sleep 1000 / Next` … `MsgBox \"Der SEDO-Server ist nicht gestartet.\" …`; SEDO.vbs 47–52: Erststart-Zweig startet START_WINDOWS.bat",
+   "scenario": "Neuer Windows-Rechner, Doppelklick auf die Verknüpfung. pip lädt 6 Minuten. Nach 5 Minuten Fehlermeldung; das schwarze Fenster zeigt später das Einmal-Passwort, aber kein App-Fenster öffnet sich.",
+   "impact": "Verwirrender Erststart, Passwortanzeige und Fehlerdialog widersprechen sich; kein Datenschaden.",
+   "fix": "Im Erststart-Zweig ohne festes Limit (oder 30 Minuten) warten und den Dialog nur zeigen, wenn der Bat-Prozess beendet ist und der Server trotzdem nicht antwortet.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_a",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 12,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. SEDO.vbs 46–52: Erststart-Zweig (kein `.venv` oder keine DB) startet START_WINDOWS.bat; dieses legt venv an und führt `pip install -r requirements.txt` aus (Zeilen 3–6) – requirements.txt enthält u. a. pandas, lxml, reportlab, fints und faster-whisper (ctranslate2/onnxruntime-Abhängigkeiten, mehrere hundert MB). SEDO.vbs 58–61 wartet fest `For i = 1 To 300 … Sleep 1000`, danach 66–68 `MsgBox \"Der SEDO-Server ist nicht gestartet.\"` ohne Prüfung, ob der Bat-Prozess noch läuft; das App-Fenster wird nur bei `ServerUp()` innerhalb der 300 s geöffnet. Bei langsamer Leitung ist > 5 min realistisch. Niedrig passt (verwirrender Erststart, kein Datenschaden).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 12,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "SEDO.vbs Z.46–52: Erststart ohne .venv/DB startet START_WINDOWS.bat (Z.3–6: venv, pip upgrade, `pip install -r requirements.txt` inkl. pandas, reportlab, lxml, faster-whisper); Z.58–61 wartet fest 300×1 s; Z.66–68 zeigt danach den Fehlerdialog, obwohl der Bat-Prozess weiterlaufen kann (Run mit False = nicht warten). Der Kommentar Z.57 erkennt die Erststart-Dauer an, das Limit ist trotzdem fix. Dauer > 5 min bei langsamer Leitung realistisch. niedrig passt.",
+     "corrected_severity": null
+    }
+   ]
+  }
+ ]
+}

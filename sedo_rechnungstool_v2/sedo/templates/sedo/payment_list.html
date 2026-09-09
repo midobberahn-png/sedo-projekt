@@ -1,0 +1,33 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<div class="topbar"><div><div class="eyebrow">Finanzen</div><div class="h1">Zahlungskontrolle</div><div class="sub">Bankumsätze importieren, automatisch zuordnen, offene Fälle prüfen</div></div></div>
+
+<div class="card">
+  <h2>Kontoumsätze abrufen (FinTS) <span class="info-tip" tabindex="0" aria-label="Hinweis zum Bankabruf">i<span class="info-tip-text">Rein lesender Abruf der Umsätze direkt bei der Bank. Je nach Bank ist eine Freigabe in der Banking-App nötig (pushTAN) – Freigabe bestätigen, SEDO wartet bis zu 90 Sekunden. Zugang einrichten unter Einstellungen → Bankkonto. Rechnungsnummern im Verwendungszweck werden automatisch zugeordnet.</span></span></h2>
+  {% if banking_configured %}
+  <form method="post" class="toolbar" style="gap:10px;flex-wrap:wrap;align-items:end">{% csrf_token %}
+    <input type="hidden" name="action" value="fints_fetch">
+    <div class="field" style="min-width:140px"><label>Zeitraum</label>
+      <select name="days"><option value="14">14 Tage</option><option value="30" selected>30 Tage</option><option value="60">60 Tage</option><option value="90">90 Tage</option></select></div>
+    {% if not banking_pin_stored %}
+    <div class="field" style="min-width:180px"><label>Online-Banking-PIN</label>
+      <input type="password" name="fints_pin_once" autocomplete="off" placeholder="nur für diesen Abruf"></div>
+    {% endif %}
+    <button class="btn primary" type="submit"><svg class="ico" aria-hidden="true"><use href="#i-payment"/></svg> Umsätze abrufen</button>
+  </form>
+  {% else %}
+  <p class="hint">Noch kein Bankzugang hinterlegt. <a href="{% url 'sedo:settings' %}">Einstellungen → Bankkonto</a> ausfüllen, dann erscheint hier der Abruf-Knopf.</p>
+  {% endif %}
+  <h2 style="margin-top:18px">Alternativ: Bank-Datei importieren <span class="info-tip" tabindex="0" aria-label="Hinweis zum Dateiimport">i<span class="info-tip-text">JSON-Datei mit Umsätzen einlesen. Nach dem Import werden Rechnungsnummer und Betrag geprüft; unklare Buchungen lassen sich manuell zuordnen.</span></span></h2>
+  <form method="post" enctype="multipart/form-data" class="toolbar">{% csrf_token %}{{ form.file }}<button class="btn" type="submit">Importieren & zuordnen</button></form>
+</div>
+<div class="cards">
+  <div class="card"><div class="metric">{{ payments|length }}</div><div class="metric-label">importierte Zahlungen</div></div>
+  <div class="card"><div class="metric">{{ open_invoices|length }}</div><div class="metric-label">offene Rechnungen</div></div>
+</div>
+<div class="card"><h2>Zahlungen</h2>
+<div class="table-wrap"><div class="table-wrap"><table class="table"><tr><th>Datum</th><th>Betrag</th><th>Name</th><th>Verwendungszweck</th><th>Zuordnung</th><th>Aktion</th></tr>
+{% for p in payments %}<tr><td>{{ p.booking_date }}</td><td>{{ p.amount }} €</td><td>{{ p.payer_name }}</td><td>{{ p.purpose|truncatechars:70 }}</td><td>{% if p.invoice %}<a class="badge green" href="{% url 'sedo:invoice_detail' p.invoice.pk %}">{{ p.invoice.number }}</a>{% else %}<span class="badge amber">unklar</span>{% endif %}</td><td>{% if not p.invoice %}<a class="btn" href="{% url 'sedo:payment_assign' p.pk %}">Zuordnen</a>{% endif %}<a class="btn danger" href="{% url 'sedo:payment_delete' p.pk %}">Löschen</a></td></tr>{% empty %}<tr><td colspan="6" class="muted">Noch keine Zahlungen importiert.</td></tr>{% endfor %}</table></div></div>
+<div class="card"><h2>Offene Rechnungen</h2>
+<table class="table"><tr><th>Nr.</th><th>Kunde</th><th>Fällig</th><th>Brutto</th><th>Offen</th><th>Status</th></tr>
+{% for i in open_invoices %}<tr><td><a href="{% url 'sedo:invoice_detail' i.pk %}">{{ i.number }}</a></td><td>{{ i.customer }}</td><td>{{ i.due_date|default:'—' }}</td><td>{{ i.gross_total }} €</td><td>{{ i.open_amount }} €</td><td><span class="badge">{{ i.get_status_display }}</span></td></tr>{% empty %}<tr><td colspan="6" class="muted">Keine offenen Rechnungen.</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

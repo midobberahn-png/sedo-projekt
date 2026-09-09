@@ -1,0 +1,437 @@
+{
+ "modus": "verifizieren",
+ "dimension": "gobd-geschaeftslogik",
+ "ergebnis": [
+  {
+   "title": "Korrigierte (ersetzte) Rechnungen gelten überall als offen – Offene Posten setzen sie per GET auf „überfällig“, danach Mahnung und Storno möglich",
+   "file": "sedo/services/calc.py",
+   "line": 45,
+   "severity": "hoch",
+   "description": "Status 'korrigiert' wird weder im Dashboard noch in den Offenen Posten noch in refresh_invoice_payment_status als Endstatus behandelt. Dashboard und Offene Posten schließen nur 'bezahlt'/'storniert' aus, sodass die ersetzte Ursprungsrechnung UND die Korrekturrechnung als offen summiert werden. Beim Aufruf der Offene-Posten-Seite (GET) ruft die View refresh_invoice_payment_status für jede gelistete Rechnung auf; die Funktion prüft nur 'storniert', und weil bei der Ursprungsrechnung keine Zahlung vorliegt und das Fälligkeitsdatum meist verstrichen ist, wird sie auf 'ueberfaellig' umgeschrieben. Ab dann ist sie Mahnkandidat und ensure_storno_allowed (prüft status == 'korrigiert') gibt ein Storno frei.",
+   "evidence": "calc.py:45-57: `if invoice.status == 'storniert': return invoice` … `elif invoice.due_date and invoice.due_date < today: invoice.status = 'ueberfaellig'` — views.py:1192: `Invoice.objects…exclude(status='storniert')`, 1200: `invoices = invoices.exclude(status='bezahlt')`, 1204-1205: `for inv in invoice_list: refresh_invoice_payment_status(inv)` — views.py:600-602: `invoices.exclude(status__in=['bezahlt','storniert']).count()` — dunning.py:30: `_UNDUNNABLE_STATUS = ('bezahlt', 'storniert', 'korrigiert', 'entwurf')` — invoices.py:44: `if original.status == 'korrigiert': … raise WorkflowError`",
+   "scenario": "Rechnung RE…0001 (119 €, fällig 15.08.) wird am 20.08. durch RE…0007 ersetzt → Original status='korrigiert'. Dashboard zeigt 238 € offene Forderungen. Nutzer öffnet „Offene Posten“ → Original wird auf 'ueberfaellig' gesetzt. Batch-Mahnung ohne Auswahl → Zahlungserinnerung zur ersetzten Rechnung geht an den Kunden. Zusätzlich ist der Storno-Button sichtbar und create_storno legt eine Stornorechnung zum bereits korrigierten Beleg an.",
+   "impact": "Doppelte Forderungsanzeige, Mahnschreiben für ersetzte Rechnungen, Storno und Korrektur nebeneinander, Verlust des Lebenszyklus-Status ohne Audit-Eintrag – GoBD-Nachvollziehbarkeit verletzt.",
+   "fix": "refresh_invoice_payment_status um einen frühen Return für 'korrigiert' (und 'entwurf') erweitern bzw. Zahlstatus in ein eigenes Feld auslagern; Dashboard/Offene Posten 'korrigiert' ausschließen; ensure_storno_allowed auf active_correction/active_storno UND invoice_type prüfen; Regressionstest.",
+   "effort": "M",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. calc.py:45-46 bricht nur bei 'storniert' ab; eine korrigierte Rechnung ohne Zahlung, ohne Mahndokument und mit verstrichener Fälligkeit läuft in Zeile 56-57 und wird 'ueberfaellig'. Ausgelöst wird das per GET in views.py:1203-1205 (open_items ruft refresh_invoice_payment_status für jede gelistete Rechnung; der Filter in 1192/1200 schließt 'korrigiert' nicht aus). Danach: dunning.py:30/43/182 prüfen nur den Status – die Rechnung wird Mahnkandidat, send_bulk_dunning ohne Auswahl (views.py:1234-1236) mahnt sie. ensure_storno_allowed (invoices.py:33-47) prüft active_storno und status=='korrigiert', aber nicht active_correction – nach dem Statusverlust ist Storno erlaubt; auch der Template-Guard (invoice_detail.html:18) hängt nur an status/active_storno. Dashboard (views.py:600-602) zählt 'korrigiert' ohnehin als offen. Keine vorgelagerte Sperre gefunden; die Tests (test_workflow_locks.py:58-62, test_dunning_stages.py:79) setzen den Status manuell und decken den Refresh-Pfad nicht ab. Schwere hoch passt: Mahnung an Großkunden für ersetzte Rechnung und Storno neben Korrektur.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. calc.py:45-46 bricht nur bei 'storniert' ab; calc.py:56-57 setzt bei fehlender Zahlung und verstrichenem Fälligkeitsdatum 'ueberfaellig', calc.py:58-59 kennt 'korrigiert' nicht. views.py:1192/1200 (open_items) schließt nur 'storniert'/'bezahlt' aus, views.py:1204-1205 ruft refresh für jede gelistete Rechnung auf – die ersetzte Rechnung landet also per GET in 'ueberfaellig'. Danach: dunning.py:30 sperrt nur den Status 'korrigiert' (jetzt weg), invoice_detail.html:18 blendet den Storno-Button nur bei status 'korrigiert' bzw. active_storno aus (nicht active_correction), invoices.py:44 prüft ebenfalls nur den Status. Dashboard views.py:600-602 zählt Original und Korrektur doppelt. Kein Test in sedo/tests/ deckt refresh_invoice_payment_status mit 'korrigiert' ab (test_dunning_stages prüft nur den unveränderten Status). CHANGELOG dokumentiert keine bewusste Entscheidung.",
+     "corrected_severity": "hoch"
+    }
+   ]
+  },
+  {
+   "title": "Sammelüberweisung mit mehreren Rechnungsnummern wird komplett der neuesten Rechnung zugeordnet – übrige Rechnungen bleiben offen und werden gemahnt",
+   "file": "sedo/services/payments.py",
+   "line": 41,
+   "severity": "hoch",
+   "description": "_match_invoice extrahiert alle RE-Nummern aus dem Verwendungszweck, holt aber mit .order_by('-issue_date').first() genau EINE Rechnung und bucht den gesamten Zahlbetrag darauf. Keine Betragsprüfung, keine Aufteilung, keine Warnung bei mehreren Treffern. Wohnungsgesellschaften zahlen typischerweise mehrere Monatsrechnungen in einer Überweisung.",
+   "evidence": "payments.py:41-49: `tokens = set(_INVOICE_NO_PATTERN.findall((purpose or '').upper()))` … `invoice = (Invoice.objects.exclude(status='storniert').filter(number__in=tokens).order_by('-issue_date').first())` — payments.py:97-105: `payment = Payment.objects.create(invoice=invoice, … amount=amount, … matched_automatically=bool(invoice))` — calc.py:50: `if paid >= invoice.gross_total …: invoice.status = 'bezahlt'`",
+   "scenario": "Gutschrift über 357,00 € mit Verwendungszweck „RE2025080001 RE2025080002 RE2025080003“ (3 × 119 €). Zahlung wird RE2025080003 zugeordnet → 'bezahlt', open_amount −238 €. Die anderen beiden bleiben offen und werden gemahnt, obwohl der Kunde vollständig bezahlt hat.",
+   "impact": "Falsche offene Posten, unberechtigte Mahnungen an Großkunden, Überzahlung stumm akzeptiert; Zahlungsnachweis je Rechnung falsch.",
+   "fix": "Bei mehr als einem Treffer die Zahlung als „unklar“ markieren und Aufteilung anbieten; alternativ automatisch aufteilen, wenn Summe exakt passt; bei Überzahlung warnen.",
+   "effort": "M",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. payments.py:41-49: alle RE-Token werden extrahiert, aber `.order_by('-issue_date').first()` liefert genau eine Rechnung; Zeile 97-105 bucht den vollen Betrag darauf und ruft refresh_invoice_payment_status, das bei paid >= gross_total (calc.py:50) 'bezahlt' setzt. Keine Betragsprüfung, keine Mehrfachtreffer-Behandlung. Der FinTS-Pfad (banking.py:198) läuft durch dieselbe import_bank_json-Pipeline, ist also ebenfalls betroffen. Die anderen genannten Rechnungen bleiben offen und erfüllen die Kandidatenkriterien in dunning.py:180-194 (open_amount > 0). Schwere hoch ist im Kontext (Wohnungsgesellschaft als Hauptkunde, Sammelüberweisungen üblich) angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. payments.py:41-49: Token-Set aus allen RE-Nummern, aber .order_by('-issue_date').first() liefert genau eine Rechnung; payments.py:97-105 bucht den gesamten Betrag darauf, keine Betragsprüfung. calc.py:50 setzt sie auf 'bezahlt'. Tests (test_import_hardening.py) prüfen nur einzelne Nummern. Abschwächung: Es entsteht kein falscher Beleg/XML, die Überzahlung ist in der Rechnungsakte als negativer offener Betrag sichtbar, und Mahnungen erfordern 14 Tage Überfälligkeit plus manuellen Klick – daher eher 'mittel' (Fehlverhalten in realistischem Randfall) als 'hoch'.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Rechnungsformular ohne fachliche Validierung: negative Einzelpreise, Leistungszeitraum Ende vor Anfang und USt 0 % mit Kategorie „S“ erzeugen EN16931-ungültige XML",
+   "file": "sedo/forms.py",
+   "line": 69,
+   "severity": "hoch",
+   "description": "InvoiceItemForm/InvoiceForm haben keine clean()-Methoden; quantity, unit_price, vat_rate, period_start/period_end werden ungeprüft gespeichert. Der Kern schreibt unit_price 1:1 als ChargeAmount (BR-27: nicht negativ), hartkodiert CategoryCode „S“ (BR-S-05: Satz > 0) und gibt BillingSpecifiedPeriod ohne Reihenfolgeprüfung aus (BR-29).",
+   "evidence": "forms.py:69-82: `class InvoiceItemForm(forms.ModelForm): … fields = ['description','long_text','quantity','unit','unit_price', …]` (kein clean, kein min_value) — forms.py:57-67 — rechnungslauf_core.py:658: `sub(price, \"ram\", \"ChargeAmount\", money(pos.unit_price))`; 664: `sub(tax, \"ram\", \"CategoryCode\", \"S\")`; 766-771 (keine Prüfung Start ≤ Ende)",
+   "scenario": "Nutzer erfasst Position „Rabatt Neukunde 1 × −50,00“ → factur-x.xml enthält `<ram:ChargeAmount>-50.00</ram:ChargeAmount>` → Validator lehnt ab (BR-27), Rechnung ist aber nummeriert und ggf. versendet. Leistungszeitraum 01.09.–31.08. → BR-29; vat_rate 0 → BR-S-05.",
+   "impact": "Ungültige E-Rechnungen mit vergebener Nummer, Zurückweisung durch den Empfänger, Storno/Korrektur nötig.",
+   "fix": "In InvoiceItemForm.clean: unit_price ≥ 0 und quantity ≠ 0; in InvoiceForm.clean: period_end ≥ period_start, vat_rate ∈ {0, 7, 19} mit korrekter Kategorie; gleiche Regeln für OfferForm und den GWG-Monatslauf.",
+   "effort": "M",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. forms.py:23-84 (InvoiceForm/InvoiceItemForm) haben keine clean()-Methoden und keine min_value; die Modellfelder (models.py:127-130, 222-224) sind normale DecimalFields ohne Validatoren. invoice_create (views.py:844-901) speichert nach form.is_valid()/formset.is_valid() ohne weitere fachliche Prüfung und erzeugt sofort Nummer + XML. rechnungslauf_core.py:658 schreibt unit_price 1:1 als ChargeAmount, 664/762 hartkodieren CategoryCode 'S' unabhängig von vat_rate, 766-771 geben BillingSpecifiedPeriod ohne Reihenfolgeprüfung aus. Die lokale Plausibilitätsprüfung (plausibility.py:105-117) ist optional (nur per KI-Assistent-Button, views.py:505ff) und liefert für price <= 0 lediglich einen 'hinweis' mit der irreführenden Meldung '0 €' – keine Sperre. Schwere hoch (ungültige E-Rechnung mit vergebener Nummer) passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. forms.py:69-82 InvoiceItemForm und forms.py:23-67 InvoiceForm ohne clean()/min_value; models.py:222-224 quantity/unit_price ohne Validator. rechnungslauf_core.py:658 schreibt ChargeAmount = unit_price 1:1, :664 und :761 CategoryCode 'S' hartkodiert, :766-771 BillingSpecifiedPeriod ohne Reihenfolgeprüfung; build_xml prüft nur die Rechnungsnummer (core :602). Die lokale Plausibilitätsprüfung (plausibility.py:112-115) liefert bei Preis ≤ 0 nur einen Hinweis über den KI-Assistenten-Endpunkt (views.py:505), keine Sperre. Kein Test für negative Preise oder period_end < period_start.",
+     "corrected_severity": "hoch"
+    }
+   ]
+  },
+  {
+   "title": "Stornorechnungen (negativer Brutto) werden beim Öffnen der Offenen Posten automatisch auf „bezahlt“ gesetzt – ohne Zahlung",
+   "file": "sedo/services/calc.py",
+   "line": 50,
+   "severity": "mittel",
+   "description": "Die Stornorechnung (Typ 457) wird mit status='erstellt' und negativem gross_total angelegt. refresh_invoice_payment_status prüft `paid >= gross_total` – bei paid = 0 und gross_total = −119 ist das wahr, sodass die Rechnung 'bezahlt' wird. Ausgelöst durch den GET auf Offene Posten.",
+   "evidence": "invoices.py:231-238: `storno = create_numbered_invoice(invoice_type='457', … status='erstellt', …)` mit `quantity=-item.quantity` — calc.py:48-51: `if paid >= invoice.gross_total and invoice.gross_total != Decimal('0.00'): invoice.status = 'bezahlt'` — views.py:1204-1205",
+   "scenario": "Storno RE2025090005 (−119 €) wird erzeugt. Nutzer öffnet „Offene Posten“ → RE2025090005 wird 'bezahlt' (kein Audit-Eintrag), Detailseite zeigt „Bezahlt“, Zahlungen: keine.",
+   "impact": "Irreführender Status ohne Zahlungsnachweis, automatischer Statuswechsel ohne Audit, Rückzahlungspflicht an den Kunden geht unter.",
+   "fix": "Stornorechnungen (457) in refresh_invoice_payment_status ausnehmen bzw. eigenen Status führen; Vergleich nur für gross_total > 0; Gutschriften separat anzeigen.",
+   "effort": "S",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Mechanismus nachvollzogen: invoices.py:231-255 legt das Storno mit status='erstellt' und negativen Mengen an, generate_invoice_files → recalc_invoice ergibt negatives gross_total. open_items (views.py:1192/1200) listet das Storno (nur 'storniert'/'bezahlt' ausgeschlossen) und ruft refresh (1205); calc.py:50 `paid >= gross_total and gross_total != 0` ist bei paid=0 und gross=-119 wahr → 'bezahlt' ohne Zahlung, ohne Audit. Schwere aber zu hoch angesetzt: Es handelt sich um einen reinen Anzeigestatus, das Storno ist unabhängig davon nie Mahnkandidat (dunning.py:193 open_amount <= 0), und eine Guthaben-/Rückzahlungsführung existiert im System ohnehin nicht – der Statuswechsel nimmt also nichts weg, was vorher da war. Eher Robustheit/Klarheit → niedrig.",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. invoices.py:231-249: Storno mit status='erstellt' und negativen Mengen → recalc ergibt negatives gross_total. calc.py:50: paid (0) >= gross_total (negativ) und gross_total != 0 → 'bezahlt', ausgelöst über views.py:1204-1205 bei jedem GET auf Offene Posten. Kein Test prüft den Status einer Stornorechnung nach refresh_invoice_payment_status.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Erneuter E-Mail-Versand überschreibt Endstatus: bezahlte, gemahnte und korrigierte Rechnungen werden „versendet“",
+   "file": "sedo/views.py",
+   "line": 1017,
+   "severity": "mittel",
+   "description": "invoice_email setzt nach Versand den Status bedingungslos auf 'versendet', ausgenommen nur 'storniert'. Ein Neuversand einer bezahlten Rechnung macht sie wieder offen; bei 'korrigiert' ist der Verlust dauerhaft, weil refresh_invoice_payment_status 'korrigiert' nie wiederherstellt – damit fallen die Storno-Sperren.",
+   "evidence": "views.py:1017-1019: `if invoice.status != 'storniert': invoice.status = 'versendet'; invoice.save(update_fields=['status', 'updated_at'])` — identisch views.py:1031-1033 — calc.py:58-59: `elif invoice.status in ['bezahlt', 'teilbezahlt', 'ueberfaellig', 'gemahnt']: invoice.status = 'erstellt'` (kennt 'korrigiert' nicht) — invoice_detail.html:12: E-Mail-Button ohne Statusbedingung",
+   "scenario": "RE2025080001 ist 'korrigiert'. Buchhaltung sendet die alte Rechnung als Kopie per „E-Mail“-Button → Status 'versendet' → Storno-Button sichtbar → Storno zusätzlich zur Korrektur. Zweitfall: bezahlte Rechnung erneut versendet → Dashboard zählt sie als offene Forderung.",
+   "impact": "Falsche offene Forderungen, Aufhebung der Doppel-Storno-Sperre, Statushistorie nicht nachvollziehbar.",
+   "fix": "Status nur von 'erstellt'/'entwurf' auf 'versendet' heben; Versand ansonsten nur im Audit-Log vermerken; langfristig Versand-/Zahl-/Lebenszyklusstatus trennen.",
+   "effort": "S",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. views.py:1017-1019 und 1031-1033 setzen nach Versand bedingungslos 'versendet', nur 'storniert' ist ausgenommen; der E-Mail-Button in invoice_detail.html:12 und das Formular in Zeile 87-94 haben keine Statusbedingung. Für 'korrigiert' ist der Verlust dauerhaft: calc.py:58-59 kennt 'korrigiert' nicht und stellt es nie wieder her. Danach zeigt das Template (Zeile 18: status != 'korrigiert' and not active_storno) den Storno-Button, und ensure_storno_allowed (invoices.py:33-47) prüft weder invoice_type-Folgebelege vom Typ 384 noch active_correction → Storno neben Korrektur möglich (Doppelkorrektur bleibt durch active_correction in invoices.py:56 gesperrt). Der Fall 'bezahlt' → 'versendet' heilt sich beim nächsten open_items-Aufruf selbst (calc.py:50), verfälscht bis dahin aber die Dashboard-Zählung (views.py:600). Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. views.py:1017-1019 und 1031-1033 setzen 'versendet' für jeden Status außer 'storniert'; invoice_detail.html:12 zeigt den E-Mail-Button ohne Bedingung. calc.py:58-59 stellt 'korrigiert' nie wieder her; danach greifen invoices.py:44 (nur Status) und invoice_detail.html:18 (nur Status/active_storno) nicht mehr – Storno neben Korrektur wird möglich. Für 'bezahlt' ist der Effekt transient (nächster refresh setzt wieder 'bezahlt'), für 'korrigiert' dauerhaft. Kein Test.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Zahlungserfassung ohne Betrags- und Statusprüfung: negative/0-Beträge, Zahlungen auf stornierte oder bereits bezahlte Rechnungen, Storno bezahlter Rechnungen ohne Guthabenführung",
+   "file": "sedo/views.py",
+   "line": 1245,
+   "severity": "mittel",
+   "description": "ManualPaymentForm (amount ohne Untergrenze), invoice_add_payment, invoice_mark_paid und payment_assign prüfen weder Vorzeichen noch Rechnungsstatus/-typ. Negative Zahlungen erhöhen open_amount; Zahlungen auf 'storniert' werden gespeichert; ensure_storno_allowed lässt Storno voll bezahlter Rechnungen zu, ohne dass die Zahlung als Rückzahlungsverpflichtung geführt wird.",
+   "evidence": "forms.py:140-147: `class ManualPaymentForm(forms.ModelForm): … fields = ['booking_date', 'amount', 'payer_name', 'purpose']` (kein clean_amount) — views.py:1250-1255 — views.py:1348-1352 (queryset Invoice.objects.all(), forms.py:137) — invoices.py:33-47 — models.py:186 — calc.py:45-46",
+   "scenario": "(a) Rückerstattung als Zahlung „−119,00“ auf RE…0001 (119 €): open_amount = 238 €; die spätere Mahnung nennt „Offener Betrag 238,00 €“. (b) Voll bezahlte Rechnung wird storniert → Zahlung hängt daran, kein Kundenguthaben ausgewiesen. (c) Zahlung wird einer stornierten Rechnung zugewiesen → faktisch verschwunden.",
+   "impact": "Falsche Offen-/Mahnbeträge, unerkannte Rückzahlungspflichten, Zahlungen an nicht mehr aktiven Belegen.",
+   "fix": "clean_amount > 0; Assign-Queryset auf aktive Belege einschränken; Warnung bei Überzahlung und beim Storno einer (teil)bezahlten Rechnung; optional Guthabenposten.",
+   "effort": "M",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. forms.py:140-150 ManualPaymentForm ohne clean_amount, Payment.amount (models.py:343) ohne Validator, kein min-Attribut im Template; invoice_add_payment (views.py:1247-1257) speichert ungeprüft. Negative Beträge erhöhen open_amount (models.py:185-186), und generate_dunning_document (dunning.py:78-79) druckt genau diesen Wert als 'Offener Betrag'. ManualPaymentAssignForm (forms.py:137) nutzt Invoice.objects.all() – stornierte Rechnungen sind wählbar; payment_assign (views.py:1348-1356) prüft nichts, refresh bricht bei 'storniert' ab (calc.py:45). ensure_storno_allowed (invoices.py:33-47) betrachtet Zahlungen nicht. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. forms.py:140-150 ManualPaymentForm ohne clean_amount, Modellfeld models.py:343 ohne Validator → negative/0-Beträge werden gespeichert (views.py:1250-1257). forms.py:137 Assign-Queryset Invoice.objects.all() inkl. 'storniert' (views.py:1348-1356). invoices.py:33-47 ensure_storno_allowed prüft keine vorhandenen Zahlungen. Nur invoice_mark_paid (views.py:1277) hat eine Betragsschranke. Keine Tests dazu.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Soft-Delete ohne Statusprüfung: versendete/bezahlte Rechnungen und Folgebelege lassen sich ausblenden – Ursprungsbeleg bleibt in Endstatus stecken, Steuerexport bekommt Nummernlücken",
+   "file": "sedo/views.py",
+   "line": 1067,
+   "severity": "mittel",
+   "description": "invoice_delete und offer_delete erlauben das Ausblenden jeder Rechnung unabhängig von Status/Typ. Wird ein Storno- oder Korrekturbeleg ausgeblendet, bleibt das Original 'storniert'/'korrigiert' ohne aktiven Folgebeleg; die Sperren blockieren über den Status. Zahlungen bleiben an der unsichtbaren Rechnung hängen. Der Steuerberater-Export nutzt Invoice.objects und lässt ausgeblendete Belege stumm weg.",
+   "evidence": "views.py:1070-1074: `if request.method == 'POST': … invoice.soft_delete()` (keine Status-/Typprüfung) — invoices.py:38-39, 60-61 — test_workflow_locks.py:76-78 (setzt Status manuell zurück) — views.py:2090: `invoices = Invoice.objects.filter(issue_date__year=year, issue_date__month=month)`",
+   "scenario": "Storno RE2025090005 zu RE2025090001 wurde versehentlich erzeugt; Nutzer blendet das Storno aus → RE2025090001 bleibt 'storniert', kann weder gemahnt noch erneut storniert werden. Im Monatsabschluss-ZIP fehlt RE2025090005 (Nummernlücke beim Steuerberater).",
+   "impact": "Blockierte Belegketten ohne Auflösungspfad, Zahlungen an verborgenen Belegen, unvollständiger Steuerexport.",
+   "fix": "Soft-Delete nur für 'entwurf' bzw. Belege ohne Versand/Zahlung/Folgebeleg; beim Ausblenden eines Folgebelegs das Original zurücksetzen oder verweigern; Steuerexport mit Nummernlücken-Liste.",
+   "effort": "M",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. views.py:1068-1076 (invoice_delete) und 1177-1183 (offer_delete) rufen soft_delete ohne Status-/Typprüfung; der Löschen-Button (invoice_detail.html:19) ist unbedingt. Nach Ausblenden des Stornos bleibt das Original 'storniert' (invoices.py:257-258 wurde nie zurückgenommen), ensure_storno_allowed (invoices.py:38) und _UNDUNNABLE_STATUS (dunning.py:30) sperren über den Status; test_workflow_locks.py:72-78 bestätigt, dass nur ein manuelles Zurücksetzen hilft. month_close (views.py:2090) nutzt Invoice.objects = ActiveManager (models.py:14-25), ausgeblendete Belege fehlen stumm im ZIP. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Kern bestätigt: views.py:1070-1074 soft_delete ohne Status-/Typprüfung; nach Ausblenden des Stornos bleibt das Original 'storniert' (invoices.py:38-39 sperrt) ohne UI-Weg zurück – test_workflow_locks.py:74-79 setzt den Status dafür manuell zurück und bestätigt das Verhalten als bekannt. Teilweise widerlegt: Der Steuerexport dokumentiert ausdrücklich, dass nur sichtbare PDFs enthalten sind (views.py:2102 README.txt im ZIP) – die Nummernlücke ist eine dokumentierte Entscheidung, keine stumme Auslassung. Da es ein seltener Bedienfehler (Storno versehentlich erzeugt UND ausgeblendet) ist und ein Admin-Pfad existiert, eher 'niedrig'.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "Stornorechnung übernimmt Leistungszeitraum nicht – XML ohne BillingSpecifiedPeriod, Lieferdatum = Stornodatum",
+   "file": "sedo/services/invoices.py",
+   "line": 231,
+   "severity": "mittel",
+   "description": "_create_storno_inner kopiert customer, obj, vat_rate und Positionen, aber nicht period_start/period_end. Für die Storno-XML entfällt BillingSpecifiedPeriod, und das Lieferdatum fällt auf das Stornodatum zurück; das PDF zeigt keinen Leistungszeitraum. Zeitpunkt der Leistung ist Pflichtangabe nach § 14 UStG; bei GWG-Monatsrechnungen ist der Zeitraum das zentrale Zuordnungsmerkmal.",
+   "evidence": "invoices.py:231-242: `storno = create_numbered_invoice(invoice_type='457', customer=original.customer, obj=original.obj, issue_date=timezone.localdate(), due_date=timezone.localdate(), vat_rate=original.vat_rate, status='erstellt', source='Storno', reference_invoice=original, note=…)` (kein period_start/period_end) — rechnungslauf_core.py:739: `delivery_date = period_start if period_start is not None else issue_date`",
+   "scenario": "GWG-Monatsrechnung August wird am 15.09. storniert → Storno-XML meldet Lieferdatum 15.09. und keinen Abrechnungszeitraum; Aareon kann den Storno keinem Abrechnungsmonat zuordnen.",
+   "impact": "Unvollständige Pflichtangaben auf Stornobelegen, Zuordnungsprobleme beim Empfänger.",
+   "fix": "period_start/period_end im Storno übernehmen (für Korrekturrechnungen bereits vorhanden, views.py:826-827).",
+   "effort": "S",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. _create_storno_inner (invoices.py:231-242) übergibt kein period_start/period_end; generate_invoice_files (invoices.py:178-179) liefert dann None, rechnungslauf_core.py:739 setzt delivery_date = issue_date (= Stornodatum, Zeile 235) und Zeile 766 lässt BillingSpecifiedPeriod weg; format_period_de (Zeile 799) liefert für das PDF leer. Der Korrekturpfad (views.py:826-827) übernimmt den Zeitraum, der Stornopfad nicht. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. invoices.py:231-242 übergibt kein period_start/period_end; generate_invoice_files (invoices.py:178-179) liefert daher None, rechnungslauf_core.py:739 setzt Lieferdatum = issue_date (Stornodatum), :766 lässt BillingSpecifiedPeriod weg. Für Korrekturrechnungen wird der Zeitraum dagegen übernommen (views.py:826-827). test_rechnungslauf.py:202 testet nur die Lieferdatum-Logik, kein Storno-Test mit Zeitraum.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Mahndokument nicht atomar: DB-Zeile vor PDF – ein PDF-Fehler verbraucht die Mahnstufe ohne Dokument und ohne Wiederholungsmöglichkeit",
+   "file": "sedo/services/dunning.py",
+   "line": 84,
+   "severity": "mittel",
+   "description": "generate_dunning_document legt zuerst den DunningDocument-Datensatz an (Unique je Rechnung+Stufe) und erzeugt danach außerhalb der Transaktion das PDF. Scheitert canvas.save(), bleibt ein DunningDocument ohne pdf_file zurück; die Stufe gilt als erledigt, der Status wird nicht auf 'gemahnt' gesetzt, kein Weg zur Neuerzeugung.",
+   "evidence": "dunning.py:84-88: `with transaction.atomic(): doc = DunningDocument.objects.create(invoice=invoice, kind=kind, …)` — dunning.py:95-100: `c = canvas.Canvas(str(pdf_path), pagesize=A4)` (außerhalb von atomic) — dunning.py:162-168 — dunning.py:63-69: `if same: … raise WorkflowError('… wurde bereits am … erzeugt.')`",
+   "scenario": "media/dunning ist nicht beschreibbar. Klick „Zahlungserinnerung“ → 500, DunningDocument(kind='reminder') existiert ohne PDF. Erneuter Klick → „wurde bereits erzeugt“. Nach 7 Tagen wird die Rechnung Kandidat für „Mahnung“, obwohl der Kunde nie eine Erinnerung erhielt.",
+   "impact": "Mahnstufen ohne Schreiben, keine Reparaturmöglichkeit über die UI, Mahnprozess springt eine Stufe.",
+   "fix": "PDF zuerst in Temp-Datei erzeugen und DB-Zeile + Datei + Statuswechsel in EINER Transaktion abschließen; ensure_dunning_allowed nur Dokumente mit pdf_file werten.",
+   "effort": "S",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 8,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Mechanismus nachvollzogen: dunning.py:84-88 legt DunningDocument in einem eigenen atomic an, mkdir/canvas/save (95-162) laufen danach außerhalb; bei Exception bleibt die Zeile ohne pdf_file. ensure_dunning_allowed (63-69) und next_dunning_kind (45-54) werten alle Dokumente unabhängig von pdf_file, sodass die Stufe verbraucht ist und nach due_date_new 'dunning' folgt. Schwere aber zu hoch: Voraussetzung ist ein I/O-/Rendering-Fehler (in einem 2-Nutzer-Setup selten), der Status wird über refresh_invoice_payment_status (calc.py:54-55) beim nächsten open_items-Aufruf trotzdem 'gemahnt', und ein Reparaturpfad existiert über den Django-Admin (admin.py:40 registriert DunningDocument). Robustheitsthema → niedrig.",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt: dunning.py:84-88 legt den DunningDocument-Datensatz in einem eigenen atomic an, dunning.py:95-100 mkdir/canvas laufen danach außerhalb; ATOMIC_REQUESTS ist in config/ nicht gesetzt, also kein Request-Rollback. dunning.py:63-69 blockiert den Wiederholungsversuch, next_dunning_kind (:48-54) zählt die Stufe als erledigt. Abschwächung: DunningDocument ist im Django-Admin registriert (admin.py:40), ein Reparaturpfad existiert also außerhalb der Fach-UI; Auslöser ist ein Infrastrukturfehler (Dateisystem). Daher 'niedrig'.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "Unparsebare Buchungsdaten fallen stumm auf „heute“ zurück – falsches Zahlungsdatum und ausgehebelte Dublettenerkennung",
+   "file": "sedo/services/payments.py",
+   "line": 21,
+   "severity": "mittel",
+   "description": "parse_bank_date und parse_date_for_view akzeptieren nur drei Formate und liefern bei jedem anderen Wert kommentarlos timezone.localdate(). Die Zahlung wird mit falschem Buchungsdatum gespeichert; ohne external_id greift die Dubletten-Heuristik (Datum+Betrag+Name+Zweck) beim nächsten Import nicht mehr.",
+   "evidence": "payments.py:26-31: `for fmt in _BANK_DATE_FORMATS: try: return datetime.strptime(…) except ValueError: continue` … `return timezone.localdate()` — payments.py:92-94: `elif Payment.all_objects.filter(booking_date=booking_date, amount=amount, payer_name=name, purpose=purpose).exists(): ignored += 1` — views.py:1470-1475",
+   "scenario": "Bank-Export mit „31.08.2025 14:02“. Import am 03.09. → alle Zahlungen tragen booking_date 03.09. Derselbe Export am 04.09. erneut → keine Dublette erkannt → alle Zahlungen doppelt, Rechnungen überzahlt.",
+   "impact": "Falsche Buchungsdaten in GoBD-relevanten Zahlungsdatensätzen, Doppelimporte, falsche Zahlstatus.",
+   "fix": "Bei nicht parsebarem Datum den Datensatz als „ignored“ auflisten; Formate mit Uhrzeit/ISO ergänzen; Dublettenschlüssel auf Rohdaten-Hash stützen.",
+   "effort": "S",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 9,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Nachvollzogen für den JSON-Datei-Import: parse_bank_date (payments.py:21-31) fällt bei '31.08.2025 14:02' auf timezone.localdate() zurück (strptime '%d.%m.%Y' scheitert am Uhrzeit-Suffix, '%Y-%m-%d' prüft nur s[:10]); parse_date_for_view (views.py:1465-1475) identisch. Ohne external_id greift der Dubletten-Fallback (payments.py:92-94) über booking_date, das sich pro Importtag ändert → Doppelimport. Einschränkung: Der FinTS-Pfad (banking.py:82-86, 92-95) liefert ISO-Datum und immer eine external_id (Bankreferenz oder SHA1-Hash), ist also nicht betroffen; der Fund gilt für manuelle Bank-JSON-Exporte ohne Transaktions-ID. Mittel bleibt vertretbar (falsche GoBD-Buchungsdaten, Doppelimport).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 9,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. payments.py:26-31 fällt nach den drei Formaten stumm auf timezone.localdate() zurück (ein Wert wie '31.08.2025 14:02' scheitert an allen drei, da s[:10] nur für ISO gilt); views.py:1470-1475 identisch. Ohne external_id stützt sich die Dublettenprüfung payments.py:92-94 auf booking_date, das dann tagesabhängig ist. FinTS-Pfad ist nicht betroffen (liefert Datumsobjekte/synthetische IDs, test_banking.py), der JSON-Import schon. Kein Test für unparsebare Daten.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Kassenbuch ohne Kassenbestand/Übertrag und ohne Chronologieschutz – Saldo zeigt nur Monatsbewegung, Rückdatierungen erhalten laufende Nummern",
+   "file": "sedo/views.py",
+   "line": 1400,
+   "severity": "mittel",
+   "description": "cashbook_list und generate_cashbook_pdf berechnen nur Einnahmen−Ausgaben des Monats; kein Anfangsbestand/Übertrag, negativer Kassenbestand nicht erkennbar. Der Monat einer Buchung ergibt sich aus dem frei wählbaren booking_date; eine nachträglich in einen abgeschlossenen Vormonat datierte Buchung erhält dort die nächste Nummer.",
+   "evidence": "views.py:1403-1410: `'saldo': income_total - expense_total` — pdf.py:242-243, 277 — views.py:1428-1429: `e.month = e.booking_date.strftime('%Y-%m'); e.booking_no = next_cashbook_no(e.month)` — models.py:403-404: `ordering = ['month', 'booking_no']; unique_together = [('month', 'booking_no')]`",
+   "scenario": "August Saldo 150 €; September nur Ausgabe 300 € → PDF „Saldo −300,00 €“, obwohl der Bestand −150 € ist. Am 15.09. wird eine Ausgabe vom 03.08. nachgetragen → Nr. 12 im August hinter Buchungen vom 30.08.; die versendete August-PDF stimmt nicht mehr.",
+   "impact": "Kassenbuch erfüllt Kassensturzfähigkeit und Chronologie-Anforderung der GoBD nicht.",
+   "fix": "Anfangs-/Endbestand je Monat ausweisen; Buchungen in abgeschlossene Monate nur als Korrekturbuchung; Buchungsnummer chronologisch nach booking_date.",
+   "effort": "M",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. cashbook_list (views.py:1402-1410) und generate_cashbook_pdf (pdf.py:242-243, 277) berechnen nur Einnahmen − Ausgaben des Monats, kein Übertrag/Anfangsbestand. cashbook_create (views.py:1428-1429) leitet month aus dem frei wählbaren booking_date ab und vergibt next_cashbook_no(month) (numbering.py:141-144: max+1 im Monat) – Nachträge in Vormonate erhalten dort die höchste Nummer hinter späteren Buchungen. Das Modellfeld is_locked (models.py:399) wird in Views/Services/Templates nirgends verwendet, eine Monatssperre existiert nicht. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. views.py:1403-1410 und pdf.py:242-243/277 berechnen nur Einnahmen−Ausgaben des Monats, kein Anfangs-/Endbestand. views.py:1428-1429 leitet Monat aus dem frei wählbaren booking_date ab und vergibt dort die nächste Nummer (numbering.py:141-144); die Felder is_locked/correction_of (models.py:399-400) werden in Views/Services nirgends verwendet, es gibt also keine Monatssperre. Keine Tests zum Kassenbuch. CHANGELOG dokumentiert keine bewusste Entscheidung.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Rechnung aus abgelehntem/abgelaufenem Angebot möglich; Status eines bereits verrechneten Angebots kann auf „abgelehnt“/„offen“ zurückgesetzt werden",
+   "file": "sedo/views.py",
+   "line": 1164,
+   "severity": "niedrig",
+   "description": "offer_to_invoice und create_invoice_from_offer prüfen nur linked_invoice/status 'in_rechnung', nicht ob das Angebot angenommen und noch gültig ist. offer_status setzt ohne Prüfung jeden der drei Status, auch bei Angeboten mit linked_invoice.",
+   "evidence": "invoices.py:268-274 (keine Prüfung 'angenommen'/valid_until) — views.py:1154-1156: `if status in ['offen', 'angenommen', 'abgelehnt']: offer.status = status; offer.save(...)` — offer_detail.html:2: Buttons ohne Statusbedingung",
+   "scenario": "Abgelehntes Angebot (valid_until 15.08.) → am 20.09. „Direkt Rechnung erzeugen“ → nummerierte Rechnung entsteht, muss storniert werden. Umgekehrt: verrechnetes Angebot → „Abgelehnt“ → Status 'abgelehnt' mit verknüpfter Rechnung.",
+   "impact": "Unnötige Storno-Vorgänge im Nummernkreis, inkonsistente Angebotsstatistik.",
+   "fix": "ensure_offer_invoicing_allowed um status == 'angenommen' und valid_until ≥ heute erweitern; offer_status bei linked_invoice verweigern.",
+   "effort": "S",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 11,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. ensure_offer_invoicing_allowed (invoices.py:262-274) prüft nur linked_invoice und status=='in_rechnung', nicht 'angenommen'/valid_until; create_invoice_from_offer (277-321) erzeugt sofort eine nummerierte Rechnung mit Dateien. offer_status (views.py:1152-1159) setzt jeden der drei Status ohne Prüfung auf linked_invoice; offer_detail.html:2 zeigt 'Angenommen'/'Abgelehnt' unbedingt und 'Direkt Rechnung erzeugen' nur abhängig von linked_invoice. Niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 11,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Widerlegt als Fehlverhalten: Rechnungsstellung aus nicht angenommenen Angeboten ist erkennbar gewollt – test_review_fixes.py (AtomicInvoiceCreationTests) legt ein Angebot mit status='offen' an und erwartet, dass create_invoice_from_offer durchläuft; offer_detail.html:2 zeigt 'Direkt Rechnung erzeugen' bewusst statusunabhängig, ensure_offer_invoicing_allowed (invoices.py:268-274) ist ausdrücklich nur als Idempotenz-Sperre dokumentiert. Eine Rechnung entsteht nur durch bewussten Klick des Nutzers. Der Rest (offer_status views.py:1154-1156 setzt 'abgelehnt' trotz linked_invoice) ist eine rein kosmetische Statistik-Inkonsistenz ohne Belegwirkung, da die Sperre über linked_invoice_id weiter greift.",
+     "corrected_severity": null
+    }
+   ],
+   "entscheidung": "Rechnung aus offenem Angebot ist per Test gewollt (Teil 1 verworfen). Bleibt: Status eines bereits verrechneten Angebots lässt sich auf „abgelehnt“/„offen“ zurücksetzen – kleine Inkonsistenz, S.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "Nummernkreis-Monat folgt dem Tagesdatum, Rechnungsdatum ist frei rück-/vordatierbar – Nummer und Datum können auseinanderlaufen",
+   "file": "sedo/services/numbering.py",
+   "line": 66,
+   "severity": "niedrig",
+   "description": "_allocate_number leitet Jahr/Monat der Nummer aus timezone.localdate() ab, während issue_date im Formular ohne Grenzen frei gesetzt werden kann. Monatsabschluss, Rechnungsliste und USt-Zeitraum filtern nach issue_date. Damit können Belege RE202509xxxx ein Rechnungsdatum in einem anderen Jahr tragen.",
+   "evidence": "numbering.py:66-74: `now = timezone.localdate(); range_row, _ = NumberRange.objects.get_or_create(prefix=prefix, year=now.year, month=now.month, …)` — forms.py:59 (kein clean_issue_date) — views.py:2090",
+   "scenario": "Am 03.09.2025 Rechnung mit Rechnungsdatum 15.01.2024 (Tippfehler) → Nummer RE2025090004, Fälligkeit 29.01.2024, sofort Mahnkandidat; Beleg landet im Monatsabschluss Januar 2024, der beim Steuerberater ist.",
+   "impact": "Chronologie zwischen Nummer und Datum nicht gewährleistet, Rückdatierung in abgeschlossene Perioden, Fehl-Mahnung.",
+   "fix": "issue_date auf ein Fenster validieren; Rückdatierung in exportierte Monate mit Warnung; optional Nummernkreis-Periode aus issue_date ableiten.",
+   "effort": "S",
+   "dimension": "gobd-geschaeftslogik",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 12,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. _allocate_number (numbering.py:66-74) nimmt Jahr/Monat aus timezone.localdate(); issue_date kommt aus InvoiceForm (forms.py:59, 62) ohne clean_issue_date, die View (views.py:857-860) übernimmt es und leitet due_date daraus ab. month_close (views.py:2090) und invoice_list (760-763) filtern nach issue_date, der Nummernkreis nach Tagesdatum – Nummer und Beleg können in verschiedenen Perioden liegen, Rückdatierung in bereits exportierte Monate ist ohne Warnung möglich. Niedrig passt (kein Verstoß gegen Eindeutigkeit/Lückenlosigkeit, aber Chronologie-/Fehlmahnungsrisiko).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 12,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Bestätigt, aber geringe Wirkung: numbering.py:66-74 nimmt Jahr/Monat aus timezone.localdate(), forms.py:59 lässt issue_date unbegrenzt zu, views.py:860 leitet due_date daraus ab, views.py:2090 filtert den Monatsabschluss nach issue_date. Kein clean_issue_date, kein Test. Das Format REYYYYMM-lfd. ist als Nummernkreis je Monat bewusst so gebaut (numbering.py Modul-Doku), ein Datumsfenster fehlt aber. Als Robustheitsthema 'niedrig' angemessen.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  }
+ ]
+}

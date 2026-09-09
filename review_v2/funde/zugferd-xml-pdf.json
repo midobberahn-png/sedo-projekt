@@ -1,0 +1,154 @@
+{
+ "dimension": "zugferd-xml-pdf",
+ "findings": [
+  {
+   "title": "InvoiceReferencedDocument (BT-25) an XSD-widriger Stelle – Storno-/Korrektur-XML schemaungültig",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 747,
+   "category": "ZUGFeRD/XSD-Struktur",
+   "severity": "hoch",
+   "description": "Bei gesetzter reference_invoice_no wird ram:InvoiceReferencedDocument direkt nach InvoiceCurrencyCode und vor SpecifiedTradeSettlementPaymentMeans eingefügt. Im CII-D16B/Factur-X-XSD (HeaderTradeSettlementType) ist die Reihenfolge fest: …InvoiceCurrencyCode → PaymentMeans → ApplicableTradeTax → BillingSpecifiedPeriod → PaymentTerms → SpecifiedTradeSettlementHeaderMonetarySummation → InvoiceReferencedDocument. Der Code selbst weist an anderer Stelle (Z. 728-730) auf genau dieses Reihenfolgeproblem bei PostalTradeAddress hin, hier wurde es übersehen.",
+   "evidence": "sub(settlement, \"ram\", \"InvoiceCurrencyCode\", \"EUR\")\n...\nif ref_invoice_no:\n    refdoc = sub(settlement, \"ram\", \"InvoiceReferencedDocument\")\n    sub(refdoc, \"ram\", \"IssuerAssignedID\", ref_invoice_no)\nmeans = sub(settlement, \"ram\", \"SpecifiedTradeSettlementPaymentMeans\")  # Z. 743-749; Summation erst Z. 780",
+   "scenario": "Storno (457) oder Korrektur (384) zu einer Rechnung erzeugen → generierte XML (siehe Testlauf im Scratchpad) enthält <ram:InvoiceReferencedDocument> vor <ram:SpecifiedTradeSettlementPaymentMeans>. XSD-Validierung (Aareon ARP, Mustang, Factur-X-Validator) schlägt fehl: 'Invalid content … expected SpecifiedTradeSettlementPaymentMeans/ApplicableTradeTax'.",
+   "impact": "Alle Storno- und Korrekturrechnungen sind als E-Rechnung schemaungültig; genau diese Dokumente braucht Aareon/GWG, um Buchungen aufzuheben. Abweisung im Empfängersystem, manuelle Nacharbeit.",
+   "fix": "Den if-Block mit InvoiceReferencedDocument hinter sub(sm, 'DuePayableAmount', …) (nach Z. 788) verschieben; optional FormattedIssueDateTime (BT-26, Format 102) der Ursprungsrechnung ergänzen. Test 'test_typecode_storno' um eine XSD-Validierung (Factur-X-XSD ins Repo) erweitern.",
+   "effort": "S"
+  },
+  {
+   "title": "ZUGFeRD-PDF ist kein PDF/A-3: keine XMP-Metadaten (fx:ConformanceLevel), Fonts nicht eingebettet, EmbeddedFile ohne /Subtype und /ModDate",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 1135,
+   "category": "PDF/A-3-Einbettung",
+   "severity": "hoch",
+   "description": "embed_xml_into_pdf hängt die XML nur als Attachment mit /AFRelationship /Data an. Es fehlen alle für ZUGFeRD/Factur-X verbindlichen PDF/A-3-Bestandteile: kein /Metadata-XMP mit pdfaid:part=3, pdfaid:conformance=B und dem Factur-X-Schema (fx:DocumentType INVOICE, fx:DocumentFileName factur-x.xml, fx:Version 1.0, fx:ConformanceLevel EXTENDED), kein OutputIntent, keine Dokument-ID, der EmbeddedFile-Stream hat weder /Subtype /text#2Fxml (MIME) noch /Params /ModDate; das ReportLab-PDF nutzt die Standard-14-Fonts Helvetica ohne Einbettung (PDF/A verbietet das). Zusätzlich landet im /AF-Array eine direkte Kopie des Filespec-Dicts statt der Indirektreferenz aus dem EmbeddedFiles-Namensbaum.",
+   "evidence": "attachment = writer.add_attachment(\"factur-x.xml\", xml_bytes)\nfilespec = attachment.pdf_object\nfilespec.update({NameObject(\"/AFRelationship\"): NameObject(\"/Data\"), ...})\nwriter._root_object.update({NameObject(\"/AF\"): ArrayObject([filespec])})\nwriter.add_metadata({\"/Title\": pdf_path.stem, ...})   # kein XMP\n\nBefund am erzeugten PDF (Scratchpad): ROOT keys ['/Type','/Pages','/Names','/AF']; EmbeddedFile dict {'/Type': '/EmbeddedFile'}; Metadata XMP present: False; OutputIntents: False; Fonts {('/Helvetica', False), ...}",
+   "scenario": "Beliebige Rechnung erzeugen → *_zugferd.pdf bei Aareon/ARP, Mustangproject oder dem FNFE-Validator einreichen → Meldung 'kein ZUGFeRD/Factur-X-Dokument' bzw. PDF/A-3-Verletzungen (fehlendes XMP, nicht eingebettete Schrift). Empfänger, die die XML nur über die XMP-Kennung erkennen, verarbeiten das PDF als normales PDF.",
+   "impact": "Das Produkt erfüllt den ZUGFeRD-Standard nicht; die Hybridrechnung ist formal keine E-Rechnung nach §14 UStG i. V. m. EN 16931 (die reine XML bleibt nutzbar). Risiko der Ablehnung beim Kunden und bei Prüfungen.",
+   "fix": "XMP-Paket mit pdfaid- und fx-Namespace als /Metadata-Stream setzen, EmbeddedFile mit /Subtype /text#2Fxml und /Params {/ModDate, /Size} versehen, /AF mit der Indirektreferenz des Filespec füllen, ReportLab mit eingebetteten TTF-Fonts (pdfmetrics.registerFont) und sRGB-OutputIntent betreiben – oder die Einbettung an die Bibliothek factur-x (facturx.generate_from_binary) delegieren, die all das erledigt. Anschließend mit veraPDF/Mustang gegenprüfen.",
+   "effort": "L"
+  },
+  {
+   "title": "Storno- und Korrekturrechnungen zu Aareon/GWG-Rechnungen verlieren alle ARS-Felder (Empfänger-ID, Verkäufer-ID, ShipTo-ID, Leistungsart-Note)",
+   "file": "sedo/services/invoices.py",
+   "line": 81,
+   "category": "Aareon/ARS-Mapping",
+   "severity": "hoch",
+   "description": "Ob eine Rechnung im ARS-Modus (sap_mapping/ars_mapping, BuyerTradeParty/ID = aareon_receiver_id, SellerTradeParty/ID, ShipToTradeParty/ID, Leistungsart-IncludedNote) ausgegeben wird, entscheidet allein ein Substring-Match auf invoice.source. Stornos bekommen fest source='Storno' (Z. 239), Korrekturen source='Korrektur' (views.py Z. 884) – beide enthalten weder 'gwg' noch 'aareon' noch 'ars'. Die Ursprungsrechnung ('GWG Monatsrechnung') wird also mit ARS-Feldern gesendet, das zugehörige Storno ohne.",
+   "evidence": "def _is_ars_source(source):\n    label = (source or '').lower().strip()\n    return label.startswith(('aareon','ars','gwg')) or 'gwg' in label or 'aareon' in label or 'ars' in label\n...\nstorno = create_numbered_invoice(invoice_type='457', ..., source='Storno', reference_invoice=original, ...)  # Z. 231-242",
+   "scenario": "GWG-Monatsrechnung (source 'GWG Monatsrechnung', Kunde mit aareon_receiver_id) stornieren → Storno-XML enthält BuyerTradeParty/ID = customer_no bzw. DB-ID statt der Aareon-Empfänger-ID, keine SellerTradeParty/ID, keine 'Leistungsart: LeistungsartID:…'-Note und ShipToTradeParty/ID nicht aus dem Mapping. ARP kann das Storno nicht dem Kreditor/der Abrechnungseinheit zuordnen.",
+   "impact": "Stornos/Korrekturen an den Hauptkunden werden im Empfängersystem nicht automatisch verbucht bzw. abgewiesen; die Ursprungsbuchung bleibt offen. Fachlich falsche E-Rechnung.",
+   "fix": "ARS-Modus nicht aus dem Quelltext-Label ableiten, sondern aus einem Kundenmerkmal (z. B. customer.aareon_receiver_id gesetzt oder ein Flag 'aareon_kunde') oder für Folgebelege den Modus/Source der reference_invoice übernehmen (in _create_storno_inner source=f'Storno {original.source}' und in _is_ars_source zusätzlich die Referenzrechnung prüfen).",
+   "effort": "S"
+  },
+  {
+   "title": "IBAN (BT-84) mit Leerzeichen in der XML",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 753,
+   "category": "EN16931-Pflichtfeld",
+   "severity": "hoch",
+   "description": "SELLER['iban'] ist in Druckschreibweise mit Leerzeichen hinterlegt ('DE60 8105 3272 0641 0486 70') und wird unverändert in ram:IBANID geschrieben. Die elektronische IBAN nach ISO 13616 ist ohne Trennzeichen; XRechnung prüft dies (BR-DE-19/-20 Pattern), Zahlungsläufe im ERP matchen auf die normalisierte IBAN. Der GiroCode entfernt die Leerzeichen korrekt (Z. 1083), die XML nicht – inkonsistent.",
+   "evidence": "\"iban\": \"DE60 8105 3272 0641 0486 70\",   # Z. 62\n...\nsub(acc, \"ram\", \"IBANID\", SELLER[\"iban\"])   # Z. 753\n→ XML: <ram:IBANID>DE60 8105 3272 0641 0486 70</ram:IBANID>",
+   "scenario": "Rechnung an einen Empfänger, der die XML mit XRechnung-/Schematron-Regeln validiert oder die IBAN automatisiert in den Zahllauf übernimmt → Validierungsfehler 'IBAN ungültig' bzw. fehlgeschlagener IBAN-Abgleich, Zahlung muss manuell erfasst werden.",
+   "impact": "Falsche/unsaubere Zahlungsdaten in jeder erzeugten E-Rechnung; Risiko verspäteter Zahlungen und Validierungsabweisung.",
+   "fix": "In build_xml SELLER['iban'].replace(' ', '') verwenden (bzw. IBAN in SELLER ohne Leerzeichen speichern und nur für PDF/Footer formatieren).",
+   "effort": "S"
+  },
+  {
+   "title": "GiroCode verstößt gegen EPC-QR-Spezifikation (strukturierte UND unstrukturierte Verwendungszweckzeile belegt; negative Beträge bei Korrekturen)",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 1084,
+   "category": "GiroCode/PDF",
+   "severity": "mittel",
+   "description": "Die EPC069-12-Payload füllt Zeile 10 (Remittance Information Structured, muss eine ISO-11649-RF-Referenz sein) mit der Rechnungsnummer UND Zeile 11 (Unstructured) mit 'Rechnung …'. Die Spezifikation erlaubt nur eines von beiden. Außerdem wird der GiroCode nur bei TypeCode 457 unterdrückt; eine Korrekturrechnung (384) mit negativem oder Null-Gesamtbetrag erzeugt 'EUR-12.34' bzw. 'EUR0.00', was außerhalb des erlaubten Bereichs 0,01–999999999,99 liegt.",
+   "evidence": "epc = \"\\n\".join([\"BCD\", \"002\", \"1\", \"SCT\",\n                 SELLER[\"bic\"], SELLER[\"name\"], iban_raw,\n                 f\"EUR{money(inv.gross)}\", \"\", inv.invoice_no,\n                 f\"Rechnung {inv.invoice_no}\"])\n...\nif not is_storno:   # nur 457 wird ausgenommen",
+   "scenario": "Kunde scannt den GiroCode mit einer Banking-App (z. B. Sparkasse, ING) → App meldet 'QR-Code ungültig' oder übernimmt den Verwendungszweck nicht; bei einer Gutschrift-Korrektur (Positionen negativ) enthält das PDF einen QR-Code mit negativem Betrag.",
+   "impact": "Zahlungskomfort-Feature funktioniert je nach Bank nicht; Verwendungszweck (Rechnungsnummer) geht verloren → erschwerte Zahlungszuordnung.",
+   "fix": "Zeile 10 leer lassen, Zeile 11 mit der Rechnungsnummer füllen; GiroCode nur zeichnen, wenn inv.gross > 0 (unabhängig vom TypeCode).",
+   "effort": "S"
+  },
+  {
+   "title": "USt-Satz 0 % wird als Kategorie S mit RateApplicablePercent 0.00 ausgegeben (BR-S-05); keine Unterstützung für E/Z/AE (§19, §13b)",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 664,
+   "category": "EN16931-Steuerkategorie",
+   "severity": "mittel",
+   "description": "CategoryCode ist hart auf 'S' gesetzt und RateApplicablePercent auf inv.vat_rate. Das Formular (forms.py Z. 65, NumberInput step 0.01 ohne min) erlaubt 0.00. EN 16931 verlangt für 'S' einen Satz > 0 (BR-S-05); 0 % ist nur mit Kategorie Z, E (mit BT-120 Befreiungsgrund) oder AE (Reverse Charge, für Gebäudereinigungsleistungen an Reinigungsunternehmen nach §13b UStG realistisch) zulässig. Bei Stornos mit 0 % entsteht zusätzlich '-0.00' als CalculatedAmount/TaxTotalAmount.",
+   "evidence": "sub(tax, \"ram\", \"CategoryCode\", \"S\")\nsub(tax, \"ram\", \"RateApplicablePercent\", money(inv.vat_rate))\n...\nsub(htax, \"ram\", \"CategoryCode\", \"S\")   # Z. 762\n→ Testlauf: <ram:CalculatedAmount>-0.00</ram:CalculatedAmount> … <ram:RateApplicablePercent>0.00</ram:RateApplicablePercent>",
+   "scenario": "Nutzer trägt bei einer Reverse-Charge- oder steuerfreien Rechnung USt 0 ein → XML mit CategoryCode S / 0.00 % → Schematron-Fehler BR-S-05 beim Empfänger; Steuerschuldnerschaft des Leistungsempfängers ist nicht erkennbar.",
+   "impact": "Steuerlich falsche E-Rechnung in einem realistischen Randfall; Validierungsabweisung.",
+   "fix": "vat_rate == 0 entweder im Formular sperren (MinValueValidator(0.01)) oder eine explizite Steuerkategorie am Invoice-Modell einführen (S/Z/E/AE) und in build_xml CategoryCode, ExemptionReason(Code) und den Kopfsteuerblock entsprechend ausgeben; '-0.00' über abs() bei Nullbeträgen normalisieren.",
+   "effort": "M"
+  },
+  {
+   "title": "Entwurf per E-Mail: ENTWURF-Wasserzeichen-PDF mit gültiger XML wird versendet und Status auf 'versendet' gesetzt",
+   "file": "sedo/services/invoices.py",
+   "line": 148,
+   "category": "Entwurfskennzeichnung",
+   "severity": "mittel",
+   "description": "is_draft wird allein aus invoice.status == 'entwurf' abgeleitet und beeinflusst nur das PDF-Wasserzeichen, nicht die XML. invoice_email (views.py Z. 1004-1018) ruft generate_invoice_files ohne Statusprüfung auf, hängt die *_zugferd.pdf an, sendet und setzt den Status auf 'versendet'. Die Dateien behalten das Wasserzeichen, die eingebettete XML ist eine vollwertige Rechnung mit echter Nummer.",
+   "evidence": "is_draft=invoice.status == 'entwurf',   # invoices.py Z. 148\n\ngenerate_invoice_files(invoice)          # views.py Z. 1004, keine Statusprüfung\nattachment = Path(invoice.zugferd_file.path) if invoice.zugferd_file else None\n...\ninvoice.status = 'versendet'",
+   "scenario": "Rechnung als Entwurf speichern → in der Detailansicht 'per E-Mail senden' klicken → Kunde erhält ein PDF mit 'ENTWURF'-Wasserzeichen, dessen factur-x.xml von ARP als reguläre Rechnung importiert wird; im Tool steht die Rechnung nun auf 'versendet', die gespeicherten Dateien sind weiterhin die Entwurfsversion.",
+   "impact": "Widersprüchliches Dokument beim Kunden (sichtbar 'Entwurf', maschinell 'Rechnung'); GoBD-relevant, weil die archivierte Datei nicht dem versendeten Zustand einer Endrechnung entspricht.",
+   "fix": "In invoice_email (und invoice_generate für den Versandfall) Status 'entwurf' blockieren oder vor dem Versand Status auf 'erstellt' setzen und die Dateien neu erzeugen; alternativ für Entwürfe keine XML einbetten.",
+   "effort": "S"
+  },
+  {
+   "title": "D() liest englisches Tausenderformat falsch (\"1,250.00\" → 1.25)",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 129,
+   "category": "Zahlen-Parsing/Excel-Import",
+   "severity": "mittel",
+   "description": "Sobald ein Komma enthalten ist, werden alle Punkte entfernt und das Komma zum Dezimalpunkt. Ein englisch formatierter Wert mit Tausendertrennzeichen und Dezimalpunkt wird dadurch um den Faktor 1000 verkleinert. Beim Excel-Massenlauf (load_rows/read_ars_mapping) liefern Zellen mit Textformat solche Werte, wenn die Datei aus einem englischen Excel/CSV stammt.",
+   "evidence": "if \",\" in txt:\n    txt = txt.replace(\".\", \"\").replace(\",\", \".\")\n→ .venv-Lauf: D('1,250.00') == Decimal('1.25000')",
+   "scenario": "Mappingdatei mit Betrag '1,250.00' (englisches Locale, Textzelle) importieren → Position mit Einzelpreis 1,25 € statt 1.250,00 € → Rechnung um 1.248,75 € zu niedrig, ohne Fehlermeldung.",
+   "impact": "Falsche Rechnungsbeträge im Massenlauf ohne Warnung.",
+   "fix": "Format anhand der Position des letzten Trennzeichens bestimmen: liegt der letzte Punkt rechts vom letzten Komma → englisch (Kommas entfernen), sonst deutsch; bei Mehrdeutigkeit ('1.250') ValueError mit Hinweis werfen.",
+   "effort": "S"
+  },
+  {
+   "title": "Leere XML-Elemente bei fehlenden Adress-/ID-Daten (PostcodeCode, ShipTo/ID)",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 697,
+   "category": "XML-Robustheit",
+   "severity": "niedrig",
+   "description": "sub() erzeugt ein Element, sobald text nicht None ist – auch bei ''. Fehlt beim Kunden die PLZ oder beim ARS-Objekt die Abrechnungseinheit, entstehen leere Elemente wie <ram:PostcodeCode></ram:PostcodeCode> oder <ram:ID></ram:ID> statt weggelassener Optionalfelder. Betroffen: Z. 697 (Käufer-PLZ), 719 (ShipTo/ID), 731 (ShipTo-PLZ), 732/733 (LineOne/City).",
+   "evidence": "sub(buyer_addr, \"ram\", \"PostcodeCode\", inv.buyer_postcode)\n...\nsub(shipto, \"ram\", \"ID\", billing_unit_id or billing_unit_name)\n→ Testlauf mit buyer_postcode='': <ram:PostcodeCode></ram:PostcodeCode>",
+   "scenario": "Kunde ohne PLZ anlegen (Feld ist blank=True) → XML enthält leeres PostcodeCode; Empfängersysteme/Schematron-Regeln gegen leere Elemente (z. B. XRechnung 'Element darf nicht leer sein') schlagen an.",
+   "impact": "Vermeidbare Validierungswarnungen/-fehler; unsaubere XML.",
+   "fix": "In sub() bei leerem String kein Element anlegen (oder in build_xml die optionalen Felder nur bei Inhalt schreiben); Pflichtfelder wie CountryID/Name weiterhin erzwingen und bei fehlender Käufer-Adresse ValueError werfen.",
+   "effort": "S"
+  },
+  {
+   "title": "BusinessProcess-ID (Peppol BIS) kombiniert mit Factur-X-EXTENDED-Guideline; TypeCode 457 außerhalb der XRechnung-/Peppol-Codeliste",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 607,
+   "category": "Profil/Codelisten",
+   "severity": "niedrig",
+   "description": "BT-23 wird fest auf 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0' gesetzt, obwohl das Dokument die Factur-X-1.0-EXTENDED-Guideline (BT-24) trägt und nicht über Peppol läuft. Für das Storno wird TypeCode 457 ('Reversal of debit') genutzt; in der XRechnung-/Peppol-Codeliste sind nur 326, 380, 381, 384, 389, 875-877 zulässig, in Deutschland üblich für Stornos ist 384 (Korrektur) oder 381 (Gutschrift) mit negativen Beträgen. Solange GWG/Aareon ausschließlich mit Factur-X-EXTENDED validiert, ist das tolerierbar; jeder andere Empfänger mit XRechnung-Prüfung lehnt Stornos ab.",
+   "evidence": "sub(bp, \"ram\", \"ID\", \"urn:fdc:peppol.eu:2017:poacc:billing:01:1.0\")\nsub(gp, \"ram\", \"ID\", \"urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended\")\n...\nDOC_TITLES = {'380': 'Rechnung', '384': 'Korrekturrechnung', '457': 'Stornorechnung'}  # invoices.py Z. 21",
+   "scenario": "Storno an einen Nicht-Aareon-Kunden (z. B. öffentliche Hand, XRechnung-Pflicht) → Validator meldet 'TypeCode 457 nicht in Codeliste' (BR-CL-01/XRechnung).",
+   "impact": "Eingeschränkte Interoperabilität außerhalb des GWG-Anwendungsfalls.",
+   "fix": "BT-23 weglassen oder konfigurierbar machen; Storno-TypeCode pro Kunde/Profil wählbar machen (Default 384 mit negativen Positionen, 457 nur für Aareon, sofern dort verlangt).",
+   "effort": "M"
+  },
+  {
+   "title": "Unbekannte Einheiten werden still auf H87 (Stück) gemappt – PDF-Einheit und XML-unitCode weichen ab",
+   "file": "sedo/core/rechnungslauf_core.py",
+   "line": 115,
+   "category": "BT-130 unitCode",
+   "severity": "niedrig",
+   "description": "unece_unit_code fällt für jede nicht gelistete Einheit ('Einsatz', 'Objekt', 'Reinigung', 'min', 'qm²') auf 'H87' zurück, ohne Warnung. Die Einträge mit Punkt in _UNIT_CODE_MAP ('stk.', 'std.', 'stück.') sind tot, weil der Schlüssel zuvor per rstrip('.') bereinigt wird.",
+   "evidence": "return _UNIT_CODE_MAP.get(key + \".\", \"H87\")\n→ unece_unit_code('Einsatz') == 'H87'",
+   "scenario": "Position mit Einheit 'Einsatz' und Menge 4 → PDF zeigt '4 Einsatz', XML meldet BilledQuantity unitCode='H87' (4 Stück). Für Aareon-Mengenprüfungen (z. B. m² vs. Stück) ist der Code falsch.",
+   "impact": "Inhaltlich abweichende Mengeneinheit zwischen Sicht- und Strukturdaten; geringe Auswirkung, da Beträge korrekt bleiben.",
+   "fix": "Einheiten im Item-Formular als Auswahl (Choices mit Rec-20-Code) führen; im Fallback 'C62' (Einheit ohne Dimension) statt H87 verwenden oder unbekannte Einheiten beim Generieren melden; tote Dict-Einträge entfernen.",
+   "effort": "S"
+  }
+ ],
+ "coverage": [
+  {
+   "runde": 1,
+   "note": "Geprüft (nur lesend): sedo/core/rechnungslauf_core.py vollständig (build_xml, create_pdf, embed_xml_into_pdf, unece_unit_code, D, money/de_money, InvoiceRow-Summenlogik), sedo/services/invoices.py vollständig (invoice_to_core_row, generate_invoice_files, Storno/Korrektur), relevante Stellen in sedo/views.py (Rechnungsanlage, Korrektur, invoice_generate, invoice_email), sedo/models.py (Dezimalstellen, Choices), sedo/forms.py (vat_rate-Widget), pypdf 6.16.1 (_files.py/_writer.py add_attachment). Zur Verifikation wurde im Scratchpad (nicht im Projekt) ein Storno-Beispiel mit build_xml/create_pdf/embed_xml_into_pdf erzeugt und die XML sowie die PDF-Objektstruktur (Root-Keys, /AF, EmbeddedFile, Fonts, XMP) ausgelesen. Positiv geprüft und ohne Befund: BT-1/BT-2 (Format 102)/BT-3/BT-5, Verkäufer inkl. USt-ID (VA) und Steuernummer (FC), BT-44, BT-9/BT-20, BT-73/74, BT-154, Summenkonsistenz (LineTotal = Summe gerundeter Positionen, TaxBasis = LineTotal, TaxTotal = Basis*Satz gerundet, GrandTotal = DuePayable), XSD-Reihenfolge aller übrigen Blöcke (ExchangedDocument, Line-Items, Seller/Buyer/ShipTo, MonetarySummation), XML-Escaping/UTF-8 über lxml (&, <, Umlaute korrekt), Notes-Format der Leistungsart, ShipTo-ID/Name/Adresse im ARS-Modus, is_draft nicht in der XML. NICHT geprüft: keine Schema-/Schematron-Validierung möglich (im Projekt und in der venv liegt kein Factur-X-XSD/Schematron; kein Netzzugriff genutzt), daher beruhen XSD-Reihenfolge- und BR-Regel-Aussagen auf der Kenntnis der CII-D16B-/EN16931-Spezifikation; Aareon-spezifische Längenlimits und die tatsächliche ARP-Importlogik konnten nicht verifiziert werden; media/generated enthält nur ein Angebots-PDF (AG…, kein factur-x.xml), daher keine echte Beispiel-XML aus dem Livebetrieb; die Test-Suite wurde nicht vollständig ausgeführt (der Aufruf mit 'timeout' scheiterte an der Shell, die Tests decken laut Sichtung ohnehin keine XSD-Validierung und keinen Storno-Referenzblock ab); Excel-Importpfad (load_rows/read_ars_mapping) nur bezüglich D() betrachtet."
+  }
+ ]
+}

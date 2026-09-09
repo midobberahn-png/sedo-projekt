@@ -1,0 +1,86 @@
+#!/bin/bash
+# SEDO.app – Desktop-Starter (v3.21)
+# Startet den lokalen SEDO-Server (falls nötig) und öffnet ein eigenes
+# App-Fenster ohne Browser-Leisten. Alles läuft lokal auf diesem Mac.
+set -u
+
+# Projektordner = Ordner, in dem SEDO.app liegt
+APP_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+cd "$APP_DIR" || exit 1
+URL="http://127.0.0.1:8000"
+
+dialog() {  # (Text, Titel)
+  /usr/bin/osascript -e "display dialog \"$1\" with title \"$2\" buttons {\"OK\"} default button 1 with icon note" >/dev/null 2>&1
+}
+notify() {
+  /usr/bin/osascript -e "display notification \"$1\" with title \"SEDO Rechnungstool\"" >/dev/null 2>&1
+}
+
+open_window() {
+  if [ -d "/Applications/Google Chrome.app" ]; then
+    open -na "Google Chrome" --args --app="$URL"
+  elif [ -d "/Applications/Microsoft Edge.app" ]; then
+    open -na "Microsoft Edge" --args --app="$URL"
+  else
+    open "$URL"   # Fallback: Standardbrowser (mit Adressleiste)
+  fi
+}
+
+server_up() { curl -s -o /dev/null --max-time 2 "$URL/login/"; }
+
+# Läuft der Server schon? Dann nur das Fenster öffnen.
+if server_up; then
+  open_window
+  exit 0
+fi
+
+mkdir -p data media logs
+
+# ── Einrichtung (nur wenn nötig) ─────────────────────────────────────────
+if [ ! -d ".venv" ]; then
+  notify "Erste Einrichtung läuft – das kann einige Minuten dauern …"
+  if ! /usr/bin/python3 -m venv .venv >> logs/setup.log 2>&1; then
+    dialog "Python-Umgebung konnte nicht erstellt werden. Details: logs/setup.log – alternativ START_HIER.command per Doppelklick ausführen." "SEDO – Fehler"
+    exit 1
+  fi
+fi
+source .venv/bin/activate
+
+HASHFILE=.requirements.hash
+NEWHASH=$(shasum requirements.txt | awk '{print $1}')
+OLDHASH=""; [ -f "$HASHFILE" ] && OLDHASH=$(cat "$HASHFILE")
+if [ "$NEWHASH" != "$OLDHASH" ]; then
+  notify "Aktualisiere Programm-Pakete …"
+  python -m pip install --upgrade pip >> logs/setup.log 2>&1
+  if ! pip install -r requirements.txt >> logs/setup.log 2>&1; then
+    dialog "Paket-Installation fehlgeschlagen. Details: logs/setup.log – alternativ START_HIER.command ausführen." "SEDO – Fehler"
+    exit 1
+  fi
+  echo "$NEWHASH" > "$HASHFILE"
+fi
+
+python manage.py migrate --noinput >> logs/setup.log 2>&1
+
+# Admin sicherstellen; beim allerersten Mal das Zufallspasswort als Dialog zeigen
+ADMIN_OUT=$(python manage.py ensure_admin 2>&1)
+echo "$ADMIN_OUT" >> logs/setup.log
+if echo "$ADMIN_OUT" | grep -q "Einmalig angezeigtes Passwort"; then
+  PW=$(echo "$ADMIN_OUT" | sed -n 's/.*Einmalig angezeigtes Passwort: //p' | head -1)
+  dialog "Dein SEDO-Zugang wurde angelegt.\n\nBenutzer: admin\nPasswort: $PW\n\nBitte JETZT notieren – es wird nur dieses eine Mal angezeigt.\n(Ändern: python manage.py changepassword admin)" "SEDO – Zugangsdaten"
+elif echo "$ADMIN_OUT" | grep -q "Standard-Passwort"; then
+  dialog "Hinweis: Der Benutzer admin nutzt noch das alte Standard-Passwort. Bitte ändern (Anleitung in der Sicherheitsübersicht der App)." "SEDO – Sicherheit"
+fi
+
+# ── Server starten und Fenster öffnen ────────────────────────────────────
+nohup python manage.py runserver 0.0.0.0:8000 >> logs/server.log 2>&1 &
+
+for _ in $(seq 1 60); do
+  server_up && break
+  sleep 1
+done
+if server_up; then
+  open_window
+else
+  dialog "Der SEDO-Server ist nicht gestartet. Details: logs/server.log – alternativ START_HIER.command ausführen." "SEDO – Fehler"
+  exit 1
+fi

@@ -1,0 +1,122 @@
+{% extends 'sedo/base.html' %}{% load l10n %}{% block content %}
+<div class="topbar detail-topbar">
+  <div><div class="eyebrow">Finanzen</div><div class="h1">Offene Posten</div><div class="sub">Rechnungen, Fälligkeiten, Teilzahlungen und Mahnungen im Blick</div></div>
+  <div class="toolbar"><a class="btn" href="{% url 'sedo:payment_list' %}">Zahlungen / Bankimport</a><a class="btn primary" href="{% url 'sedo:invoice_create' %}">Neue Rechnung</a></div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="metric">{{ open_total }} €</div><div class="metric-label">offene Forderungen</div></div>
+  <div class="card {% if overdue_count > 0 %}kpi-danger{% endif %}"><div class="metric">{{ overdue_count }}</div><div class="metric-label">überfällige Rechnungen</div></div>
+  <div class="card"><div class="metric">{{ overdue_total }} €</div><div class="metric-label">davon überfällig</div></div>
+  <div class="card {% if dunning_candidates_count > 0 %}kpi-danger{% endif %}"><div class="metric">{{ dunning_candidates_count }}</div><div class="metric-label">Mahnkandidaten</div></div>
+</div>
+
+{% if dunning_candidates_count > 0 %}
+<div class="card" style="border-left:4px solid var(--color-warning,#f59e0b)">
+  <div class="section-head">
+    <div>
+      <h2><svg class="ico ico-inline" aria-hidden="true"><use href="#i-alert"/></svg> Mahnautomat – {{ dunning_candidates_count }} Kandidat{{ dunning_candidates_count|pluralize:"en" }}</h2>
+      <p class="hint">Diese Rechnungen sind seit über 14 Tagen überfällig. Die Spalte „Nächste Stufe“ zeigt, was jetzt fällig ist: erst Zahlungserinnerung, nach Ablauf ihrer Frist die Mahnung.</p>
+    </div>
+  </div>
+  <div class="table-wrap" style="margin-bottom:12px">
+    <table class="table table-modern">
+      <tr><th>Rechnung</th><th>Kunde</th><th>Fällig</th><th>Offen</th><th>Nächste Stufe</th></tr>
+      {% for i in dunning_candidates %}
+      <tr>
+        <td><a href="{% url 'sedo:invoice_detail' i.pk %}"><strong>{{ i.number }}</strong></a></td>
+        <td>{{ i.customer }}{% if i.obj %} · {{ i.obj }}{% endif %}</td>
+        <td><span class="badge red">{{ i.due_date }} ({{ i.days_overdue }} Tage)</span></td>
+        <td><strong>{{ i.open_amount }} €</strong></td>
+        <td><span class="badge {% if i.next_kind == 'dunning' %}red{% else %}amber{% endif %}">{{ i.next_kind_label }}</span></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="toolbar">
+    <form method="post" action="{% url 'sedo:bulk_dunning' %}">
+      {% csrf_token %}<input type="hidden" name="kind" value="auto">
+      <button class="btn primary" type="submit">Alle {{ dunning_candidates_count }} – nächste Stufe ausführen</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="get" class="toolbar open-items-filter">
+    <input class="form-control" type="search" name="q" value="{{ q }}" placeholder="Rechnungsnr., Kunde oder Objekt suchen">
+    <select class="form-select" name="status">
+      <option value="open" {% if status == 'open' %}selected{% endif %}>Nur offen</option>
+      <option value="overdue" {% if status == 'overdue' %}selected{% endif %}>Nur überfällig</option>
+      <option value="paid" {% if status == 'paid' %}selected{% endif %}>Bezahlt</option>
+      <option value="all" {% if status == 'all' %}selected{% endif %}>Alle ohne Storno</option>
+    </select>
+    <button class="btn primary" type="submit">Filtern</button>
+  </form>
+</div>
+
+<div class="card">
+  {% comment %}
+  Das Batch-Formular umschliesst NUR seine beiden Knoepfe – nicht die Tabelle.
+  Vorher lag es um die ganze Tabelle, und darin lagen die Zeilenformulare
+  ("bezahlt", "Erinnerung", "Mahnung"). HTML erlaubt keine verschachtelten
+  Formulare: der Parser verwarf das erste innere <form>, dessen </form>
+  schloss das aeussere. Der "bezahlt"-Knopf der ersten Zeile gehoerte damit
+  zum Batch-Formular und loeste eine Massenmahnung aus (Review-Fund F-11).
+  Die Auswahl-Kaestchen sind ueber form="batch-form" zugeordnet und duerfen
+  deshalb ausserhalb des Formulars stehen.
+  {% endcomment %}
+  <div class="section-head" style="margin-bottom:8px">
+    <h2>Rechnungen</h2>
+    <form method="post" action="{% url 'sedo:bulk_dunning' %}" id="batch-form" class="toolbar">
+      {% csrf_token %}
+      <button name="kind" value="reminder" class="btn small" type="submit" title="Wirkt nur auf die angehakten Rechnungen">Auswahl – Erinnerung</button>
+      <button name="kind" value="dunning" class="btn small danger" type="submit" title="Wirkt nur auf die angehakten Rechnungen">Auswahl – Mahnung</button>
+    </form>
+  </div>
+  <div class="table-wrap"><table class="table table-modern action-table">
+      <tr>
+        <th style="width:32px"><input type="checkbox" id="check-all" title="Alle auswählen"></th>
+        <th>Rechnung</th><th>Kunde / Objekt</th><th>Fällig</th><th>Betrag</th><th>Bezahlt</th><th>Offen</th><th>Status</th><th>Aktionen</th>
+      </tr>
+      {% for i in invoices %}
+      <tr class="{% if i.is_overdue %}row-warning{% endif %}">
+        <td><input type="checkbox" form="batch-form" name="invoice_ids" value="{{ i.pk|unlocalize }}" class="row-check"></td>
+        <td><a href="{% url 'sedo:invoice_detail' i.pk %}"><strong>{{ i.number }}</strong></a><br><span class="muted">{{ i.issue_date }}</span></td>
+        <td>{{ i.customer }}{% if i.obj %}<br><span class="muted">{{ i.obj }}</span>{% endif %}</td>
+        <td>{{ i.due_date|default:'—' }}{% if i.is_overdue %}<br><span class="badge red">{{ i.days_overdue }} Tage</span>{% endif %}</td>
+        <td>{{ i.gross_total }} €</td>
+        <td>{{ i.paid_amount }} €</td>
+        <td><strong>{{ i.open_amount }} €</strong></td>
+        {# 'korrigiert' kann auf dem Reiter „Alle ohne Storno" erscheinen und war
+           dort bisher farblos. 'entwurf' steht in keiner dieser Listen mehr –
+           der Zweig bleibt trotzdem stehen, falls sich die Mengen ändern.
+           Nur vorhandene Badge-Klassen verwenden: green/red/amber/yellow. #}
+        <td><span class="badge status-{{ i.status }} {% if i.status == 'bezahlt' %}green{% elif i.status == 'ueberfaellig' or i.status == 'storniert' %}red{% elif i.status == 'gemahnt' %}amber{% elif i.status == 'entwurf' or i.status == 'korrigiert' %}yellow{% endif %}">{{ i.get_status_display }}</span></td>
+        <td><div class="row-actions">
+          <a class="btn small" href="{% url 'sedo:invoice_add_payment' i.pk %}">Zahlung</a>
+          {% if i.open_amount > 0 %}
+          <form method="post" action="{% url 'sedo:invoice_mark_paid' i.pk %}" class="inline-form">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn small success" type="submit">bezahlt</button></form>
+          <form method="post" action="{% url 'sedo:invoice_reminder' i.pk 'reminder' %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn small">Erinnerung</button></form>
+          <form method="post" action="{% url 'sedo:invoice_reminder' i.pk 'dunning' %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn small danger">Mahnung</button></form>
+          {% endif %}
+        </div></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9">
+        <div class="empty-state compact">
+          <div class="empty-icon"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></div>
+          <p class="empty-title">Keine offenen Posten</p>
+          <p class="empty-sub">Alle Rechnungen sind bezahlt oder entsprechen nicht dem aktuellen Filter.</p>
+        </div>
+      </td></tr>
+      {% endfor %}
+  </table></div>
+</div>
+
+<script>
+document.getElementById('check-all').addEventListener('change', function() {
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+});
+</script>
+{% endblock %}

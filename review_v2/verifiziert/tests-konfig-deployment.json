@@ -1,0 +1,402 @@
+{
+ "modus": "verifizieren",
+ "dimension": "tests-konfig-deployment",
+ "ergebnis": [
+  {
+   "title": "Test-Suite schreibt bei jedem Lauf ~20 Backup-ZIPs in den Live-Ordner backups/",
+   "file": "sedo/middleware.py",
+   "line": 41,
+   "severity": "mittel",
+   "description": "WeeklyBackupMiddleware ruft beim ersten Request jeder Handler-Instanz ensure_weekly_backup() auf. Im Testlauf hat jede TestCase-Klasse mit Client-Requests eine frische Test-DB ohne 'last_weekly_backup_at', deshalb erzeugt praktisch jede Testklasse ein 'weekly_auto'-Backup. backup_dir() zeigt auf SEDO_HOME/backups – den echten Backup-Ordner; nur MEDIA_ROOT ist im Testlauf isoliert.",
+   "evidence": "sedo/middleware.py:41-44: `if not self._checked: self._checked = True; ensure_weekly_backup()` · sedo/backup_utils.py:51: `path = Path(getattr(settings, 'SEDO_HOME', settings.BASE_DIR)) / 'backups'` · config/settings.py:175-176: `if 'test' in sys.argv: MEDIA_ROOT = …` (kein Pendant für Backups). Beobachtet: backups/ vor Testlauf 178 Dateien, nach `manage.py test sedo` 199.",
+   "scenario": "Entwickler führt `manage.py test sedo` aus → 20+ neue SEDO_Backup_<ts>_weekly_auto.zip landen im echten backups/-Ordner. Nach Wochen liegen hunderte Test-ZIPs zwischen den wenigen echten Sicherungen.",
+   "impact": "Live-Verzeichnis wird von Tests beschrieben; echte Wiederherstellungspunkte kaum von Test-Müll zu unterscheiden; Plattenwachstum.",
+   "fix": "Im Test-Zweig von settings.py einen isolierten Backup-Pfad setzen und backup_dir() daraus lesen; alternativ Middleware im Test deaktivieren. Rotation einführen.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. sedo/middleware.py:39-44 ruft ensure_weekly_backup() beim ersten Request jeder Middleware-Instanz; Django-Test-Clients bauen pro Client-Instanz einen eigenen Handler mit frischer Middleware, und TestCase rollt die AppSetting-Schreibung 'last_weekly_backup_at' nach jedem Test zurück. backup_dir() (backup_utils.py:51) zeigt auf SEDO_HOME/backups, settings.py:175-176 isoliert nur MEDIA_ROOT. Im echten backups/-Ordner liegen aktuell 284 Dateien, ALLE mit Suffix weekly_auto, davon 134 an einem einzigen Tag und mehrere im Sekundenabstand (12-48-19/20/21) – das ist nur durch Testläufe erklärbar. Da die Test-DB im Speicher liegt (db_path.exists() False), enthalten die ZIPs nur Test-Medien, sind also wertlos und von echten Sicherungen nicht unterscheidbar. Schwere mittel passt (Backup-Hygiene/GoBD-Aufbewahrung wird unübersichtlich, kein Datenverlust).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. sedo/middleware.py:39-44 ruft ensure_weekly_backup() beim ersten Request jeder Middleware-Instanz; sedo/backup_utils.py:51 backup_dir() = SEDO_HOME/backups ohne Test-Sonderfall; config/settings.py:175-176 isoliert nur MEDIA_ROOT. Kein Test patcht backup_dir (grep in sedo/tests: nur create_backup in test_security_hardening.py:81-84, kein override). Eigener Nachweis: Testlauf mit SEDO_HOME auf einen Scratch-Ordner erzeugte 24 SEDO_Backup_*_weekly_auto.zip; der echte Ordner backups/ enthält 284 Dateien, praktisch alle weekly_auto mit Zeitstempeln im Sekundenabstand (z. B. 12-48-19/20/21) – klassisches Testlauf-Muster. Schwere mittel passt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Wochenbackup läuft nur einmal pro Prozessstart – bei dauerhaft laufendem Server nie wieder",
+   "file": "sedo/middleware.py",
+   "line": 39,
+   "severity": "mittel",
+   "description": "Das Flag `_checked` wird nach dem ersten Request dauerhaft True; ensure_weekly_backup() wird danach im laufenden Prozess nie wieder aufgerufen. Die README beschreibt, dass der Server nach Schließen des Fensters weiterläuft. Kein Scheduler/Timer.",
+   "evidence": "sedo/middleware.py:39-44: `self._checked = False … if not self._checked: self._checked = True; ensure_weekly_backup()` · README.md: „Das Fenster schließen beendet nur die Ansicht – der Server läuft weiter“ · SEDO.app/Contents/MacOS/sedo: `nohup python manage.py runserver …`",
+   "scenario": "Server wird Montag gestartet, Rechner bleibt drei Wochen an → in diesen drei Wochen entsteht kein Wochenbackup, obwohl die Oberfläche 'Automatisches Wochenbackup' verspricht.",
+   "impact": "Backup-Lücke von Wochen bis Monaten.",
+   "fix": "Zeitbasierte Prüfung (z. B. höchstens alle 30 Minuten `last_weekly_backup_at` lesen) oder Timer-Thread in AppConfig.ready()/desktop.py.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. sedo/middleware.py:37-44: self._checked wird beim ersten Request dauerhaft True, danach wird ensure_weekly_backup() im Prozess nie mehr aufgerufen; kein Timer/Scheduler in AppConfig oder desktop.py. SEDO.app-Launcher startet den Server mit nohup (Zeile ~78) und README ('der Server läuft weiter') bestätigt den Dauerbetrieb. Beim PyInstaller-Bundle endet der Prozess mit dem Fenster (daemon-Thread), dort ist die Lücke kleiner. Mittel bleibt angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. sedo/middleware.py:39 `self._checked = False`, :42-44 setzt es dauerhaft True; kein anderer Aufrufer von ensure_weekly_backup (grep: nur middleware.py:44), kein Timer in sedo/apps.py (ready() importiert nur signals) oder desktop.py. SEDO.app/Contents/MacOS/sedo startet `nohup python manage.py runserver` dauerhaft; README.md:25-27 beschreibt weiterlaufenden Server. Verschärfend: sedo/templates/sedo/backup.html:29 verspricht Prüfung „beim Start/Seitenaufruf“, was der Code nicht einlöst. Nur im PyInstaller-Bundle (daemon-Thread, desktop.py:88-93) endet der Prozess mit dem Fenster und startet damit die Prüfung neu.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "SQLite-Backup per Dateikopie statt sqlite3-Backup-API – Kopie kann bei gleichzeitigem Schreiben inkonsistent sein",
+   "file": "sedo/backup_utils.py",
+   "line": 36,
+   "severity": "mittel",
+   "description": "_sanitized_db_copy kopiert die laufende Datenbankdatei mit shutil.copy2. Ein Rollback-Journal wird nicht mitkopiert; bei einer laufenden Schreibtransaktion enthält die Kopie teilweise geschriebene Seiten. Der Backup läuft im Request-Thread parallel zu anderen Requests.",
+   "evidence": "sedo/backup_utils.py:36: `shutil.copy2(db_path, tmp)` · desktop.py:90: `serve(app=app, host='127.0.0.1', port=port, threads=6, _quiet=True)`",
+   "scenario": "Nutzer A speichert eine Rechnung, Nutzer B löst gleichzeitig den ersten Request nach Serverstart aus → Backup kopiert die DB mitten in der Transaktion → 'database disk image is malformed'.",
+   "impact": "Das Backup ist genau dann unbrauchbar, wenn man es braucht; unentdeckt, weil kein Restore-Test existiert.",
+   "fix": "`src.backup(dst)` (SQLite Online-Backup-API) statt copy2; danach Secret-Bereinigung auf der Kopie.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Technisch bestätigt: backup_utils.py:36 `shutil.copy2(db_path, tmp)` kopiert die Live-DB ohne SQLite-Locking; in Rollback-Journal-Modus werden Seiten während des Commits direkt in die DB-Datei geschrieben, Journal wird nicht mitkopiert. desktop.py:90 waitress mit 6 Threads bzw. runserver (threaded) erlauben parallele Schreibrequests. Das Zeitfenster ist aber nur der Commit-Moment eines Schreibvorgangs bei 2 Nutzern, ausgelöst einmal pro Woche/Prozessstart oder bei manuellem Backup – im Projektkontext sehr unwahrscheinlich, und die betroffene Sicherung wäre nur eine von vielen. Fix (sqlite3 Backup-API) ist trivial. Schwere auf niedrig korrigiert.",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Nicht widerlegbar. sedo/backup_utils.py:36 `shutil.copy2(db_path, tmp)`; DATABASES in config/settings.py:150-155 ohne OPTIONS/init_command, also SQLite-Standard-Rollback-Journal – dort schreibt SQLite während einer Transaktion direkt in die Hauptdatei, eine Dateikopie kann Halbzustände enthalten. Kein Lock um den Backup (test_concurrency_locks betrifft Fachobjekte), desktop.py:90 threads=6, und backup_page (views.py:2143) ist jederzeit auslösbar. Wahrscheinlichkeit bei 2 Nutzern gering, aber realistischer Randfall; kein Restore-Test, der es entdecken würde. Schwere mittel vertretbar.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Kein Wiederherstellungsweg: weder Code, Kommando noch Dokumentation; Backup-Inhalt (DB) wird von keinem Test geprüft",
+   "file": "sedo/backup_utils.py",
+   "line": 69,
+   "severity": "mittel",
+   "description": "Es existiert keine Restore-Funktion, kein Management-Command und keine Anleitung. BACKUP_INFO.txt beschreibt nur das Neu-Eintragen der Keys. README, backup.html, DEPLOYMENT_SECURITY_NOTES enthalten nichts zu 'wiederherstellen'. Der Test zu create_backup räumt ein, dass die DB im Testlauf nie im ZIP liegt.",
+   "evidence": "grep -ri 'restore|wiederherstell' → einziger Treffer im Docstring backup_utils.py:29-30 · sedo/tests/test_security_hardening.py:88-90: „In der Testumgebung liegt die DB im Speicher …“ · backup_utils.py:69-80 (BACKUP_INFO ohne Restore-Schritte)",
+   "scenario": "Platte fällt aus, Nutzer hat ein SEDO_Backup_*.zip. Im Desktop-Bundle muss er wissen, dass SEDO_HOME `~/Library/Application Support/SEDO` bzw. `%APPDATA%\\SEDO` ist, die App beenden, data/ und media/ dorthin entpacken, Keys neu eintragen – nichts davon steht irgendwo.",
+   "impact": "Wiederherstellung ist Glückssache; GoBD-relevante Aufbewahrung hängt an einem ungetesteten Pfad.",
+   "fix": "Restore-Anleitung in README/BACKUP_INFO.txt plus Management-Command `restore_backup <zip>`; Test mit datei-basierter Test-DB, der prüft, dass die DB im ZIP liegt.",
+   "effort": "M",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. sedo/management/commands/ enthält nur ensure_admin.py; grep nach restore/wiederherstell über .py/.md/.html/.txt/.command/.bat trifft im Projekt nur desktop.py:139 (Fenstergeometrie) und den Docstring/Infotext in backup_utils.py:29-30/69-80, dazu einen Satz im Archivbericht – keine Anleitung. test_security_hardening.py:88-90 räumt ein, dass die DB im Testlauf nie im ZIP liegt. Im Bundle liegt SEDO_HOME unter ~/Library/Application Support/SEDO bzw. %APPDATA%\\SEDO (desktop.py:27-33), was nirgends als Restore-Ziel dokumentiert ist. Mittel angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. grep -i 'restore|wiederherstell' über sedo/, config/, *.md, desktop.py trifft nur backup_utils.py:29-30 (Docstring), rechnungslauf_core.py:918 (reportlab c.restoreState) und desktop.py (Fensterposition). README.md, backup.html und DEPLOYMENT_SECURITY_NOTES.md enthalten keine Anleitung (auch nicht unter „einspielen/zurückspielen/entpacken“). BACKUP_INFO.txt (backup_utils.py:69-78) nennt nur das Neu-Eintragen der Keys. test_security_hardening.py:88-90 bestätigt, dass die DB im Testlauf nicht im ZIP liegt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Startskripte führen `makemigrations sedo` auf dem Endnutzer-Rechner aus – Konfliktgefahr bei Updates",
+   "file": "START_HIER.command",
+   "line": 24,
+   "severity": "mittel",
+   "description": "START_HIER.command und START_WINDOWS.bat rufen bei jedem Start `python manage.py makemigrations sedo` vor `migrate` auf. Auf der Nutzermaschine entstehen so bei jeder Abweichung zwischen Modellen und Migrationen eigene, unversionierte Migrationsdateien. Der SEDO.app-Launcher macht das nicht.",
+   "evidence": "START_HIER.command:24-25: `python manage.py makemigrations sedo` / `python manage.py migrate` · START_WINDOWS.bat:8-9: gleiche Zeilen · SEDO.app/Contents/MacOS/sedo: nur `migrate --noinput` · Aktuell: `makemigrations --check --dry-run` → „No changes detected“",
+   "scenario": "Windows-Rechner installiert eine andere Django-Version, der Autodetektor erzeugt 0013_auto_….py. Nächstes Release liefert 0013_<feature>.py → `migrate` bricht mit 'Conflicting migrations detected' ab.",
+   "impact": "Update-Bruch auf Produktivmaschinen; Migrationshistorie weicht vom Repo ab.",
+   "fix": "`makemigrations` aus beiden Startskripten entfernen und nur `migrate --noinput` ausführen.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Bestätigt: START_HIER.command:24-25 und START_WINDOWS.bat:9-10 rufen `makemigrations sedo` vor `migrate`; SEDO.app/Contents/MacOS/sedo nur `migrate --noinput`. Mit `set -e` in START_HIER bricht ein Konflikt-Fehler von migrate den Start ab. Die Auslösung (Autodetektor erzeugt auf der Nutzermaschine eine Migration, z. B. durch andere Django-Version bei ungepinnter Range 5.2–6.0) ist plausibel, aber nicht zwangsläufig – aktuell 'No changes detected'. Schwere mittel passt, da das Startskript im Konfliktfall gar nicht mehr hochkommt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Code-Beleg stimmt, Zeilenangabe leicht daneben: START_HIER.command:23 (nicht 24) und START_WINDOWS.bat:9 (nicht 8) `python manage.py makemigrations sedo`; SEDO.app-Launcher nur `migrate --noinput`. `makemigrations --check --dry-run` aktuell ohne Änderungen; keine bewusste Begründung in CHANGELOG.md/DEPLOYMENT_SECURITY_NOTES.md/README.md (kein Treffer für makemigrations). Das Szenario (Konflikt durch lokal erzeugte 0013_auto) setzt einen seltenen Auslöser voraus (Django-Versionsdrift oder Release ohne Migration) – reale, aber nicht wahrscheinliche Fehlerkette; daher niedrig statt mittel.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "requirements.txt komplett ungepinnt, Build-Skripte mit eigener Paketliste, .requirements.hash friert Umgebungen pro Rechner ein",
+   "file": "requirements.txt",
+   "line": 1,
+   "severity": "mittel",
+   "description": "Alle Pakete außer Django sind ohne Version; requirements_desktop.txt ebenso. build_mac.command und BUILD_WINDOWS.bat wiederholen die Paketliste per Hand statt `-r requirements.txt`. Die Starter installieren nur neu, wenn sich der Hash von requirements.txt ändert – zwei Rechner laufen dauerhaft mit unterschiedlichen Versionsständen. Kommentar in requirements_desktop.txt widerspricht dem Build (faster-whisper wird gebündelt).",
+   "evidence": "requirements.txt: `Django>=5.2,<6.1`, `whitenoise`, `fints`, `mt-940`, `pandas`, … (keine Versionen) · build_mac.command:9: `pip install 'Django>=5.2,<6.1' whitenoise pandas openpyxl reportlab pypdf lxml python-dateutil 'qrcode[pil]' fints mt-940 faster-whisper` · START_HIER.command:11-20 (Hash-Vergleich) · requirements_desktop.txt:2-3 vs. sedo_desktop.spec:7",
+   "scenario": "Neuinstallation auf dem Windows-Rechner zieht pandas 3.x/fints 5.x, während der Mac auf dem eingefrorenen Stand bleibt. Ein API-Bruch tritt nur auf einem Rechner auf.",
+   "impact": "Nicht reproduzierbare Installationen; Fehler, die auf dem Entwicklungsrechner nicht auftreten; Desktop-Bundle kann Pakete vermissen.",
+   "fix": "Exakte Versionen pinnen (pip freeze → requirements.txt), Build-Skripte auf `-r requirements.txt` umstellen, Kommentar korrigieren.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. requirements.txt: nur Django hat eine Range, alle anderen Pakete unversioniert; requirements_desktop.txt ebenso. build_mac.command:9 und BUILD_WINDOWS.bat:14 wiederholen die Liste per Hand statt `-r requirements.txt`. START_HIER.command:10-20 und SEDO.app-Launcher installieren nur bei geändertem Hash von requirements.txt – Bestände driften pro Rechner. Kommentar requirements_desktop.txt:2-3 ('faster-whisper bleibt außen vor') widerspricht sedo_desktop.spec:6-21 (wird gebündelt). Mittel angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. requirements.txt: nur `Django>=5.2,<6.1`, alle übrigen Pakete (whitenoise, fints, mt-940, pandas, openpyxl, reportlab, pypdf, lxml, python-dateutil, qrcode[pil], faster-whisper) ungepinnt; requirements_desktop.txt ebenso. build_mac.command:9 und BUILD_WINDOWS.bat:14 wiederholen die Liste per Hand. START_HIER.command:10-21 und SEDO.app-Launcher installieren nur bei Hash-Änderung. requirements_desktop.txt:2-3 („NUR faster-whisper bleibt … außen vor“) widerspricht sedo_desktop.spec:7-9 („Seit v2.3 MIT faster-whisper“). Lokal ist bereits Django 6.0.8 auf Python 3.14 installiert – ein Stand, den ein anderer Rechner nicht reproduzieren kann.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "SEDO.app-Launcher legt die venv mit /usr/bin/python3 (3.9) an – Django 6 benötigt Python ≥ 3.12",
+   "file": "SEDO.app/Contents/MacOS/sedo",
+   "line": 43,
+   "severity": "mittel",
+   "description": "Der Mac-Desktop-Starter benutzt fest /usr/bin/python3 (Apple-CLT-Python), während START_HIER.command `python3` aus dem PATH nimmt. Auf einem Mac ohne Homebrew/python.org-Python ist /usr/bin/python3 Version 3.9.6, mit der `pip install Django>=5.2` scheitert. logs/setup.log enthält bereits eine Fehlermeldung aus diesem Pfad.",
+   "evidence": "SEDO.app/Contents/MacOS/sedo:43: `if ! /usr/bin/python3 -m venv .venv >> logs/setup.log 2>&1; then` · START_HIER.command:7: `python3 -m venv .venv` · `/usr/bin/python3 --version` → Python 3.9.6 · logs/setup.log: „Error: [Errno 1] Operation not permitted“",
+   "scenario": "Frischer Bürorechner (nur Xcode-CLT): Doppelklick auf SEDO.app → venv mit 3.9 → pip install schlägt fehl → Dialog 'Paket-Installation fehlgeschlagen'. START_HIER.command verwendet die vorhandene 3.9-venv wieder → gleicher Fehler.",
+   "impact": "Ersteinrichtung auf neuen Macs scheitert; verwirrende Fehlersuche.",
+   "fix": "Im Launcher denselben Interpreter wie START_HIER verwenden und vor venv-Anlage die Version prüfen (≥ 3.12) mit klarer Meldung.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. SEDO.app/Contents/MacOS/sedo:43 nutzt fest `/usr/bin/python3 -m venv .venv`; auf diesem Mac ist /usr/bin/python3 Version 3.9.6, während `python3` (PATH) 3.14.7 ist. Django>=5.2 setzt Python ≥3.10 voraus, 6.0 ≥3.12 – pip findet unter 3.9 keine passende Version, Launcher bricht mit Dialog ab. START_HIER.command:7 verwendet eine vorhandene .venv wieder und würde dieselbe 3.9-venv nutzen. logs/setup.log enthält 'Operation not permitted' (Ursache nicht eindeutig diesem Pfad zuzuordnen, aber die Versionsproblematik steht unabhängig davon). Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. SEDO.app/Contents/MacOS/sedo:43 `/usr/bin/python3 -m venv .venv`; `/usr/bin/python3 --version` auf diesem Mac → 3.9.6. Django>=5.2 verlangt Python>=3.10, also findet pip keine passende Version. START_HIER.command:7 nimmt `python3` aus PATH und nutzt eine bestehende .venv wieder (Zeile 5-8). Einschränkung: die Zeile in logs/setup.log („Operation not permitted“) ist ein Berechtigungsfehler beim venv-Anlegen, kein Versionsfehler – der Kern des Funds bleibt aber belegt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Keine LOGGING-Konfiguration: 'sedo'-Logger (FinTS/SMTP/KI-Fehler) verschwindet im Desktop-Bundle vollständig",
+   "file": "config/settings.py",
+   "line": 1,
+   "severity": "mittel",
+   "description": "settings.py definiert kein LOGGING; der Logger 'sedo' hat keinen Handler und fällt auf Pythons lastResort-Handler (nur WARNING+ nach stderr). Im PyInstaller-Bundle ist console=False und waitress läuft mit _quiet=True, stderr geht ins Leere. desktop.py legt einen logs/-Ordner an und verweist im Fehlerfall auf 'die Logs', aber nichts schreibt hinein.",
+   "evidence": "`grep -n LOGGING config/settings.py` → kein Treffer · sedo/views.py:47 `logger = logging.getLogger('sedo')`, :1319 `logger.exception('FinTS-Abruf fehlgeschlagen')` · sedo/services/banking.py:156, :194 · sedo_desktop.spec:64 `console=False` · desktop.py:90 `_quiet=True`; :68-69 legt 'logs' an; :134 „Details ggf. in den Logs“",
+   "scenario": "Im Desktop-Bundle schlägt der Umsatzabruf mit einer Exception fehl. Der Nutzer sieht nur 'Bankabruf fehlgeschlagen'. Der Traceback landet nirgends.",
+   "impact": "Fehler bei Bankanbindung, E-Mail-Versand, KI und Monatslauf sind im Produktivbetrieb nicht nachvollziehbar.",
+   "fix": "LOGGING-Dict mit RotatingFileHandler nach `SEDO_HOME/logs/sedo.log` (Logger 'sedo' und 'django' auf INFO); in desktop.py sys.excepthook auf denselben Handler.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. config/settings.py enthält kein LOGGING; Djangos DEFAULT_LOGGING konfiguriert nur 'django'/'django.server', der Logger 'sedo' (views.py:47, banking.py:30) propagiert zum handlerlosen Root und landet über lastResort auf stderr. sedo_desktop.spec:64 console=False und desktop.py:90 _quiet=True – im Bundle gibt es keinen sichtbaren stderr (Windows: sys.stderr None). desktop.py:68-69 legt logs/ an, desktop.py:126 verweist auf 'die Logs', nichts schreibt hinein. Mittel angemessen (Diagnose von FinTS-/SMTP-Fehlern im Produktivbetrieb unmöglich).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. grep LOGGING/basicConfig/excepthook über config/, sedo/, desktop.py: kein Treffer. Logger 'sedo' (views.py:47; banking.py:156/194 logger.exception) hat keinen Handler, Djangos DEFAULT_LOGGING konfiguriert nur 'django'; Ausgabe landet im lastResort-Handler auf stderr. sedo_desktop.spec:64 console=False, desktop.py:90 _quiet=True, desktop.py:68-69 legt logs/ an, :134 verweist auf „die Logs“ – nichts schreibt hinein. Der Nutzer sieht per messages.error nur die Kurzmeldung (views.py:1319-1320), der Traceback geht verloren.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Desktop-Bundle: kein Weg, ein verlorenes Admin-Passwort zurückzusetzen – Hinweise verweisen auf nicht vorhandenes manage.py",
+   "file": "desktop.py",
+   "line": 183,
+   "severity": "mittel",
+   "description": "Das Zufallspasswort wird einmalig per JS-alert gezeigt; im Fehlerfall geht es an print() (im Bundle mit console=False verloren). Die App bietet keine Passwort-Änderungs-/Reset-Route, und Sicherheitsübersicht wie README empfehlen `python manage.py changepassword admin` – im gebündelten Programm gibt es weder manage.py noch einen Python-Interpreter.",
+   "evidence": "desktop.py:183-200: `if first_password: … window.evaluate_js(f'alert(\"{msg}\")') except Exception: print('Erststart-Passwort für admin:', first_password)` · sedo_desktop.spec:64 `console=False` · sedo/views.py:2177: „python manage.py changepassword admin“ · sedo/urls.py: keine Passwortänderungs-Route",
+   "scenario": "Nutzer installiert per Setup.exe, der Zettel mit dem Passwort geht verloren. Nächster Start: Login unmöglich. Einzige Option: `%APPDATA%\\SEDO\\data` löschen – womit alle Rechnungen weg sind.",
+   "impact": "Aussperrung ohne Wiederherstellungsweg; Anreiz zu Datenlöschung.",
+   "fix": "desktop.py um CLI-Modus `--reset-admin-password` ergänzen und/oder PasswordChangeView einbinden; Hinweise an das Bundle anpassen.",
+   "effort": "M",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Im Kern bestätigt. desktop.py:183-200 zeigt das Passwort einmalig per alert, Fallback print() ist im Bundle (console=False) unsichtbar. ensure_admin (management/commands/ensure_admin.py) legt nur an bzw. warnt – kein Reset. desktop.py hat keinen CLI-Modus außer --check; im Bundle existiert kein manage.py, auf das views.py:2177, README und Launcher verweisen. Kleine Korrektur: Eine Passwort-ÄNDERUNG ist für eingeloggte Nutzer über den Django-Admin (/admin/password_change/, in LoginRequiredMiddleware ausgenommen, aber loginpflichtig) möglich – der Fund 'keine Passwortänderungs-Route in sedo/urls.py' ist insoweit unvollständig. Für ein VERLORENES Passwort des einzigen Admins gibt es im Bundle aber tatsächlich keinen Weg. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 8,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Kern bestätigt: desktop.py:183-200 zeigt das Passwort einmalig per alert, Fallback print() (im Bundle mit console=False verloren); views.py:2177, README.md:22 und ensure_admin.py verweisen auf `python manage.py changepassword admin`, das im PyInstaller-Bundle nicht existiert; ensure_admin.py legt nur an bzw. warnt, setzt nie zurück. Teilweise ungenau: Django-Admin ist unter /admin/ eingebunden (config/urls.py:8), ein eingeloggter Superuser kann dort Passwörter ändern – „keine Passwortänderungs-Route“ stimmt so nicht. Für ein VERLORENES Passwort (Szenario) hilft das nicht, daher kein Widerlegungsgrund.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "DEPLOYMENT_SECURITY_NOTES nennt Rollen-/Rechtetrennung als Voraussetzung für Bankanbindung – im Code gibt es keine Rechteprüfung",
+   "file": "DEPLOYMENT_SECURITY_NOTES.md",
+   "line": 54,
+   "severity": "mittel",
+   "description": "Die Notizen fordern vor der Bankanbindung „Rollen/Rechte für Admin/Buchhaltung/Mitarbeiter getrennt“. Migration 0003 legt drei Gruppen an, aber keine View prüft Gruppen oder Berechtigungen; FinTS-Abruf und Backup-Seite sind für jeden eingeloggten Benutzer erreichbar. Die Bankanbindung ist ausgeliefert, obwohl die eigene Checkliste nicht erfüllt ist.",
+   "evidence": "DEPLOYMENT_SECURITY_NOTES.md:54-63 · sedo/migrations/0003_security_groups.py: nur `Group.objects.get_or_create(name=...)` · grep über sedo/views.py nach `has_perm|permission_required|user_passes_test|groups` → 0 Treffer · sedo/views.py:1304-1305 nur unter @login_required",
+   "scenario": "Ein zweites Konto 'Mitarbeiter Lesen' wird angelegt. Dieser Nutzer öffnet /zahlungen/ und klickt 'Umsätze abrufen' – mit gespeicherter fints_pin läuft der Abruf durch, alle Kontoumsätze werden angezeigt.",
+   "impact": "Dokumentierte Sicherheitsvoraussetzung nicht umgesetzt; Bank- und Umsatzdaten für jeden angemeldeten Nutzer.",
+   "fix": "Berechtigungen einführen (`@permission_required` für FinTS/Backup/Einstellungen) oder die Notizen ehrlich anpassen und `bank_ready` als Warnhinweis vor dem Abruf-Button anzeigen.",
+   "effort": "M",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 9,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. DEPLOYMENT_SECURITY_NOTES.md:54-63 nennt 'Rollen/Rechte … getrennt' als Voraussetzung für die Bankanbindung; migrations/0003_security_groups.py legt nur drei leere Gruppen an. grep über sedo/views.py und sedo/urls.py nach has_perm/permission_required/user_passes_test/groups/is_staff/is_superuser: 0 Treffer. payment_list (views.py:1295-1305) ist nur @login_required und startet fetch_bank_transactions mit der gespeicherten fints_pin (banking.py:56: AppSetting 'fints_pin'). Jeder angemeldete Nutzer kann Umsätze abrufen und einsehen. Bei 2 Nutzern ist die Auswirkung begrenzt, aber der dokumentierte Sicherheitsstand ist falsch – mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 9,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Sachlich bestätigt: DEPLOYMENT_SECURITY_NOTES.md:54-63 („Bankanbindung erst nach diesen Punkten … Rollen/Rechte … getrennt“); sedo/migrations/0003_security_groups.py legt nur drei Gruppen an; grep has_perm/permission_required/user_passes_test/groups/is_staff in sedo/views.py: 0 Treffer; fints_fetch (views.py:1298-1320) und backup_page (:2136) nur @login_required. Einschränkung: die Checkliste steht im Hetzner-/Server-Abschnitt (SSH, ufw, certbot) und ist eine Betreiber-Checkliste, keine Code-Zusicherung; CHANGELOG dokumentiert keine bewusste Entscheidung gegen Rechteprüfung. Das Szenario (Gruppe „SEDO Mitarbeiter Lesen“ suggeriert Nur-Lesen, gewährt aber alles inkl. FinTS mit gespeicherter PIN) ist real.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Versions- und Dokumentationsdrift, verwaiste Dateien im Projektordner",
+   "file": "README.md",
+   "line": 1,
+   "severity": "niedrig",
+   "description": "Versionsangaben widersprechen sich (README 'v1.0 beta 3.21.0', START_HIER 'v1.0 beta', desktop.py 'v2.3', spec 2.3.0, Inno-Setup 2.3.1, CHANGELOG 2.3.1). README verweist auf MEMORY_SEDO.md und AENDERUNGSBERICHT_v1_0_beta_3_21_0.md im Projektordner – beide existieren dort nicht. Die Hetzner-Sektion der Deployment-Notizen beschreibt systemd/nginx, aber im Projekt gibt es weder Unit-Dateien noch einen WSGI-Server in requirements.txt. Build-Artefakte (dist/, build/, .venv_build, DMGs) liegen im Projektordner.",
+   "evidence": "README.md:1 `# SEDO Rechnungstool · v1.0 beta 3.21.0`; README verweist auf MEMORY_SEDO.md/AENDERUNGSBERICHT → `ls` beide: No such file · desktop.py:210 „v2.3“ · sedo_desktop.spec:85 `'CFBundleShortVersionString': '2.3.0'` · sedo_setup_windows.iss:14 `#define AppVersion \"2.3.1\"`",
+   "scenario": "Nutzer folgt der README vor dem ersten ARP-Echtlauf und sucht die Checkliste – Datei fehlt; Supportfall meldet 'v2.3', Installer sagt 2.3.1.",
+   "impact": "Fehlleitende Anleitung, unklare Versionsidentität, unnötig große Projektkopien.",
+   "fix": "Eine Versionsquelle (sedo/__init__.py __version__) und daraus spec/iss/About/README speisen; README-Verweise korrigieren; Build-Artefakte aus dem Projektordner heraushalten.",
+   "effort": "S",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Weitgehend bestätigt: README.md:1 'v1.0 beta 3.21.0', START_HIER.command:4 'v1.0 beta', desktop.py:210 'v2.3', sedo_desktop.spec:85 '2.3.0', sedo_setup_windows.iss:14 '2.3.1', CHANGELOG 'v2.3.1'. MEMORY_SEDO.md fehlt im Projektordner; AENDERUNGSBERICHT_v1_0_beta_3_21_0.md existiert – aber unter Berichte-Archiv/, nicht wie in README angegeben im Projektordner (Verweis also falscher Pfad, nicht komplett fehlend). dist/ und build/ liegen im Projektordner. Deployment-Notizen beschreiben systemd/nginx ohne WSGI-Server in requirements.txt. Niedrig angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. README.md:1 „v1.0 beta 3.21.0“, START_HIER.command:4 „v1.0 beta“, desktop.py:210 „v2.3“, sedo_desktop.spec:85 '2.3.0', sedo_setup_windows.iss:14 \"2.3.1\", CHANGELOG.md:3 v2.3.1. README.md:40 und :43 verweisen auf MEMORY_SEDO.md und AENDERUNGSBERICHT_v1_0_beta_3_21_0.md – beide fehlen im Projektordner (ls: No such file). dist/, build/, .venv_build liegen im Projektordner. DEPLOYMENT_SECURITY_NOTES.md:28-44 beschreibt systemd/collectstatic, requirements.txt enthält keinen WSGI-Server. Schwere niedrig passt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Testlücken: Backup-Zyklus, Middleware, Desktop-Starter, pushTAN-Timeout und Whisper-Fallback ungetestet",
+   "file": "sedo/tests/test_security_hardening.py",
+   "line": 81,
+   "severity": "niedrig",
+   "description": "245 Tests laufen grün (1 Skip). Nicht abgedeckt: ensure_weekly_backup()/WeeklyBackupMiddleware, create_backup mit datei-basierter DB, Restore-Logik (existiert nicht), desktop.py, `_await_decoupled`-Timeout und die Startskripte. Der einzige Skip betrifft genau den Whisper-Fallback-Pfad.",
+   "evidence": "Testlauf: `Ran 245 tests in 20.554s – OK (skipped=1)` · sedo/tests/test_transcription.py:46 `self.skipTest('faster-whisper ist hier installiert – Fallback-Pfad nicht testbar.')` · grep 'WeeklyBackup|ensure_weekly_backup' in sedo/tests → 0 Treffer · grep 'desktop' in sedo/tests → 0 Treffer · test_banking.py: kein Test für `_await_decoupled`",
+   "scenario": "Eine Änderung an der Zeitlogik in ensure_weekly_backup bricht Backups still; die Suite bleibt grün. Ein Regressionsfehler im 503-Fallback der Transkription bliebe unbemerkt.",
+   "impact": "Gerade die Rettungspfade (Backup/Restore, Erststart im Bundle) sind ohne Regressionsschutz.",
+   "fix": "Tests mit tempdir für backup_dir, Zeitreise für ensure_weekly_backup, datei-basierte Test-DB für create_backup-Inhalt; `_await_decoupled` mit gepatchtem time; Whisper-Fallback per patch.",
+   "effort": "M",
+   "dimension": "tests-konfig-deployment",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 11,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. grep 'WeeklyBackup|ensure_weekly_backup|desktop' in sedo/tests: 0 Treffer; `_await_decoupled` (banking.py:99) kommt in keiner Testdatei vor; test_transcription.py:44-46 überspringt den 503-Fallback, sobald faster-whisper installiert ist (hier der Fall). test_security_hardening.py:88-90 prüft den DB-Inhalt des ZIPs nicht, weil die Test-DB im Speicher liegt. Niedrig passt – Regressionsschutz fehlt genau an den Rettungspfaden, aber ohne unmittelbares Fehlverhalten.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 11,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt. Eigener Testlauf: „Found 245 test(s)“, 1 Skip (test_transcription.py:44-46 skipTest, weil faster-whisper installiert ist). grep WeeklyBackup/ensure_weekly_backup/desktop in sedo/tests: 0 Treffer; _await_decoupled (banking.py:99) wird in test_banking.py nicht referenziert; test_security_hardening.py:88-90 räumt ein, dass die DB im Testlauf nie im ZIP liegt. Hinweis: bei meinem Lauf schlug zusätzlich test_atomic_files (Reste in /tmp/sedo_test_media) fehl – umgebungsbedingt, ändert nichts am Fund. Schwere niedrig passt.",
+     "corrected_severity": null
+    }
+   ]
+  }
+ ]
+}

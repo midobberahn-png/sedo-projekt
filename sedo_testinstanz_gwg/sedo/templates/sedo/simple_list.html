@@ -1,0 +1,1 @@
+{% extends 'sedo/base.html' %}{% block content %}<div class="h1">{{ title }}</div><div class="card">{% for item in items %}<p>{{ item }}</p>{% empty %}<p class="muted">{{ empty }}</p>{% endfor %}</div>{% endblock %}

@@ -1,0 +1,64 @@
+{% extends 'sedo/base.html' %}
+{% block title %}Backup{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">System</div>
+    <div class="h1">Backup</div>
+    <div class="sub">Automatische Sicherung – ohne API-Key, SMTP-Passwort, Bank-PIN und aktive Anmelde-Sitzungen.</div>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="metric">7 Tage</div>
+    <div class="metric-label">automatisches Backup-Intervall</div>
+  </div>
+  <div class="card">
+    <div class="metric">{{ last_backup_at|default:'—' }}</div>
+    <div class="metric-label">letztes Backup</div>
+  </div>
+  <div class="card">
+    <div class="metric">{{ last_weekly_backup_at|default:'—' }}</div>
+    <div class="metric-label">letztes Wochenbackup</div>
+  </div>
+</div>
+
+{% if last_backup_error %}
+<div class="card" style="border-left:4px solid var(--color-danger,#dc2626)">
+  <div class="section-head"><h2>Letzte Sicherung abgebrochen</h2></div>
+  <p class="sub">{{ last_backup_error }}</p>
+  <p class="hint">Zeitpunkt: {{ last_backup_error_at|default:'—' }}. Der Hinweis verschwindet nach der nächsten erfolgreichen Sicherung.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="section-head"><h2>Automatische Backups</h2></div>
+  <p class="sub">Die App prüft beim Start/Seitenaufruf, ob das letzte automatische Backup älter als 7 Tage ist. Falls ja, wird automatisch ein ZIP-Backup erzeugt.</p>
+  <dl class="detail-grid">
+    <div><dt>Status</dt><dd>{% if auto_weekly_backup_enabled == '1' %}aktiv{% else %}deaktiviert{% endif %}</dd></div>
+    <div><dt>Letzter Backup-Pfad</dt><dd>{{ last_backup_path|default:'—' }}</dd></div>
+    <div><dt>Letzter Wochenbackup-Pfad</dt><dd>{{ last_weekly_backup_path|default:'—' }}</dd></div>
+  </dl>
+  <form method="post" class="toolbar mt-3">
+    {% csrf_token %}
+    <button class="btn primary" type="submit" name="action" value="backup_now"><svg class="ico" aria-hidden="true"><use href="#i-backup"/></svg> Backup jetzt erstellen</button>
+    {% if auto_weekly_backup_enabled == '1' %}
+      <button class="btn" type="submit" name="action" value="disable_weekly">Automatisches Wochenbackup deaktivieren</button>
+    {% else %}
+      <button class="btn success" type="submit" name="action" value="enable_weekly">Automatisches Wochenbackup aktivieren</button>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <div class="section-head"><h2>Was wird gesichert?</h2></div>
+  <ul class="clean-list">
+    <li>Datenbank mit Kunden, Rechnungen, Angeboten, Zahlungen und Kassenbuch</li>
+    <li>Medienordner mit erzeugten PDFs, XML-Dateien, ZUGFeRD-Dateien und E-Mail-Entwürfen</li>
+    <li>Backup-Infodatei mit Zeitpunkt und Grund der Sicherung</li>
+    <li><strong>Nicht enthalten:</strong> .env, Secret Key, Claude-API-Key, SMTP-Passwort, Bank-PIN und aktive Anmelde-Sitzungen. Die Datenbankkopie wird neu aufgebaut, damit auch keine Rest-Bytes übrig bleiben.</li>
+    <li><strong>Enthalten und schützenswert:</strong> alle Kunden-, Rechnungs- und Zahlungsdaten sowie die Bank-Stammdaten ohne PIN (Anmeldename, IBAN, BLZ, FinTS-Adresse) und der SMTP-Benutzername. Ein Backup gehört deshalb nicht ungeschützt weitergegeben.</li>
+  </ul>
+</div>
+{% endblock %}

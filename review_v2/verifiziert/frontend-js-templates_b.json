@@ -1,0 +1,435 @@
+{
+ "modus": "verifizieren",
+ "dimension": "frontend-js-templates_b",
+ "ergebnis": [
+  {
+   "title": "`next`-Redirect aus HTTP_REFERER ungeprüft übernommen (Open Redirect nach Zahlungserfassung)",
+   "file": "sedo/templates/sedo/payment_manual.html",
+   "line": 10,
+   "severity": "niedrig",
+   "description": "Das Zahlungsformular schreibt den Referer als Hidden-Feld `next`; `invoice_add_payment` und `invoice_mark_paid` leiten ohne Prüfung dorthin um (views.py 1259, 1291). Ein externer Angriffspfad ist durch CSRF-Schutz praktisch ausgeschlossen, aber ein externer Referer führt nach dem Speichern auf eine fremde Seite.",
+   "evidence": "payment_manual.html 10: `<input type=\"hidden\" name=\"next\" value=\"{{ request.META.HTTP_REFERER|default:'' }}\">`; views.py 1259: `next_url = request.POST.get('next') or reverse('sedo:invoice_detail', args=[invoice.pk]); return redirect(next_url)`",
+   "scenario": "Nutzer öffnet den Zahlungs-Link aus einer Mail-Nachricht (Referer = Webmail-URL), erfasst die Zahlung → landet nach dem Speichern im Webmail statt in SEDO.",
+   "impact": "Irritation, verlorene Erfolgsmeldung; theoretisch Phishing-Weiterleitung.",
+   "fix": "`url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()})` prüfen; statt Referer expliziten `?next=`-Parameter aus eigenen Links.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: payment_manual.html:10 schreibt `request.META.HTTP_REFERER` ungeprüft in das Hidden-Feld `next`; views.py:1259-1260 (`next_url = request.POST.get('next') or reverse(...)`; `return redirect(next_url)`) und 1291-1292 leiten ohne `url_has_allowed_host_and_scheme` dorthin um. Kein Decorator/Middleware filtert das. Django `redirect()` akzeptiert absolute externe URLs. Nebeneffekt: Bei Validierungsfehler ist der Referer die Zahlungsseite selbst, nach erfolgreichem Speichern landet man wieder auf dem leeren Zahlungsformular. Angriffspfad ist durch @login_required + CSRF praktisch irrelevant (2 Nutzer). niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belegt: payment_manual.html:10 schreibt request.META.HTTP_REFERER ungeprüft in das Hidden-Feld `next`; views.py:1259-1260 und 1291-1292 machen `redirect(request.POST.get('next') or …)` ohne url_has_allowed_host_and_scheme. Kein Test in sedo/tests/ prüft `next`/Referer (grep leer), CHANGELOG/DEPLOYMENT_SECURITY_NOTES erwähnen es nicht. Zusatz-Randfall: Bei Formularfehler (POST-Rerender) ist der Referer die Zahlungsseite selbst, der Nutzer landet nach Erfolg wieder im leeren Zahlungsformular. Angriffspfad wird durch CSRF praktisch verhindert, daher bleibt „niedrig“ korrekt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Live-Summe im Rechnungs-/Angebotsassistenten rundet per Float anders als der gespeicherte Beleg (Cent-Abweichungen im Prüfen-Schritt)",
+   "file": "sedo/templates/sedo/invoice_form.html",
+   "line": 424,
+   "severity": "mittel",
+   "description": "Die clientseitige Kalkulation rechnet Zeilenbeträge als JS-Floats (`qty * price`), summiert ungerundet und rundet erst bei der Anzeige mit `toFixed(2)`. Der Server (calc.py:18-23) rundet jede Zeile einzeln mit Decimal ROUND_HALF_UP und summiert dann. Dadurch weichen Zeilen-Gesamt, Netto, USt und Brutto im Schritt „Prüfen“ regelmäßig um 1 Cent vom Beleg ab. Gleiches in offer_form.html:355-364.",
+   "evidence": "invoice_form.html:422-424 `const qty = parseFloat((qtyEl ? qtyEl.value : '0').replace(',', '.')) || 0; const price = parseFloat(...) || 0; const line = qty * price;` · Z.431 `net += line;` · Z.435 `const vat = net * vatRate / 100;` · Z.255-259 `fmtMoney(v){... n.toFixed(2)...}`. Server calc.py:18-22 quantize(CENT, ROUND_HALF_UP). Nachgerechnet: 2,5 × 33,33 → JS „83,32 €“, Server 83.33.",
+   "scenario": "Nutzer trägt Position 2,5 Std. × 33,33 € ein. Live-Zeile und Prüfen-Schritt zeigen 83,32 € netto; nach „Rechnung erstellen“ steht auf PDF/XML 83,33 €.",
+   "impact": "Der Nutzer bestätigt im Prüfen-Schritt einen anderen Betrag als der, der auf Rechnung/ZUGFeRD-XML landet; bei Kundenrückfragen entstehen Cent-Differenzen.",
+   "fix": "Zeilenbetrag clientseitig in Integer-Cents rechnen mit kaufmännischer Rundung, jede Zeile erst runden, dann summieren – exakt wie calc._totals.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: invoice_form.html:422-424 `line = qty * price` (Float), Z.431 `net += line`, Z.435 `vat = net * vatRate / 100`, Anzeige erst über `toFixed(2)` (Z.255-259). offer_form.html:353-364 identisch. Server services/calc.py:18-23 rundet jede Zeile mit Decimal ROUND_HALF_UP und summiert dann. Nachgerechnet: `node -e '(2.5*33.33).toFixed(2)'` → 83.32 (Float 83.32499999999999); Decimal('2.5')*Decimal('33.33') quantize HALF_UP → 83.33. Im Prüfen-Schritt (Z.516 `fmtMoney(lastGross)`) steht also ein anderer Betrag als auf PDF/XML. Der gespeicherte Beleg selbst ist korrekt, daher mittel angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachgerechnet: 2.5*33.33 ergibt in JS 83.32499999999999, toFixed(2) → „83,32“; Server calc.py:18-22 quantize(CENT, ROUND_HALF_UP) je Zeile → 83.33. invoice_form.html:422-424/431/435 und offer_form.html:349-364 rechnen ungerundet als Float und runden nur bei der Anzeige (fmtMoney Z.255-259). Der gespeicherte Beleg ist korrekt, nur der Prüfen-Schritt/Live-Summe weicht ab – daher „mittel“ (Randfall-Fehlverhalten), nicht „hoch“. Keine JS-Tests vorhanden, die das abfangen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Doppelklick auf „Diktat starten“ während der Mikrofon-Freigabe startet zwei MediaRecorder – erster Stream wird nie gestoppt, Mikrofon bleibt offen",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 334,
+   "severity": "mittel",
+   "description": "Der Klick-Handler prüft nur `busy` und `recording`. `recording` wird erst in `markRecording()` gesetzt, das nach Auflösung von `getUserMedia()` läuft (Freigabe-Dialog kann Sekunden dauern). Ein zweiter Klick in dieser Zeit ruft `startWhisperRecording()` erneut auf; `mediaStream`/`mediaRecorder` werden überschrieben, der erste Recorder und Stream bleiben aktiv und sind für Stop nicht mehr erreichbar.",
+   "evidence": "offer_ai.js:332-337 `recordBtn.addEventListener('click', function () { if (busy) return; if (!recording) { if (whisperAvailable) startWhisperRecording(); else startWebSpeechRecording(); return; }` · Z.196-212 `navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) { mediaStream = stream; ... mediaRecorder = ...; mediaRecorder.start(); markRecording();` · Stopp Z.340-344 stoppt nur `mediaRecorder`",
+   "scenario": "Nutzer klickt „Diktat starten“, der Browser zeigt den Mikrofon-Freigabedialog; der Nutzer klickt ungeduldig ein zweites Mal. Nach der Freigabe laufen Recorder A und B. „Diktat beenden“ stoppt B; Recorder A nimmt mit offenem Mikrofon weiter auf, bis die Seite verlassen wird.",
+   "impact": "Mikrofon bleibt unbemerkt aktiv, obwohl die UI „beendet“ meldet – für ein Tool mit Datenschutzzusage zum Diktat heikel.",
+   "fix": "Beim Klick sofort `busy = true`/Button disabled setzen, bis `getUserMedia` aufgelöst ist; vor dem Start prüfen, ob `mediaRecorder && mediaRecorder.state !== 'inactive'`, und alte Tracks stoppen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: offer_ai.js:332-337 prüft nur `busy` und `recording`; `recording` wird erst in `markRecording()` (Z.103) gesetzt, das in der `.then()` von `getUserMedia` (Z.196-212) läuft. Zweiter Klick vor Freigabe → zweiter Aufruf von `startWhisperRecording()`, `mediaStream`/`mediaRecorder` (Z.197, 200) werden überschrieben. Stopp (Z.340-344) und beforeunload (Z.566-567) stoppen nur die aktuelle Referenz; Recorder/Stream A bleiben aktiv, nur die `onstop`-Closure von A könnte seine Tracks stoppen, wird aber nie aufgerufen. `setBusy` wird beim Start nicht gerufen. Audio von A wird nie hochgeladen (kein Upload ohne onstop), aber das Mikrofon bleibt trotz UI-„beendet“ offen. mittel vertretbar.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "offer_ai.js:332-337 prüft nur `busy` und `recording`; `busy` wird in startWhisperRecording (Z.195-218) nie gesetzt, `recording` erst in markRecording() nach Auflösung von getUserMedia (Z.212). Ein zweiter Klick im Wartefenster überschreibt mediaStream/mediaRecorder (Z.197, 200); der erste Recorder wird weder beim Stopp (Z.340-344, nur aktueller mediaRecorder) noch bei beforeunload (Z.564-569, nur aktueller mediaStream) beendet. Kein Guard, kein Test. „mittel“ wegen offenem Mikrofon trotz „beendet“-Anzeige angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "SEDO.vbs startet ab dem zweiten Start ohne migrate/Paketinstallation und ohne Server-Log – Updates führen zu 500ern, Fehler sind nicht nachvollziehbar",
+   "file": "SEDO.vbs",
+   "line": 54,
+   "severity": "mittel",
+   "description": "Nur wenn `.venv` oder die Datenbankdatei fehlen, ruft SEDO.vbs START_WINDOWS.bat (mit pip install/migrate) auf. Sonst wird `runserver` direkt und unsichtbar gestartet – ohne `migrate`, ohne Abgleich von requirements.txt und ohne Umleitung von stdout/stderr. Der Mac-Starter macht beides bei jedem Start und schreibt logs/server.log.",
+   "evidence": "SEDO.vbs:46 `If (Not fso.FolderExists(dir & \"\\.venv\")) Or (Not fso.FileExists(dir & \"\\data\\sedo_web.sqlite3\")) Then` … Z.53-54 `Else sh.Run \"cmd /c cd /d \"\"\" & dir & \"\"\" && .venv\\Scripts\\python.exe manage.py runserver 0.0.0.0:8000\", 0, False` – kein migrate, kein pip, kein Log. Vergleich SEDO.app…/sedo:62 `migrate --noinput >> logs/setup.log` und :75 `nohup … >> logs/server.log`.",
+   "scenario": "Der Projektordner wird auf dem Windows-Rechner per Kopie aktualisiert (neue Migration, neues Paket). Der Nutzer startet über die Verknüpfung (SEDO.vbs). Der Server startet mit unmigrierter DB bzw. fehlendem Paket: 500er oder Server stirbt sofort; die VBS-Meldung sagt nur „Server nicht gestartet“, kein Log.",
+   "impact": "Nach jedem Update arbeitet der Windows-Nutzer mit kaputter App oder muss START_WINDOWS.bat manuell kennen; Ursachenanalyse ohne Log unmöglich.",
+   "fix": "Im Else-Zweig vor `runserver` immer `migrate --noinput` ausführen und einen requirements-Hash prüfen; stdout/stderr nach `logs\\server.log` umleiten; Fehlermeldung auf die Datei verweisen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: SEDO.vbs:46 verzweigt nur bei fehlendem `.venv` oder fehlender `data\\sedo_web.sqlite3` in START_WINDOWS.bat (dort pip install Z.6, migrate Z.10). Sonst Z.54 `cmd /c ... runserver 0.0.0.0:8000` mit Fenster 0 (unsichtbar), ohne migrate, ohne pip, ohne Umleitung. Mac-Pendant SEDO.app/Contents/MacOS/sedo:55/62/75 macht pip, `migrate --noinput` und `>> logs/server.log` bei jedem Start. DESKTOP_VERKNUEPFUNG_ERSTELLEN.bat:3 verknüpft den Desktop-Start mit SEDO.vbs, README:14 nennt SEDO.vbs als Programmfenster-Start. Nach Ordner-Update mit neuer Migration läuft Django mit unmigrierter DB → 500er; Fehlermeldung Z.66-68 verweist nur auf START_WINDOWS.bat. mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "SEDO.vbs:46-55 verifiziert: Nur bei fehlendem .venv oder fehlender DB läuft START_WINDOWS.bat (mit pip install + migrate); sonst Z.54 `runserver` unsichtbar (Fenster 0), ohne migrate, ohne Log-Umleitung. Mac-Starter SEDO.app/Contents/MacOS/sedo führt dagegen bei jedem Start `migrate --noinput >> logs/setup.log` aus und loggt nach logs/server.log. README.md:12-14 dokumentiert SEDO.vbs weiterhin als Windows-Startweg, also kein Altlast-Skript. Einschränkung: Seit v2.3.1 (CHANGELOG) gibt es zusätzlich den Setup.exe-Weg über desktop.py, das migrate ausführt (desktop.py:73) – der Fund trifft nur den klassischen Ordner-Starter. „mittel“ vertretbar.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "KI-Befüllung reaktiviert Positionszeilen, die per „Löschen“-Haken markiert sind – Position verschwindet stillschweigend beim Speichern",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 447,
+   "severity": "niedrig",
+   "description": "`nextEmptyRow()` wählt jede Zeile mit leerer Bezeichnung, auch solche mit gesetzter DELETE-Checkbox; `clearAllRows()` leert Werte, setzt den DELETE-Haken aber nicht zurück. Eine so befüllte Zeile wird vom Server beim Speichern verworfen, obwohl sie sichtbar mit KI-Werten gefüllt ist.",
+   "evidence": "offer_ai.js:443-450 `function nextEmptyRow() { ... if (inp.d && !inp.d.value.trim()) return rows[i]; }` (keine DELETE-Prüfung) · Z.430-441 `clearAllRows` setzt nur d/lt/q/u/p/a, kein `-DELETE` · Formset mit `can_delete=True` (forms.py:131).",
+   "scenario": "Nutzer legt 3 Positionen an, hakt bei Position 2 „Löschen“ an und leert deren Bezeichnung, startet dann „Angebot erzeugen“. Die KI füllt Position 2 wieder; die Zeile sieht gefüllt aus. Nach „Angebot erstellen“ fehlt die Position im PDF.",
+   "impact": "Angebot mit fehlender Leistung wird erzeugt und ggf. versendet.",
+   "fix": "In `nextEmptyRow()` Zeilen mit gesetztem `-DELETE` überspringen und in `clearAllRows()`/`fillPositions()` den DELETE-Haken zurücksetzen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: offer_ai.js:443-450 `nextEmptyRow()` prüft nur `inp.d.value.trim()`, kein `-DELETE`; `clearAllRows()` (Z.430-441) setzt d/lt/q/u/p/a zurück, nicht den DELETE-Haken; `rowInputs` (Z.408-417) kennt DELETE gar nicht. offer_form.html:150 rendert `{{ f.DELETE }}` je Zeile, Formset forms.py:131 `can_delete=True` → Django verwirft die Zeile beim Speichern. Sogar einfacher als beschrieben: bei vorhandenen Positionen mit einer gelöscht markierten Zeile und „OK = ersetzen“ wird genau diese Zeile befüllt und beim Speichern verworfen. Mildernd: der rote ×-Haken bleibt sichtbar (app.css:215 `:checked` rot) und `recalcTotals` (offer_form.html:351-352) lässt die Zeile in der Summe weg. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "offer_ai.js:443-450 nextEmptyRow prüft nur die Bezeichnung, nicht `-DELETE`; clearAllRows (Z.430-441) setzt d/lt/q/u/p/a zurück, den DELETE-Haken nicht. Realistischerer Pfad als im Szenario: Nutzer hakt Position 2 zum Löschen an (Bezeichnung bleibt), startet KI, bestätigt „ersetzen“ → clearAllRows leert die Zeile, sie wird neu befüllt, DELETE bleibt gesetzt → Server verwirft sie (forms.py:131 can_delete=True, views _preview_from_forms Z.255 überspringt DELETE). Abschwächend: der gesetzte Haken ist per CSS (app.css:215, :checked rot hinterlegt) sichtbar und recalcTotals lässt die Zeile aus der Summe – „niedrig“ passt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Enter im Kundensuchfeld ohne Treffer springt im Assistenten zum nächsten Schritt statt die Suche zu behandeln",
+   "file": "sedo/static/sedo/customer_search.js",
+   "line": 88,
+   "severity": "niedrig",
+   "description": "Der Keydown-Handler der Kundensuche bricht bei leerer Trefferliste ohne `preventDefault/stopPropagation` ab. Der Formular-Keydown-Handler des Assistenten wertet Enter in `type=search` als „Weiter“.",
+   "evidence": "customer_search.js:86-88 `input.addEventListener('keydown', function (e) { var items = currentItems(); if (list.hidden || !items.length) return;` · wizard.js:25 `ENTER_TYPES = ['text','number','date','email','tel','url','search',...]` und Z.172-179 `e.preventDefault(); if (index < steps.length - 1) next();`.",
+   "scenario": "Nutzer tippt einen Namen, der nicht als Kunde existiert, und drückt Enter. Der Assistent wechselt zu „Leistungsort“, ohne dass ein Kunde gewählt wurde.",
+   "impact": "Verwirrender Sprung; Nutzer glaubt ggf., der Kunde sei übernommen.",
+   "fix": "Im Such-Keydown Enter immer abfangen, auch bei leerer Liste; alternativ im Wizard Enter für `#customer-search` ausnehmen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: customer_search.js:86-88 `if (list.hidden || !items.length) return;` – bei Suche ohne Treffer rendert `render()` (Z.46-50) nur das „Kein Kunde gefunden“-Div, `items` ist leer → Handler beendet ohne preventDefault/stopPropagation. Das Suchfeld (invoice_form.html:42, `type=search`) liegt im `<form id=invoice-form>`; wizard.js:165-180 fängt Enter auf dem Formular ab, `search` steht in ENTER_TYPES (Z.25), `next()` (Z.179) wechselt zu Schritt 2. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "customer_search.js:86-88: Bei `!items.length` (Trefferliste zeigt nur den „Kein Kunde gefunden“-Hinweis, keine .customer-search-item) wird ohne preventDefault/stopPropagation zurückgekehrt. wizard.js:25 nimmt type=search in ENTER_TYPES auf, Z.165-180 ruft next(). Der Kommentar in customer_search.js:98-99 zeigt, dass der Autor genau diesen Sprung verhindern wollte – der Leerfall ist ein Versehen, keine bewusste Entscheidung. Auswirkung gering (Sprung zu Schritt 2, kein Datenfehler): „niedrig“ korrekt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Toasts sind die einzige Anzeige für Django-Fehlermeldungen und verschwinden nach 5–8 s – lange Fehlertexte (SMTP, FinTS, Import, Workflow) sind nicht nachlesbar",
+   "file": "sedo/templates/sedo/base.html",
+   "line": 162,
+   "severity": "niedrig",
+   "description": "Alle `messages.*` werden ausschließlich als auto-schließende Toasts gerendert; es gibt keinen persistenten Meldungsbereich. views.py enthält 35 `messages.error/warning`-Aufrufe, darunter Meldungen mit Exceptiontext oder Handlungsanweisungen.",
+   "evidence": "base.html:161-163 `const delay = level === 'error' ? 8000 : 5000; setTimeout(() => dismiss(toast), delay);` · Z.95-99: Messages nur in `window.__sedoMessages`, kein serverseitiges Fallback-Markup.",
+   "scenario": "SMTP-Versand schlägt fehl; der Toast zeigt „E-Mail-Versand fehlgeschlagen: (535, …)“ und ist nach 8 s weg. Der Text ist nirgends mehr abrufbar.",
+   "impact": "Fehlerursachen gehen verloren; bei Toasts während eines Datei-Downloads sieht der Nutzer sie u. U. gar nicht.",
+   "fix": "Fehler-/Warn-Toasts nicht automatisch schließen, oder zusätzlich einen Fallback-Block `{% for message in messages %}` im Content rendern.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: base.html:95-99 übergibt Messages nur an `window.__sedoMessages`; Z.161-163 `delay = level === 'error' ? 8000 : 5000; setTimeout(() => dismiss(toast), delay)`. `grep -rl 'for message in messages' sedo/templates` trifft nur base.html – kein serverseitiges Fallback. 35 `messages.error/warning`-Aufrufe in views.py bestätigt (z. B. Z.802, 872, 1392 mit Exceptiontext). niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "base.html:95-99 gibt Messages ausschließlich nach window.__sedoMessages, Z.161-163 schließt Toasts nach 5/8 s automatisch; grep über sedo/templates findet kein anderes `{% for message in messages %}`-Markup. Damit sind serverseitige Fehlertexte (z. B. WorkflowError-Texte aus invoice_reminder views.py:1391) nach 8 s nicht mehr abrufbar. Bewusste Toast-Entscheidung (CHANGELOG v2.1 UX-Runde), aber ohne Fallback – „niedrig“ ist angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Angebotsdetail: Spalte „Gesamt“ zeigt keinen Zeilenbetrag, sondern „Menge × Einzelpreis“",
+   "file": "sedo/templates/sedo/offer_detail.html",
+   "line": 4,
+   "severity": "niedrig",
+   "description": "OfferItem hat – anders als InvoiceItem (models.py:230) – keine `line_total`-Property; das Template füllt die „Gesamt“-Spalte mit dem Ausdruck statt dem Betrag.",
+   "evidence": "offer_detail.html:4 `<th>Gesamt</th> … <td>{{ p.quantity|floatformat:2 }} × {{ p.unit_price }} €</td>`.",
+   "scenario": "Angebot mit 12,5 m² × 4,80 €: In der Spalte „Gesamt“ steht „12,50 × 4,80 €“ statt „60,00 €“.",
+   "impact": "Irreführende Tabellenüberschrift, erschwerte Kontrolle vor „Angenommen“.",
+   "fix": "`line_total`-Property analog InvoiceItem an OfferItem ergänzen und im Template ausgeben.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: offer_detail.html:4 `<th>Gesamt</th>` … `<td>{{ p.quantity|floatformat:2 }} × {{ p.unit_price }} €</td>`. models.py:304-316 OfferItem hat keine `line_total`-Property (InvoiceItem Z.229-231 und RecurringInvoiceItem Z.268-270 schon). invoice_detail.html:64 gibt korrekt `{{ p.line_total }}` aus. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "offer_detail.html:4: Spalte „Gesamt“ enthält `{{ p.quantity|floatformat:2 }} × {{ p.unit_price }} €`. models.py:304-315 OfferItem hat keine line_total-Property (nur InvoiceItem Z.230 und RecurringInvoiceTemplate Z.269). invoice_detail.html:64 zeigt dagegen `{{ p.line_total }} €`. Belegt, Auswirkung nur Anzeige – „niedrig“.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Login-Seite ohne Viewport-Meta und ohne Cache-Busting – auf Handy via Tunnel unlesbar klein",
+   "file": "sedo/templates/registration/login.html",
+   "line": 1,
+   "severity": "niedrig",
+   "description": "base.html setzt `<meta name=\"viewport\">` und versionierte Assets, die eigenständige Login-Seite nicht. Die App ist zeitweise per Tunnel (auch mobil) erreichbar.",
+   "evidence": "login.html:1 `<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><title>SEDO Login</title><link rel=\"stylesheet\" href=\"/static/sedo/app.css\"></head>` – kein viewport-Meta; base.html:5 `<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">`.",
+   "scenario": "Nutzer öffnet die Tunnel-URL am Smartphone: Login-Formular wird in Desktop-Breite gerendert.",
+   "impact": "Erster Eindruck/Bedienbarkeit mobil; inkonsistent zur restlichen App.",
+   "fix": "Login-Template von base.html-Head ableiten (Viewport, `app.css?v=…`, `autofocus`).",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: login.html:1 enthält nur `<meta charset>` und `<link href=\"/static/sedo/app.css\">` ohne Versionsparameter; base.html:5 setzt `<meta name=\"viewport\" ...>` und Z.7 `app.css?v=3_23`. config/urls.py:9 nutzt genau dieses Template für LoginView. Fehlendes viewport-Meta rendert auf Mobilgeräten in Desktop-Breite. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "registration/login.html:1 ist eigenständiges Markup ohne `<meta name=viewport>` und lädt `/static/sedo/app.css` ohne `?v=`; base.html:5/7 hat beides. config/urls.py:9 nutzt genau dieses Template für LoginView. DEPLOYMENT_SECURITY_NOTES/CHANGELOG dokumentieren Tunnel-/Heimnetzbetrieb (v2.0.1), also ist mobiler Zugriff vorgesehen. Belegt, „niedrig“.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Private E-Mail-Adresse des Entwicklers als Platzhalter im Einstellungs-Formular ausgeliefert",
+   "file": "sedo/templates/sedo/settings.html",
+   "line": 60,
+   "severity": "niedrig",
+   "description": "Das Feld „Test-E-Mail senden an“ zeigt eine persönliche Gmail-Adresse als `placeholder` (nicht die Firmenadresse wie in Z.33). Die Adresse wird an alle Nutzer/Installationen ausgeliefert.",
+   "evidence": "settings.html:60 `<input name=\"test_email\" type=\"email\" placeholder=\"…@gmail.com\">` (Adresse hier bewusst nicht wiedergegeben).",
+   "scenario": "Ein Mitarbeiter öffnet Einstellungen → SMTP-Test; der Platzhalter suggeriert eine Zieladresse und landet ggf. per Klick/Autofill als Testempfänger.",
+   "impact": "Unnötige Weitergabe einer privaten Adresse in einem Kundenprodukt; Verwechslungsgefahr.",
+   "fix": "Neutralen Platzhalter (z. B. `name@firma.de`) verwenden oder mit der konfigurierten Absenderadresse vorbelegen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 9,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: settings.html:60 `<input name=\"test_email\" type=\"email\" placeholder=\"…@gmail.com\">` enthält eine private Gmail-Adresse als Platzhalter, während Z.33 die Firmenadresse nutzt. Einschränkung zum Szenario: Ein `placeholder` wird nicht mit abgeschickt und nicht per Klick übernommen; die Weitergabe der Adresse im Markup an alle Installationen bleibt aber. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 9,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "settings.html:60 enthält als placeholder eine private @gmail.com-Adresse (identisch mit der Entwickler-Adresse, verifiziert per grep, nicht wiedergegeben), während Z.33 (SMTP-Benutzer) die Firmendomain sedo-magdeburg.de als Platzhalter nutzt. Kein funktionaler Fehler, aber unnötige Weitergabe – „niedrig“ korrekt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Plausibilitäts-Check feuert beim Laden vorbefüllter Formulare, weil das Skript vor dem Wizard-Init läuft",
+   "file": "sedo/static/sedo/plausibility.js",
+   "line": 141,
+   "severity": "niedrig",
+   "description": "Der Fallback „ohne Assistent einmal beim Laden prüfen“ testet `step.offsetParent !== null`. Zu diesem Zeitpunkt hat wizard.js (DOMContentLoaded) die Klasse `wizard-ready` noch nicht gesetzt, alle Schritte sind sichtbar – der Test ist immer wahr. Bei vorbefüllten Positionen geht deshalb sofort ein POST an /api/ki/plausibilitaet/, obwohl der Nutzer auf Schritt 1 steht; beim Erreichen von „Prüfen“ läuft er erneut.",
+   "evidence": "plausibility.js:140-141 `if (!document.querySelector('[data-wizard]') || step.offsetParent !== null) runLocalCheck();` · app.css:375 `.wizard-ready .wizard-step{display:none}` · wizard.js:233 `document.addEventListener('DOMContentLoaded', …)` setzt `wizard-ready` erst dort; plausibility.js wird in invoice_form.html:554 als normales Skript vor DOMContentLoaded ausgeführt.",
+   "scenario": "„Als Rechnung bearbeiten“ aus einem Angebot mit 8 Positionen: Beim Öffnen wird sofort der lokale Check gegen die Kundenhistorie ausgeführt; die Arbeit ist doppelt.",
+   "impact": "Überflüssige Requests und DB-Abfragen je Formularaufruf. Kein Datenfehler.",
+   "fix": "Fallback auf `document.querySelector('[data-wizard]') === null` beschränken oder den Initialcheck nach dem Wizard in `DOMContentLoaded` verschieben.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: plausibility.js:141 `if (!document.querySelector('[data-wizard]') || step.offsetParent !== null) runLocalCheck();` läuft synchron beim Laden (invoice_form.html:554 im content-Block, noch vor wizard.js in base.html:92). `wizard-ready` wird erst in wizard.js:202 innerhalb DOMContentLoaded (Z.233) gesetzt; nur `.wizard-ready .wizard-step{display:none}` (app.css:375) blendet Schritte aus → zu diesem Zeitpunkt ist `offsetParent !== null` immer wahr. `runLocalCheck` (Z.123-135) postet bei vorhandenen Bezeichnungen (from_offer/correction, views.py:807-814/830) sofort an /api/ki/plausibilitaet/ und erneut beim wizard:step-Event (Z.137-139). Nur lokaler Check, keine KI, kein Datenfehler. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "plausibility.js wird in invoice_form.html:554 (offer_form.html:500) als normales Body-Skript geladen und läuft damit vor DOMContentLoaded; wizard.js:233-242 setzt `wizard-ready` erst in DOMContentLoaded, app.css:375 versteckt Schritte erst mit dieser Klasse. Folglich ist plausibility.js:141 `step.offsetParent !== null` beim Laden immer wahr und runLocalCheck() feuert, sobald Positionen vorbefüllt sind (views.py:807-814 from_offer, 828 correction). Beim späteren Erreichen von step-pruefen (Z.137-139) läuft er erneut. Nur ein überflüssiger POST – „niedrig“.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Vorbefüllte Formulare (?customer=, Angebot, Korrektur, Fehler-Rerender) haben keinen JS-Zustand: Kunden-Pill fehlt, Objektliste ungefiltert mit irreführendem Hinweis, Objektwahl blankt Adressfelder",
+   "file": "sedo/templates/sedo/invoice_form.html",
+   "line": 374,
+   "severity": "niedrig",
+   "description": "Objektfilterung, Pill und Adress-Autofill hängen ausschließlich am `change`-Event der Kundenauswahl. Serverseitig vorbelegte Selects lösen es nicht aus; die serverseitig gerenderten `<option>`s des Objekt-Selects tragen keine `data-*`-Attribute. Der Hinweis „Wähle zuerst einen Kunden“ steht dann neben einer Liste aller Objekte aller Kunden. Gleiches in offer_form.html.",
+   "evidence": "invoice_form.html:374-378 `fill('id_object_name', opt.dataset.name || opt.text.split(' – ')[0]); fill('id_object_street', opt.dataset.street); …` · Z.246-252 `fill()` schreibt `''` bei `undefined` · Z.343-365 `updateObjectDropdown` nur aus dem Kunden-`change`-Handler · forms.py:29-33 `obj` Queryset = alle CustomerObjects.",
+   "scenario": "Aus der Kundenakte „Rechnung“ klicken (?customer=…): Schritt 1 zeigt gefüllte Kopfdaten, aber keine Kunden-Pill; Schritt 2 listet alle Objekte (auch fremder Kunden). Wählt der Nutzer sein Objekt, werden Straße/PLZ/Ort auf leer gesetzt.",
+   "impact": "Fehlleitende UI in genau den Einstiegen, die Zeit sparen sollen; erhöht die Wahrscheinlichkeit des Fremd-Objekt-Fehlers.",
+   "fix": "Beim Laden, wenn `#id_customer` einen Wert hat, den Kunden-`change`-Handler einmal auslösen; Objekt-Queryset serverseitig auf den Kunden einschränken.",
+   "effort": "M",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 11,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: views.py:831-834 (`?customer=`), 804-806 (from_offer) und 822-829 (correction) setzen `initial['customer']`/`initial['obj']`; das Kunden-`change`-Event wird in invoice_form.html nur bei Nutzeraktion bzw. Clear-Button (Z.336) ausgelöst, nicht beim Laden. Pill/Objektfilter hängen ausschließlich am Handler Z.283-329. forms.py:29-33 `obj`-Queryset = alle CustomerObjects, Hinweis Z.87 bleibt stehen. Serverseitig gerenderte `<option>`s haben keine `data-*`; Z.375-377 `fill('id_object_street', opt.dataset.street)` → `fill()` Z.249 schreibt `''`. Links mit `?customer=` existieren (customer_detail.html:8/40, customer_list.html:5). offer_form.html:250-345 gleich; offer_create (views.py:1123) wertet `?customer=` sogar gar nicht aus. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 11,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "invoice_form.html: Kunden-`change`-Handler (Z.283-329) wird beim Laden nicht ausgelöst (dispatchEvent nur im Clear-Button Z.336); forms.py:29-33 liefert alle CustomerObjects; Django-Select rendert Optionen ohne data-*, sodass objSel-change (Z.374-378) `fill(..., undefined)` → '' setzt (fill Z.249). views.py:787-833 setzt bei ?customer=/from_offer/correction_of nur initial['customer'/'obj']. Abschwächung: Serverseitig nimmt `_object_from_invoice_form` (views.py:234-237) bei gewähltem obj immer das Objekt, die geleerten Adressfelder wirken sich also nicht auf den Beleg aus; die Objektliste ist aber tatsächlich kundenübergreifend und der Server prüft nicht, ob obj zum Kunden gehört. „niedrig“ passt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Irreversible GoBD-relevante Aktionen (Mahnung, Erinnerung, Batch „Nächste Stufe für alle“) per Ein-Klick-Button ohne Bestätigungsdialog – nur Storno fragt nach",
+   "file": "sedo/templates/sedo/invoice_detail.html",
+   "line": 16,
+   "severity": "niedrig",
+   "description": "Mahnschreiben/Erinnerungen erzeugen Dokumente und Statuswechsel, die nicht gelöscht werden; die Buttons stehen ohne `confirm()` direkt neben harmlosen Aktionen. Auf dem Dashboard löst ein Klick den Batch für alle Kandidaten aus.",
+   "evidence": "invoice_detail.html:16-17 `<form method=\"post\" action=\"{% url 'sedo:invoice_reminder' invoice.pk 'reminder' %}\" …><button type=\"submit\" class=\"btn\">Zahlungserinnerung</button></form>` (kein onsubmit) · dashboard.html:21-24 `<button class=\"btn primary\" type=\"submit\">Nächste Stufe für alle</button>` · Einziges confirm: invoice_detail.html:18 (Storno).",
+   "scenario": "Nutzer will „Zahlung erfassen“ und trifft daneben „Mahnung“: sofort entsteht ein Mahndokument, Status wechselt auf „gemahnt“; auf dem Dashboard erzeugt ein Fehlklick Mahnschreiben für alle 9 Kandidaten.",
+   "impact": "Ungewollte Mahnungen an Kunden, nicht rückgängig zu machende Belege.",
+   "fix": "`onsubmit=\"return confirm('…')\"` bzw. Zwischenseite mit Betrag/Stufe für Mahnung, Erinnerung und Batch; Batch-Button auf dem Dashboard durch Link zur Offene-Posten-Seite ersetzen.",
+   "effort": "S",
+   "dimension": "frontend-js-templates_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 12,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: invoice_detail.html:16-17 Formulare für reminder/dunning ohne `onsubmit`-confirm, einziges confirm Z.18 (Storno); dashboard.html:21-24 Batch-Formular `kind=auto` ohne Rückfrage. views.py:1381-1396 `invoice_reminder` erzeugt sofort per generate_dunning_document (dunning.py:76-169) ein PDF, DunningDocument-Datensatz und setzt Status `gemahnt` (Z.166-168); bulk_dunning (views.py:1223-1241) verarbeitet ohne IDs alle Kandidaten. Impact-Korrektur: Es wird keine E-Mail an Kunden versendet – nur PDF/Datensatz erzeugt und Status geändert; Doppelmahnung derselben Stufe und Erinnerung nach Mahnung werden durch ensure_dunning_allowed (dunning.py:58-73) blockiert, Batch nimmt nur fällige Kandidaten. Nicht rückgängig machbarer Statuswechsel und Beleg bleiben. niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 12,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "invoice_detail.html:16-17 (Erinnerung/Mahnung) und dashboard.html:21-24 (Batch) haben kein onsubmit/confirm; einziges confirm ist Storno Z.18. views.py:1381-1396 ensure_dunning_allowed blockiert nur Wiederholungen derselben Stufe, nicht den ersten Fehlklick; bulk_dunning (Z.1223-1240) mahnt ohne Auswahl alle Kandidaten. DunningDocument ist nur über /admin löschbar (admin.py:40), im UI nicht. Nutzerseitig also real, aber reine UX-Absicherung ohne Datenfehler – „niedrig“ angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  }
+ ]
+}

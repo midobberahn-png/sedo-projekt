@@ -1,0 +1,17 @@
+Django>=5.2,<6.1
+# Statische Dateien bei DEBUG=0 (sicherer Default seit v3.22)
+whitenoise
+# Echte Kontoanbindung (FinTS, rein lesender Umsatzabruf, seit v2.3)
+fints
+mt-940
+pandas
+openpyxl
+reportlab
+pypdf
+lxml
+python-dateutil
+qrcode[pil]
+# Lokale Spracherkennung für das KI-Diktat (optional – ohne fällt die App
+# automatisch auf die Browser-Spracherkennung zurück). Erstes Diktat lädt
+# das Whisper-Modell (~460 MB) einmalig herunter, danach offline.
+faster-whisper

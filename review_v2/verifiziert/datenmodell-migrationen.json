@@ -1,0 +1,307 @@
+{
+ "modus": "verifizieren",
+ "dimension": "datenmodell-migrationen",
+ "ergebnis": [
+  {
+   "title": "Ein Status-Feld für Zahlstatus UND Lebenszyklus: Zahlung überschreibt „korrigiert“ und öffnet Doppel-Storno",
+   "file": "sedo/services/calc.py",
+   "line": 45,
+   "severity": "hoch",
+   "description": "Invoice.status (models.py:133) kodiert gleichzeitig den Zahlungsstatus (erstellt/teilbezahlt/bezahlt/ueberfaellig/gemahnt) und den Belegzustand (entwurf/storniert/korrigiert). refresh_invoice_payment_status() schützt nur 'storniert' und schreibt bei jeder Zahlung den Zahlstatus zurück – damit geht die Sperre 'korrigiert' verloren. Die Workflow-Guards (ensure_storno_allowed, Template-Buttons) prüfen die Korrektur-Sperre aber ausschließlich über diesen Status.",
+   "evidence": "calc.py:45-53: `if invoice.status == 'storniert': return invoice` … `if paid >= invoice.gross_total …: invoice.status = 'bezahlt'` `elif paid > Decimal('0.00'): invoice.status = 'teilbezahlt'`; invoices.py:44: `if original.status == 'korrigiert': … raise WorkflowError`; invoice_detail.html:13 (Button ohne Guard): `<a class=\"btn primary\" href=\"{% url 'sedo:invoice_add_payment' invoice.pk %}\">Zahlung erfassen</a>`; forms.py:137: `ManualPaymentAssignForm … queryset=Invoice.objects.all()`",
+   "scenario": "Rechnung A wurde korrigiert (status='korrigiert', aktive Korrekturrechnung B). Nutzer klickt auf A „Zahlung erfassen“ oder ordnet eine Bankbuchung manuell A zu. refresh_invoice_payment_status setzt A.status='bezahlt' bzw. 'teilbezahlt'. Jetzt zeigt invoice_detail wieder den Storno-Button, ensure_storno_allowed passiert, der DB-Constraint invoice_unique_active_storno kennt nur Stornos → Stornorechnung C wird erzeugt. Zu A existieren gleichzeitig Korrektur B und Storno C.",
+   "impact": "Der Ursprungsbeleg wird doppelt neutralisiert (Korrektur + Storno), der Kunde erhält faktisch zwei Gutschriften; Auswertungen stimmen nicht; GoBD-Nachvollziehbarkeit der Belegkette verletzt. Gleiches gilt für 'entwurf'.",
+   "fix": "Lebenszyklus vom Zahlstatus trennen (eigenes Feld) oder minimal: in refresh_invoice_payment_status `if invoice.status in ('storniert', 'korrigiert', 'entwurf'): return invoice`; ensure_storno_allowed/ensure_correction_allowed zusätzlich auf active_correction/active_storno prüfen; Zahlungserfassung für korrigierte Rechnungen blockieren; ManualPaymentAssignForm-Queryset einschränken. Regressionstest.",
+   "effort": "M",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert (In-Memory-Test-DB): Rechnung A status='korrigiert' mit aktiver Korrektur B; Zahlung auf A erfasst → refresh_invoice_payment_status (calc.py:45 schützt nur 'storniert', :50-53 setzt 'bezahlt'/'teilbezahlt') überschreibt A.status='bezahlt'. Danach passiert ensure_storno_allowed (invoices.py:38-47): Zeile 40 prüft nur active_storno, Zeile 44 greift nicht mehr, da status != 'korrigiert' – Storno wird zugelassen, obwohl active_correction=B existiert. Der DB-Constraint invoice_unique_active_storno (models.py:160-165) verhindert nur ein zweites Storno, nicht Storno+Korrektur nebeneinander. Eingangspfade sind real: invoice_detail.html:13 zeigt „Zahlung erfassen“ ohne Status-Guard, invoice_add_payment (views.py:1245-1257) und invoice_mark_paid (:1272-1289) prüfen den Status nicht, ManualPaymentAssignForm (forms.py:137) bietet alle aktiven Rechnungen an. Nur der Bankimport ist geschützt (payments.py:55-59 leitet auf die Korrektur um). Schwere hoch bleibt: Ursprungsbeleg wird durch Korrektur UND Storno doppelt neutralisiert – falsche Belegkette, GoBD-relevant; bei 2 Nutzern ist eine manuelle Zahlung auf die alte Nummer ein realistischer Bedienfehler.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachgelesen: calc.py:45-53 schützt nur 'storniert'; jede Zahlung setzt 'bezahlt'/'teilbezahlt'. invoice_detail.html:13 bietet „Zahlung erfassen“ ohne Bedingung, views.py:1245-1257 (invoice_add_payment) und 1343-1356 (payment_assign, Form-Queryset forms.py:137 = Invoice.objects.all()) rufen refresh_invoice_payment_status ohne Statusprüfung. Danach zeigt Template Z.18 den Storno-Button wieder (prüft nur status != 'korrigiert' und not active_storno), und ensure_storno_allowed (invoices.py:33-47) prüft active_correction ebenfalls nur bei status=='korrigiert'. Der DB-Constraint invoice_unique_active_storno (models.py:160-165) kennt keine Korrekturen. Kein Test deckt „Zahlung auf korrigierte Rechnung → Statusverlust“ ab (test_workflow_locks.py:58 setzt den Status nur manuell). Der Bankimport (payments.py:55-59) leitet auf die Korrektur um, umgeht das Problem also nur auf diesem Pfad. Schwere: Das Szenario setzt einen manuellen Fehlgriff des Bedieners voraus (Zahlung bewusst der korrigierten Rechnung zuordnen und danach Storno klicken); realistisch, aber kein Automatikpfad – daher mittel statt hoch.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Migration 0009 (und 0012) legt Unique-Constraints ohne Datenbereinigung an – Upgrade mit Altbestand bricht ab, App startet nicht",
+   "file": "sedo/migrations/0009_gwg_monthly_unique.py",
+   "line": 13,
+   "severity": "hoch",
+   "description": "0009 erzeugt einen partiellen UNIQUE INDEX über (customer, obj, period_start, period_end) für aktive GWG-Monatsrechnungen. Vor v3.22 war der Monatslauf nicht idempotent, doppelte aktive Monatsrechnungen sind in Bestandsdaten realistisch. Keine vorbereitende RunPython-Operation. Dasselbe Muster in 0012 für invoice_unique_active_storno/-correction: 0012 bereinigt nur DunningDocument, nicht Invoice.",
+   "evidence": "0009:13-16: `migrations.AddConstraint(model_name='invoice', constraint=models.UniqueConstraint(condition=…, fields=('customer', 'obj', 'period_start', 'period_end'), name='invoice_unique_gwg_monthly_run'))`; 0012:31-43: nur `RunPython(_dedupe_dunning_documents, …)` vor den Invoice-Constraints; desktop.py:73: `call_command('migrate', interactive=False, verbosity=0)`; START_HIER.command:24 / START_WINDOWS.bat:10: `python manage.py migrate`",
+   "scenario": "Zweite Installation oder Restore eines Backups von vor 3.22 enthält für einen Kunden/Einheit/Monat zwei aktive GWG-Rechnungen. Update → migrate → 0009 wirft `IntegrityError: UNIQUE constraint failed` → Migration abgebrochen, 0010–0012 fehlen, Desktop-App startet nicht.",
+   "impact": "Upgrade-Blocker ohne verständliche Fehlermeldung; Nutzer kann nicht arbeiten bis jemand die DB manuell repariert. Manuelles Löschen wäre ein GoBD-Verstoß.",
+   "fix": "Vor jedem AddConstraint eine RunPython-Operation: Duplikate protokollieren und Migration mit klarer Meldung abbrechen, oder jüngere Duplikate soft-deleten mit AuditLog-Eintrag. Für 0012 dieselbe Vorbereitung für Stornos/Korrekturen.",
+   "effort": "M",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Mechanismus bestätigt: 0009:13-16 ist ein reines AddConstraint (partieller UNIQUE INDEX, bestätigt in sqlite_master der Live-DB), ohne RunPython-Bereinigung; 0012:32 bereinigt nur DunningDocument, nicht die Invoice-Constraints. desktop.py:73 und START_HIER.command:24 rufen migrate ohne Fehlerbehandlung – bei Altdaten mit zwei aktiven GWG-Rechnungen für Kunde/Objekt/Periode würde SQLite 'UNIQUE constraint failed' werfen und der Start scheitern. ABER Projektkontext: Die Live-DB (django_migrations, nur lesend geprüft) steht bereits auf 0012, d. h. 0009/0012 sind dort erfolgreich durchgelaufen; die vorhandenen Backups in backups/ stammen alle vom 17.08.2026 und damit von NACH 3.22 (0009 vom 14.08.). Eine Zweitinstallation startet mit leerer DB. Der Fehlerpfad existiert also nur noch für ein hypothetisches Pre-3.22-Backup. Schwere daher von hoch auf niedrig korrigiert (Robustheit der Migrationskette, kein aktueller Upgrade-Blocker).",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Code-Beleg stimmt: 0009 (Z.13-16) und 0012 (Z.37-44) enthalten keine RunPython-Vorbereitung für Invoice; nur DunningDocument wird bereinigt (0012:32). Bei Altdaten mit Duplikaten würde CREATE UNIQUE INDEX mit IntegrityError abbrechen. ABER: Laut django_migrations der Live-DB (nur lesend abgefragt) sind 0009 (14.08.) und 0012 (17.08.) bereits angewendet; das System hat eine einzige Installation. Das Szenario greift nur noch beim Restore eines Backups von vor v3.22 auf einen neuen Code-Stand. Das ist ein reales, aber seltenes Randfall-Risiko – 'hoch' ist überzogen. Der Fix-Vorschlag „jüngere Duplikate soft-deleten“ wäre selbst GoBD-heikel; „Migration mit klarer Meldung abbrechen“ ist der sinnvolle Rest.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "Django-Admin erlaubt hartes Löschen/Bearbeiten von Rechnungen, Zahlungen, Mahnungen und Audit-Logs – und zeigt soft-gelöschte Belege nicht",
+   "file": "sedo/admin.py",
+   "line": 18,
+   "severity": "hoch",
+   "description": "Der Admin ist unter /admin/ aktiv (config/urls.py:8, middleware.py:19 nimmt ihn von der Loginpflicht aus; ensure_admin legt einen Superuser an). InvoiceAdmin, Payment, DunningDocument und AuditLogAdmin definieren kein has_delete_permission und (außer AuditLog) keine readonly_fields. Umgekehrt nutzt ModelAdmin den Default-Manager `objects` (=ActiveManager), so dass soft-gelöschte Belege im Admin unsichtbar sind; der Docstring behauptet das Gegenteil, und in den Views gibt es keine Abfrage mit deleted_at__isnull=False.",
+   "evidence": "admin.py:18-23: `@admin.register(Invoice) class InvoiceAdmin(admin.ModelAdmin): …` (kein has_delete_permission, keine readonly_fields); admin.py:36: `admin.site.register(Payment)`; admin.py:40: `admin.site.register(DunningDocument)`; admin.py:44-55: AuditLogAdmin nur has_add/has_change → False; models.py:18-19 Docstring: „Für vollständigen Zugriff (Admin, Audit) dient ``all_objects``“; models.py:216 CASCADE (InvoiceItem), :445 CASCADE (DunningDocument), :341 SET_NULL (Payment.invoice), :139 SET_NULL (reference_invoice)",
+   "scenario": "Superuser öffnet /admin/sedo/invoice/, markiert eine versendete Rechnung, „Ausgewählte löschen“. Rechnung samt Positionen und Mahnungen dauerhaft weg; Zahlungen verwaist (invoice=NULL); die Stornorechnung verliert reference_invoice. Kein SEDO-AuditLog-Eintrag. Und: eine per App „ausgeblendete“ Rechnung ist nirgends mehr einsehbar.",
+   "impact": "Realer Pfad zu Datenverlust und GoBD-Verstoß (Nummernkreislücke, veränderte Beträge, gelöschtes Protokoll). Soft-Delete ohne Einsichtsmöglichkeit erfüllt den GoBD-Zweck nicht.",
+   "fix": "Für Invoice, Payment, Offer, DunningDocument, AuditLog: has_delete_permission → False; readonly_fields für number, Beträge, status, invoice_type, deleted_at; get_queryset → all_objects mit deleted_at in list_display (oder Admin deaktivieren und eigene Nur-Lese-Ansicht „Ausgeblendete Belege“). Optional pre_delete-Signal, das eine Exception wirft.",
+   "effort": "S",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt: config/urls.py registriert admin.site.urls; admin.py:18-23 InvoiceAdmin ohne has_delete_permission/readonly_fields, :36 Payment und :40 DunningDocument als nackte Registrierung, :44-55 AuditLogAdmin sperrt nur add/change – Löschen bleibt erlaubt. ensure_admin legt einen Superuser an (Startskripte rufen ihn bei jedem Start). Löschkaskade laut models.py: InvoiceItem CASCADE (:216), DunningDocument CASCADE (:445), Payment.invoice SET_NULL (:341), reference_invoice SET_NULL (:139) – ein Admin-Delete entfernt Rechnung samt Positionen und Mahnungen hart und verwaist Zahlungen/Stornobezug; SEDO-AuditLog wird nicht geschrieben (nur Djangos eigener django_admin_log-Eintrag, was den Fund abschwächt aber nicht aufhebt). Sichtbarkeit: Django-Admin nutzt _default_manager = erster deklarierter Manager = objects (ActiveManager, models.py:24-25, :36); base_manager_name='all_objects' (:41) beeinflusst nur base_manager, nicht den Admin. In views.py gibt es keine Abfrage mit all_objects/deleted_at__isnull=False – soft-gelöschte Belege sind nirgends einsehbar. Schwere hoch passt: kein Angriffspfad von außen (Login nötig), aber realer Pfad zu GoBD-widrigem Datenverlust durch einen der beiden Nutzer.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Verifiziert: config/urls.py:8 registriert /admin/, middleware.py:19 nimmt den Pfad von der Loginpflicht aus (Django-Admin hat eigenen Login), ensure_admin.py:22 legt einen Superuser an. admin.py:18-23 InvoiceAdmin ohne has_delete_permission/readonly_fields; Z.36 Payment und Z.40 DunningDocument als nackte Registrierungen; AuditLogAdmin (Z.44-55) verbietet add/change, nicht delete. Kaskaden laut models.py:216 (InvoiceItem CASCADE), :445 (DunningDocument CASCADE), :341/:139 SET_NULL. ModelAdmin.get_queryset nutzt _default_manager = erster deklarierter Manager = ActiveManager (models.py:36) → soft-gelöschte Belege sind im Admin unsichtbar; der Docstring Z.18-19 behauptet das Gegenteil. Kein Test in sedo/tests/ prüft Admin-Rechte (nur test_security_hardening zum Passwort). Keine dokumentierte Entscheidung in CHANGELOG/DEPLOYMENT_SECURITY_NOTES. Der Pfad ist real (Superuser-Klick), es ist ein GoBD-Verstoßpfad über die eigene UI; 'hoch' passt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "CustomerObject wird hart gelöscht (SET_NULL auf Rechnungen) – historische Rechnungen verlieren Leistungsort, Monatslauf-Idempotenz kippt",
+   "file": "sedo/models.py",
+   "line": 124,
+   "severity": "mittel",
+   "description": "Invoice.obj und RecurringInvoiceTemplate.obj verwenden SET_NULL; object_delete führt ein hartes obj.delete() ohne Prüfung auf verknüpfte Belege und ohne Audit aus. XML/PDF-Erzeugung liest die Objektadresse live aus dem FK, das ARS/GWG-Mapping wird über obj.name aufgelöst. Der GWG-Idempotenz-Check und der Unique-Index hängen ebenfalls am obj.",
+   "evidence": "models.py:124: `obj = models.ForeignKey(CustomerObject, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')`; views.py:741: `obj.delete()`; invoices.py:109: `object_name = obj.name if obj else ''`; views.py:1738: `Invoice.objects.filter(customer=customer, obj__name=unit_name, source='GWG Monatsrechnung', …)`; views.py:1757: `CustomerObject.objects.get_or_create(customer=customer, name=unit_name, …)`; views.py:2104: `generate_invoice_files(inv)` für alle Rechnungen des Monats",
+   "scenario": "Nutzer löscht ein Objekt, zu dem versandte GWG-Monatsrechnungen existieren. (1) „Dateien neu erzeugen“ regeneriert diese Rechnungen: ShipToTradeParty/Objektadresse leer, WE/AE/NkSl leer → XML weicht vom Original ab. (2) Erneuter GWG-Lauf: der Check über obj__name findet nichts, get_or_create legt ein neues Objekt an, der Unique-Index greift nicht → zweite Monatsrechnung für denselben Zeitraum.",
+   "impact": "Abweichende E-Rechnungs-XML zu versandten Belegen, doppelte Rechnungen an Wohnungswirtschaft, keine Protokollspur.",
+   "fix": "on_delete=PROTECT für Invoice.obj und Offer.obj (ProtectedError abfangen), alternativ Soft-Delete/is_active für CustomerObject; object_* mit write_audit versehen; GWG-Dedupe-Check zusätzlich auf source+period ohne obj.",
+   "effort": "M",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert in Test-DB: models.py:124 Invoice.obj SET_NULL; object_delete (views.py:737-744) ruft obj.delete() ohne Prüfung auf verknüpfte Belege und ohne write_audit; Link ist in customer_detail.html:35 („Löschen“) für jeden Nutzer erreichbar. Nach Löschung: Invoice.obj_id=None; invoices.py:109 object_name='' → Zeile 115 `if is_ars and object_name` überspringt das Mapping, we/ae/nksl bleiben leer, Objektadresse leer (:140-141) – eine Neuerzeugung (invoice_generate :988-993 oder month_close :2104 für ALLE Rechnungen des Monats) produziert abweichende XML/PDF zu bereits versandten Belegen. GWG-Lauf: der skip_existing-Check :1738 filtert obj__name und findet die alte Rechnung nicht mehr (im Test: exists()=False), get_or_create :1757 legt ein neues Objekt an, der Unique-Index (customer, obj, period) greift wegen anderer obj_id nicht → zweite Monatsrechnung wurde im Test angelegt. Schwere mittel passt (Randfall Objektlöschung, aber reale Folgen für Aareon-XML und Doppelrechnung).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belegt: models.py:124 SET_NULL, views.py:737-744 object_delete mit hartem obj.delete() ohne Prüfung und ohne write_audit. invoices.py:109/140-141 lesen Objektname/-adresse live aus dem FK; mapping_we/ae/nksl werden nur bei object_name gesetzt (Z.115-123). Monatsabschluss views.py:2104 ruft generate_invoice_files für ALLE Rechnungen des Monats erneut auf → XML/PDF zu versendeten Belegen ändern sich real. GWG-Lauf views.py:1738 prüft über obj__name, 1757 legt per get_or_create ein neues Objekt an; der Unique-Index (models.py:147-153) hängt am obj-FK, NULL ist in SQLite-UNIQUE-Indizes verschieden → Doppelrechnung möglich. Kein Test deckt object_delete ab. Schwere mittel ist angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Idempotenz-Constraint deckt nur 'GWG Monatsrechnung' ab; 'Abo Monatsrechnung' und Objekte ohne Zuordnung bleiben ungeschützt (source ist freier String)",
+   "file": "sedo/models.py",
+   "line": 149,
+   "severity": "mittel",
+   "description": "Der Unique-Constraint hängt am Literal source='GWG Monatsrechnung'. Der Abo-Monatslauf schreibt source='Abo Monatsrechnung' und schützt sich nur per Check-then-act mit optionaler Checkbox. obj ist bei Abo-Vorlagen nullable; SQLite behandelt NULL in UNIQUE als verschieden. `source` ist ein freies CharField ohne choices – die Steuerlogik hängt an exakten Zeichenketten.",
+   "evidence": "models.py:149: `condition=(models.Q(source='GWG Monatsrechnung') & models.Q(deleted_at__isnull=True) & ~models.Q(status='storniert'))`; models.py:138: `source = models.CharField('Quelle', max_length=80, blank=True)`; views.py:1910: `source='Abo Monatsrechnung'`; views.py:1947: Check-then-act mit skip_existing; views.py:1904: `obj=tmpl.obj` (nullable)",
+   "scenario": "Abo-Monatslauf wird zweimal ausgelöst (Doppelklick, zwei Tabs): beide Requests passieren den exists()-Check, es entstehen zwei nummerierte Rechnungen mit identischem Zeitraum; die zweite muss storniert werden.",
+   "impact": "Doppelte Rechnungen an Monatskunden, verbrauchte Nummern und Stornos ohne fachlichen Anlass.",
+   "fix": "source auf TextChoices umstellen und Constraint auf `source__in=[GWG, ABO]` erweitern; für NULL-Objekte zweiten Constraint oder obj verpflichtend; IntegrityError im Abo-Lauf als „übersprungen“ behandeln.",
+   "effort": "S",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt: models.py:149 bindet den Constraint an das Literal 'GWG Monatsrechnung'; models.py:138 source ist freies CharField ohne choices. Der Abo-Lauf schreibt source='Abo Monatsrechnung' (views.py:1910) und schützt sich nur per optionalem skip_existing-Check (views.py:1936, :1947) – ohne die Checkbox oder bei zwei parallelen POSTs (beide passieren exists()) entstehen zwei nummerierte Rechnungen mit gleichem Zeitraum; es gibt keine DB-Schranke. tmpl.obj ist nullable (models.py:240, :1904); im Test wurden zwei GWG-Rechnungen mit obj=NULL und identischer Periode ohne IntegrityError angelegt (SQLite: NULL ≠ NULL im UNIQUE-Index) – auch der GWG-Schutz greift also nicht bei fehlendem Objekt. Schwere mittel angemessen: Doppelrechnung durch Doppelklick/zwei Tabs ist bei 2 Nutzern realistisch, Folge sind unnötige Stornos und verbrauchte Nummern.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belegt: models.py:149 Bedingung nur source='GWG Monatsrechnung'; views.py:1910 schreibt 'Abo Monatsrechnung'; views.py:1936/1947 Check-then-act ausschließlich bei gesetzter Checkbox skip_existing; models.py:138 source ist freies CharField ohne choices; models.py:240 tmpl.obj nullable. Das Kommentar in models.py:144-146 begründet den Constraint ausdrücklich mit „Check-then-act reicht nicht“ – dieselbe Begründung trifft den Abo-Lauf, der aber ausgelassen wurde; keine dokumentierte Entscheidung dafür. Tests: test_rechnungslauf.py testet nur XML-Kern; kein Test für Abo-Doppellauf. Doppelklick/zwei Tabs sind realistisch. Schwere mittel passt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Migration 0012 löscht Mahndokumente hart und wählt das älteste – versandte Mahnschreiben verschwinden ohne Protokoll",
+   "file": "sedo/migrations/0012_concurrency_constraints.py",
+   "line": 20,
+   "severity": "mittel",
+   "description": "Zur Vorbereitung des Unique-Constraints (invoice, kind) werden Duplikate per doc.delete() hart entfernt. Mahnungen sind versandte Geschäftsbriefe; die zweite Erinnerung konnte nach Teilzahlung einen anderen Betrag und eine spätere Frist tragen. PDF-Dateien bleiben verwaist. Kein AuditLog-Eintrag.",
+   "evidence": "0012:17-22: `for doc in DunningDocument.objects.order_by('document_date', 'id'): key = (doc.invoice_id, doc.kind); if key in seen: doc.delete()`",
+   "scenario": "Rechnung mit Erinnerung vom 05.06. (1.000 €) und zweiter Erinnerung vom 20.06. (400 €, Frist 04.07.). Migration behält nur die vom 05.06.; das zuletzt zugestellte Schreiben ist weg, next_dunning_kind rechnet mit der alten Frist.",
+   "impact": "Verlust von Belegdaten zu versandten Schreiben (GoBD-Aufbewahrung), falsche Mahnstufen-Logik, verwaiste Dateien.",
+   "fix": "Feld `superseded`/`deleted_at` auf DunningDocument und partieller Index; Migration setzt nur das Flag und schreibt AuditLog. Falls Löschen bleibt: jüngstes statt ältestes behalten und protokollieren.",
+   "effort": "M",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Code bestätigt: 0012:17-22 iteriert nach document_date,id aufsteigend und ruft doc.delete() für jedes weitere Dokument gleicher (invoice, kind) – hartes Löschen des JÜNGEREN Schreibens, PDF-Dateien (models.py:450 upload_to='dunning/') bleiben verwaist, kein AuditLog. Da vor 3.22 mehrfaches Klicken beliebig viele Erinnerungen erzeugen konnte (Docstring :9-13) und amount_open/due_date_new je Dokument abweichen können (:448-449), ist das fachliche Szenario (zweite Erinnerung nach Teilzahlung mit anderem Betrag) stimmig; next_dunning_kind (dunning.py:51-55) rechnet dann mit der Frist des verbliebenen älteren Dokuments. Kontext: Die Migration ist auf der Live-DB bereits angewendet (django_migrations bis 0012), die vorhandenen Backups stammen von danach – der Schaden ist entweder bereits eingetreten (nicht mehr rückholbar) oder nie relevant gewesen. Eine Änderung der Migration wirkt nur noch für hypothetische Alt-Backups. Schwere daher von mittel auf niedrig korrigiert.",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Code stimmt (0012:17-22 hartes delete, ältestes bleibt). Aber: Es ist eine bewusst dokumentierte Entscheidung – der Docstring Z.7-13 begründet explizit, warum das erste Schreiben als fachlich maßgeblich erhalten bleibt und die Mehrfach-Erzeugung durch Mehrfachklick (Review-Befund 6) als inhaltsgleiche Wiederholung gilt. Zudem ist die Migration laut django_migrations der Live-DB am 17.08.2026 bereits angewendet; der Fund kann heute nur noch bei einem Restore eines Backups von vor v3.22 wirken, und der Fix „Flag statt Löschen“ lässt sich für bereits gelöschte Zeilen nicht mehr nachholen. Das Restrisiko (zweite Erinnerung nach Teilzahlung mit anderem Betrag) ist Spekulation ohne Beleg im Code, dass der Mahnlauf vor 3.22 solche Fälle erzeugt hat.",
+     "corrected_severity": null
+    }
+   ],
+   "entscheidung": "Hartes Löschen versandter Mahnschreiben ist auch als dokumentierte Entscheidung ein GoBD-Aufbewahrungsrisiko; Migration ist bereits angewendet, daher nur noch Konzept-Hinweis: künftig nie hart löschen in Migrationen, sondern Flag/Soft-Delete + Audit.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "Audit-Log: Löschungen/Änderungen an Stammdaten und automatische Statuswechsel fehlen; Fehler beim Schreiben werden verschluckt; Nutzerbezug geht bei User-Löschung verloren",
+   "file": "sedo/audit.py",
+   "line": 38,
+   "severity": "mittel",
+   "description": "write_audit fängt jede Exception ab und kehrt still zurück. Nicht protokolliert: Kunden anlegen/ändern, Objekte anlegen/ändern/löschen (hart!), Abo-Vorlagen (hart gelöscht), automatische Statuswechsel durch Zahlungsabgleich/Mahnlauf, Datei-Neuerzeugung im Monatsabschluss. invoice_delete/payment_delete schreiben den Eintrag VOR der Aktion. AuditLog.user ist SET_NULL – nach User-Löschung erscheinen Einträge als „System“.",
+   "evidence": "audit.py:36-39: `except (OperationalError, ProgrammingError): return` / `except Exception: return`; views.py:670-744 und 1846-1889 ohne write_audit; views.py:741 `obj.delete()`, :1886 `tmpl.delete()`; views.py:1072-1074: write_audit vor soft_delete(); models.py:479: `user = models.ForeignKey('auth.User', on_delete=models.SET_NULL, …)`",
+   "scenario": "(1) Mitarbeiter löscht eine Abo-Vorlage – im Audit-Log nichts. (2) Admin löscht einen Benutzer – alle seine Einträge werden zu „System“. (3) soft_delete() scheitert → Log behauptet „gelöscht“, Rechnung ist aktiv.",
+   "impact": "Lückenhafte Nachvollziehbarkeit (GoBD verlangt Protokoll inkl. Verursacher); irreführende Einträge; stiller Totalausfall des Protokolls möglich.",
+   "fix": "write_audit für alle Create/Update/Delete-Views ergänzen; Audit nach erfolgreicher Aktion bzw. in derselben Transaktion; im except logger.exception; Benutzername redundant als CharField speichern.",
+   "effort": "M",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Alle Teilaussagen im Code nachvollzogen: audit.py:36-39 fängt jede Exception und kehrt still zurück (kein Logging). Ohne write_audit: customer_create/update (views.py:670-693), object_create/update/delete inkl. hartem obj.delete() (:709-744), recurring_template_create/update/delete inkl. hartem tmpl.delete() (:1846-1889), automatische Statuswechsel in refresh_invoice_payment_status (calc.py:60) und generate_dunning_document (dunning.py:166-168), Datei-Neuerzeugung im month_close (:2104). Reihenfolge: invoice_delete :1072-1074 und payment_delete :1369-1371 schreiben den Log-Eintrag VOR soft_delete() und nicht in einer Transaktion – schlägt save() fehl, steht „gelöscht“ im Protokoll, Beleg bleibt aktiv. AuditLog.user SET_NULL (models.py:479) und __str__ :495 zeigt bei user_id=None 'System' – nach User-Löschung ist der Verursacher weg. Schwere mittel angemessen (GoBD-Nachvollziehbarkeit lückenhaft, kein direkter Beleg-/Betragsfehler).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Alle Einzelbelege nachgelesen: audit.py:36-39 verschluckt jede Exception ohne Logging; views.py:618-744 (customer_create/update, object_create/update/delete) und 1846-1889 (recurring_template_*) enthalten keinen write_audit-Aufruf (grep bestätigt: nächste Aufrufe bei Z.584 und Z.945); views.py:741 obj.delete() und :1886 tmpl.delete() hart; views.py:1072-1074 und 1369-1371 schreiben das Audit VOR soft_delete(); models.py:479 AuditLog.user SET_NULL, __str__ (Z.495) zeigt dann „System“. Automatische Statuswechsel in calc.py:43-61 und Datei-Neuerzeugung views.py:2104 ohne Audit. Kein Test prüft Audit-Vollständigkeit. Nicht widerlegbar; Schwere mittel ist passend (GoBD-Protokolllücke, aber kein Beleg-Datenverlust).",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Kassenbuch-Buchungsnummer per Check-then-act ohne Transaktion – IntegrityError (HTTP 500) bei gleichzeitiger Buchung; is_locked ohne Funktion",
+   "file": "sedo/services/numbering.py",
+   "line": 141,
+   "severity": "niedrig",
+   "description": "next_cashbook_no liest die höchste booking_no des Monats; die Views speichern danach ohne transaction.atomic() und ohne Retry. unique_together schützt die Eindeutigkeit, der Fehler wird nicht behandelt. Der Bankimport erzeugt Einträge in einer Schleife ohne Transaktion. Das Feld is_locked wird nirgends gesetzt oder ausgewertet.",
+   "evidence": "numbering.py:143-144: `last = CashbookEntry.objects.filter(month=month).order_by('-booking_no').first(); return (last.booking_no + 1) if last else 1`; views.py:1429-1430; views.py:1453; models.py:404: `unique_together = [('month', 'booking_no')]`; models.py:399: `is_locked = models.BooleanField(default=False)` (kein Treffer in views/services)",
+   "scenario": "Beide Nutzer erfassen gleichzeitig eine Kassenbuchung: beide erhalten booking_no 17; der zweite save() wirft IntegrityError → Fehlerseite, Eingabe verloren.",
+   "impact": "Fehlerseite statt Meldung, verlorene Eingabe, unvollständiger Import; fehlende Festschreibung des Kassenbuchs trotz vorhandenem Feld.",
+   "fix": "Vergabe in transaction.atomic() mit Retry oder NumberRange-Mechanik (Präfix 'KB'); Bankimport in eine Transaktion; is_locked beim Monatsabschluss setzen oder Feld entfernen.",
+   "effort": "S",
+   "dimension": "datenmodell-migrationen",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt: numbering.py:143-144 liest max(booking_no)+1 ohne Sperre; cashbook_create (views.py:1424-1430) ruft next_cashbook_no und e.save() ohne transaction.atomic() und ohne IntegrityError-Handling; unique_together ('month','booking_no') (models.py:404) lässt den zweiten gleichzeitigen save() mit IntegrityError scheitern → ungefangene Exception → Fehlerseite, Formulareingabe verloren. cashbook_import_bank (:1448-1456) legt Einträge in einer Schleife ohne Transaktion an – ein Fehler mittendrin hinterlässt einen Teilimport (der except :1459 meldet nur). is_locked: grep über sedo/ (ohne Migrationen) findet ausschließlich die Felddefinition models.py:399 – weder gesetzt noch ausgewertet. Schwere niedrig passt: bei 2 Nutzern ist die exakte Gleichzeitigkeit selten, Folge ist eine Fehlerseite ohne Datenkorruption.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belegt: numbering.py:141-144 reines Lesen ohne Sperre/Transaktion; views.py:1429-1430 vergibt und speichert ohne transaction.atomic() und ohne IntegrityError-Behandlung; views.py:1448-1456 Import-Schleife ohne Transaktion (nur generischer except → Meldung, aber bereits angelegte Einträge bleiben); models.py:404 unique_together erzwingt den Konflikt als 500. is_locked (models.py:399) hat laut grep keinen Treffer in views/, services/, templates/. Das Modul-Docstring (numbering.py:1-15) beschreibt die atomare NumberRange-Mechanik nur für RE/AG, nicht für das Kassenbuch – keine bewusste Ausnahme dokumentiert. Bei 2 Nutzern selten, aber real; niedrig ist korrekt.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Keine Indexe auf den Standardfiltern deleted_at, status, issue_date, source/period und Payment.booking_date",
+   "file": "sedo/models.py",
+   "line": 141,
+   "severity": "niedrig",
+   "description": "Jede Abfrage über den ActiveManager filtert deleted_at IS NULL; Listen/Dashboards filtern nach status, issue_date, source+period; Zahlungen nach -booking_date. Laut sqlmigrate 0001 existieren nur FK-Indexe und Unique auf number/external_id. Heute unkritisch, aber die Monatsläufe erzeugen viele Rechnungen.",
+   "evidence": "models.py:25: `return super().get_queryset().filter(deleted_at__isnull=True)`; models.py:142: `ordering = ['-issue_date', '-number']`; views.py:765, :1192, :1738, :2090; models.py:353: `ordering = ['-booking_date']`",
+   "scenario": "Nach Jahren mit >10.000 Rechnungen laden Dashboard und Offene Posten spürbar langsamer; SQLite scannt die gesamte Tabelle.",
+   "impact": "Geringe Auswirkung heute; schleichende Verschlechterung, insbesondere über den Tunnel.",
+   "fix": "Meta.indexes: Invoice ['deleted_at'], ['status'], ['issue_date'], ['source', 'period_start', 'period_end']; Payment ['booking_date'], ['deleted_at']; Offer ['status'], ['deleted_at'].",
+   "effort": "S",
+   "dimension": "datenmodell-migrationen",
+   "status": "verworfen",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt gegen die reale Schema-Definition: sqlite_master der Live-DB (nur lesend) zeigt für sedo_invoice ausschließlich die FK-Indexe (customer_id, obj_id, reference_invoice_id), den Autoindex für number und die drei partiellen Unique-Indexe – kein Index auf deleted_at, status, issue_date oder source/period. In models.py existiert nur db_index auf Payment.external_id (:348), keine Meta.indexes. ActiveManager (:24-25) filtert jede Abfrage nach deleted_at IS NULL, Dashboard/Listen filtern nach status/issue_date (views.py:600-603, :765, :1192), Zahlungen sortieren nach -booking_date (:353). Bei heutigem Datenvolumen unkritisch, daher niedrig korrekt eingestuft; schleichende Verschlechterung durch Monatsläufe ist plausibel, aber keine Fehlfunktion.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 8,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Faktisch korrekt: sqlmigrate 0001 zeigt nur FK-Indizes und UNIQUE auf number; spätere Migrationen ergänzen nur external_id (0008) und die partiellen Unique-Indizes (0009/0012); kein Index auf deleted_at/status/issue_date. Aber der Fund verletzt Regel 4 (keine Spekulation, Wirkung nötig): Er räumt selbst ein „Heute unkritisch“; das Szenario „>10.000 Rechnungen nach Jahren“ ist für einen 2-Nutzer-Betrieb mit SQLite spekulativ, und ein Full-Scan über 10.000 Zeilen kostet in SQLite Millisekunden – keine spürbare Verschlechterung, auch nicht über den Tunnel (Netzlatenz dominiert). Listen sind ohnehin per Slicing begrenzt (views.py:1330-1331: [:MAX_PAYMENTS_LIST], [:200]). Kein konkretes Fehlverhalten, damit kein belegter Fund.",
+     "corrected_severity": null
+    }
+   ],
+   "entscheidung": "Kein Fehlverhalten, heute ohne Auswirkung – als optionale Empfehlung (Meta.indexes) in den Anhang.",
+   "entschieden_von": "Hauptreviewer"
+  }
+ ]
+}

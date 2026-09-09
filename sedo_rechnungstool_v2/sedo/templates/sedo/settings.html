@@ -1,0 +1,174 @@
+{% extends 'sedo/base.html' %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">System</div><div class="h1">Einstellungen</div>
+    <div class="sub">E-Mail, GWG-/XML-Einstellungen und Mapping-Verwaltung.</div>
+  </div>
+</div>
+
+<!-- E-Mail / SMTP -->
+<div class="card">
+  <div class="section-head">
+    <div>
+      <h2>E-Mail-Versand (SMTP)</h2>
+      <p class="hint">Rechnungen werden direkt aus SEDO versendet, wenn Host und Benutzer konfiguriert sind. Ohne Konfiguration wird weiterhin eine .eml-Datei zum Download erzeugt.</p>
+    </div>
+    {% if smtp_configured %}<span class="badge green">Aktiv</span>{% else %}<span class="badge amber">Nicht konfiguriert</span>{% endif %}
+  </div>
+  <form method="post" class="stacked-form compact-form">
+    {% csrf_token %}<input type="hidden" name="action" value="save_smtp">
+    <div class="form-grid compact-grid">
+      <div class="form-row">
+        <label>SMTP-Host</label>
+        <input name="smtp_host" value="{{ smtp_host }}" placeholder="z. B. smtp.office365.com oder smtp.gmail.com">
+      </div>
+      <div class="form-row">
+        <label>Port</label>
+        <input name="smtp_port" type="number" value="{{ smtp_port }}" placeholder="587">
+        <div class="hint">587 = STARTTLS (empfohlen) · 465 = SSL/TLS. SEDO prüft in beiden Fällen das Zertifikat des Mailservers.</div>
+      </div>
+      <div class="form-row">
+        <label>Benutzer / E-Mail-Adresse</label>
+        <input name="smtp_user" value="{{ smtp_user }}" placeholder="info@sedo-magdeburg.de">
+      </div>
+      <div class="form-row">
+        <label>Passwort</label>
+        <input name="smtp_password" type="password" placeholder="{% if smtp_configured %}● ● ● ● ● ● ● ● (leer lassen = unverändert){% else %}SMTP-Passwort{% endif %}">
+        <div class="hint">Wird lokal gespeichert. Leer lassen, um das bestehende Passwort zu behalten.</div>
+      </div>
+      <div class="form-row">
+        <label>Absendername</label>
+        <input name="smtp_from_name" value="{{ smtp_from_name }}" placeholder="SEDO Objektdienstleistungen GmbH">
+      </div>
+      <div class="form-row full">
+        <label class="check-line">
+          <input type="checkbox" name="smtp_tls" {% if smtp_tls %}checked{% endif %}>
+          STARTTLS verwenden (empfohlen für Port 587)
+        </label>
+      </div>
+    </div>
+    <div class="toolbar"><button class="btn primary">SMTP speichern</button></div>
+  </form>
+
+  {% if smtp_configured %}
+  <hr style="margin:16px 0; border-color: var(--border)">
+  <form method="post" class="stacked-form compact-form">
+    {% csrf_token %}<input type="hidden" name="action" value="test_smtp">
+    <div class="form-row" style="max-width:360px">
+      <label>Test-E-Mail senden an</label>
+      <input name="test_email" type="email" placeholder="mirekdobberahn@gmail.com">
+    </div>
+    <div class="toolbar"><button class="btn">Test senden</button></div>
+  </form>
+  {% endif %}
+</div>
+
+<!-- Bankkonto (FinTS) -->
+<div class="card">
+  <div class="section-head">
+    <div>
+      <h2>Bankkonto (FinTS) <span class="info-tip" tabindex="0" aria-label="Hinweis zur Kontoanbindung">i<span class="info-tip-text">Rein lesender Umsatzabruf direkt bei der Bank (FinTS 3.0 PIN/TAN). Die FinTS-Adresse der Bank findest du z. B. unter fints.org oder bei deiner Sparkasse (banking.sparkasse.de-Adresse mit /fints30). PIN-Speicherung ist optional – ohne Speicherung wird sie bei jedem Abruf abgefragt. Für den Dauerbetrieb eine kostenlose DK-Produktregistrierung eintragen.</span></span></h2>
+      {% if banking_configured %}<span class="badge green">Eingerichtet</span>{% else %}<span class="badge amber">Nicht konfiguriert</span>{% endif %}
+    </div>
+  </div>
+  <form method="post" class="form-grid compact-grid">{% csrf_token %}<input type="hidden" name="action" value="save_banking">
+    <div class="form-row"><label>Bankleitzahl</label><input name="fints_blz" value="{{ banking_cfg.blz }}" placeholder="z. B. 81053272"></div>
+    <div class="form-row"><label>FinTS-Adresse der Bank</label><input name="fints_endpoint" value="{{ banking_cfg.endpoint }}" placeholder="https://banking-sa3.s-fints-pt-sa.de/fints30"></div>
+    <div class="form-row"><label>Anmeldename / Legitimations-ID</label><input name="fints_login" value="{{ banking_cfg.login }}" autocomplete="off"></div>
+    <div class="form-row"><label>IBAN des Kontos (bei mehreren Konten)</label><input name="fints_iban" value="{{ banking_cfg.iban }}" placeholder="optional"></div>
+    <div class="form-row"><label>Online-Banking-PIN</label><input type="password" name="fints_pin" autocomplete="new-password" placeholder="{% if banking_pin_stored %}gespeichert – leer lassen zum Behalten{% else %}optional speichern{% endif %}">
+      <div class="hint">Wird lokal gespeichert und aus Backups bereinigt. Alternativ leer lassen – dann fragt der Abruf jedes Mal.</div>
+      {% if banking_pin_stored %}<label class="check-line"><input type="checkbox" name="fints_pin_clear" value="1"> Gespeicherte PIN löschen</label>{% endif %}</div>
+    <div class="form-row"><label>DK-Produktkennung</label><input name="fints_product_id" value="{{ banking_cfg.product_id }}" placeholder="optional"></div>
+    <div class="form-actions"><button class="btn primary" type="submit">Bankzugang speichern</button></div>
+  </form>
+</div>
+
+<!-- KI-Assistent (Claude) -->
+<div class="card">
+  <div class="section-head">
+    <div>
+      <h2>KI-Assistent (Claude)</h2>
+      <p class="hint">Diktatfunktion für Angebotspositionen. Die Spracherkennung läuft direkt im Browser (Chrome empfohlen) – an Claude wird ausschließlich der diktierte <b>Text der Leistungen</b> übertragen, niemals Kunden-, Objekt- oder Adressdaten.</p>
+    </div>
+    {% if ai_configured %}<span class="badge green">Aktiv</span>{% else %}<span class="badge amber">Nicht konfiguriert</span>{% endif %}
+  </div>
+  <form method="post" class="stacked-form compact-form">
+    {% csrf_token %}<input type="hidden" name="action" value="save_ai">
+    <div class="form-grid compact-grid">
+      <div class="form-row">
+        <label>Claude-API-Key (Anthropic)</label>
+        <input name="ai_api_key" type="password" autocomplete="off" placeholder="{% if ai_configured %}● ● ● ● ● ● ● ● (leer lassen = unverändert){% else %}sk-ant-…{% endif %}">
+        <div class="hint">Wird lokal gespeichert. Key erstellen unter console.anthropic.com → API Keys.</div>
+      </div>
+      <div class="form-row">
+        <label>Modell</label>
+        <input name="ai_text_model" value="{{ ai_text_model }}" placeholder="{{ ai_default_text_model }}">
+        <div class="hint">Leer lassen = Standard ({{ ai_default_text_model }}).</div>
+      </div>
+      {% if ai_configured %}
+      <div class="form-row full">
+        <label class="check-line">
+          <input type="checkbox" name="ai_api_key_clear">
+          Gespeicherten API-Key löschen
+        </label>
+      </div>
+      {% endif %}
+    </div>
+    <div class="toolbar"><button class="btn primary">KI-Einstellungen speichern</button></div>
+  </form>
+</div>
+
+<div class="grid two-col">
+  <div class="card">
+    <h2>GWG-Abrechnung</h2>
+    <p class="hint">Diese Angaben werden nur für GWG-Monatsrechnungen verwendet.</p>
+    <form method="post" class="stacked-form compact-form">
+      {% csrf_token %}<input type="hidden" name="action" value="save_settings">
+      <div class="form-grid compact-grid">
+        <div class="form-row full">
+          <label>GWG/ARP Rechnungssteller-ID / Kreditor-ID</label>
+          <input name="aareon_seller_id" value="{{ aareon_seller_id }}" placeholder="vom Kunden/ARP vorgegebene Rechnungssteller-ID">
+          <div class="hint">Wird in der XML als SellerTradeParty/ID ausgegeben. Pflichtfeld für ARP.</div>
+        </div>
+        <div class="form-row full">
+          <label class="check-line"><input type="checkbox" name="aareon_include_seller_assigned_id" {% if aareon_include_seller_assigned_id == '1' %}checked{% endif %}> NkSl/SellerAssignedID zusätzlich in der XML ausgeben</label>
+          <div class="hint">Standard: aus. GWG soll nach aktueller Logik nur Abrechnungseinheit + Leistungsart-ID erhalten.</div>
+        </div>
+      </div>
+      <div class="toolbar"><button class="btn primary">Einstellungen speichern</button></div>
+    </form>
+  </div>
+
+  <div class="card" id="mapping-upload">
+    <h2>Mapping-Datei</h2>
+    <p class="hint">Das GWG-Mapping wird hier zentral gepflegt. Die Monatsrechnung nutzt anschließend automatisch das zuletzt importierte Mapping.</p>
+    <form method="post" enctype="multipart/form-data" class="stacked-form compact-form">
+      {% csrf_token %}<input type="hidden" name="action" value="import_mapping">
+      <div class="form-row full">
+        <label>Mapping-Datei (.xlsx)</label>
+        <input type="file" name="file" accept=".xlsx,.xls" required>
+        <div class="hint">Erwartet wird <strong>Mapping SEDO GWG.xlsx</strong>. Die Fachkopfzeile wird automatisch erkannt.</div>
+      </div>
+      <div class="toolbar"><button class="btn primary">Mapping importieren</button></div>
+    </form>
+    <div class="stat-row">
+      <div class="mini-stat"><strong>{{ mapping_count }}</strong><span>Mapping-Zeilen</span></div>
+      <div class="mini-stat"><strong>{{ unit_count }}</strong><span>Abrechnungseinheiten</span></div>
+      <div class="mini-stat"><strong>{{ service_count }}</strong><span>Leistungsarten</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><div><h2>Mapping-Vorschau</h2><p class="hint">Kontrollansicht der ersten 50 Mapping-Zeilen.</p></div><a class="btn" href="{% url 'sedo:aareon_monthly' %}">Zur GWG-Monatsrechnung</a></div>
+  <div class="table-wrap"><table class="table table-modern"><tr><th>Abrechnungseinheit</th><th>Leistungsart-ID</th><th>WE intern</th><th>AE intern</th><th>NkSl intern</th><th>Sachkonto</th></tr>{% for m in mappings %}<tr><td>{{ m.billing_unit_sender }}</td><td>{{ m.service_id }}</td><td>{{ m.we_internal }}</td><td>{{ m.ae_internal }}</td><td>{{ m.nksl_internal }}</td><td>{{ m.account }}</td></tr>{% empty %}<tr><td colspan="6"><div class="empty-state">Noch kein Mapping importiert.</div></td></tr>{% endfor %}</table></div>
+</div>
+
+<div class="card">
+  <h2>Hinweise Veröffentlichung</h2>
+  <p>Der Serverbetrieb ist auf HTTPS, SSH-Key-Zugriff und Audit-Log ausgelegt. Vor Bankanbindung: Rollen/Rechte finalisieren, externe verschlüsselte Backups einrichten und Zugangsdaten niemals im Klartext speichern.</p>
+  <p class="muted"><a href="{% url 'sedo:security_status' %}">Sicherheitsstatus öffnen</a> · <a href="{% url 'sedo:audit_log' %}">Audit-Log öffnen</a></p>
+</div>
+{% endblock %}

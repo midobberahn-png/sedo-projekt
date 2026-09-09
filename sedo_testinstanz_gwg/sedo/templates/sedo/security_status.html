@@ -1,0 +1,61 @@
+{% extends 'sedo/base.html' %}
+{% block title %}Sicherheitsstatus{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">System · Sicherheit</div>
+    <div class="h1">Sicherheitsstatus</div>
+    <div class="sub">Kompakte Kontrollseite für Produktivbetrieb, Backups und spätere Bankanbindung.</div>
+  </div>
+  <div class="toolbar"><a class="btn" href="{% url 'sedo:audit_log' %}">Audit-Log öffnen</a></div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="metric">{{ ok_count }}/{{ total_count }}</div>
+    <div class="metric-label">Sicherheitsprüfungen erfüllt</div>
+  </div>
+  <div class="card">
+    <div class="metric">{% if bank_ready %}Vorbereitet{% else %}Nacharbeit{% endif %}</div>
+    <div class="metric-label">Bankanbindung-Grundlage</div>
+  </div>
+  <div class="card">
+    <div class="metric">Audit aktiv</div>
+    <div class="metric-label">kritische Aktionen werden protokolliert</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><h2>Prüfstatus</h2></div>
+  <div class="table-wrap">
+    <table class="table table-modern">
+      <tr><th>Status</th><th>Prüfung</th><th>Wert</th><th>Hinweis</th></tr>
+      {% for c in checks %}
+      <tr>
+        <td>{% if c.ok %}<span class="badge success">OK</span>{% else %}<span class="badge danger">Prüfen</span>{% endif %}</td>
+        <td><strong>{{ c.label }}</strong></td>
+        <td>{{ c.value }}</td>
+        <td class="muted">{{ c.hint }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><div><h2>Letzte Audit-Ereignisse</h2><p class="hint">Auszug der letzten sicherheitsrelevanten Aktionen.</p></div><a class="btn" href="{% url 'sedo:audit_log' %}">Alle anzeigen</a></div>
+  <div class="table-wrap">
+    <table class="table table-modern">
+      <tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Objekt</th><th>Hinweis</th></tr>
+      {% for log in recent_logs %}
+      <tr><td>{{ log.created_at|date:'d.m.Y H:i' }}</td><td>{{ log.user|default:'System' }}</td><td>{{ log.get_action_display }}</td><td>{{ log.object_repr|default:log.object_type }}</td><td>{{ log.message }}</td></tr>
+      {% empty %}<tr><td colspan="5"><div class="empty-state">Noch keine Audit-Ereignisse vorhanden.</div></td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="card warn-card">
+  <h2>Bankanbindung: Mindeststandard</h2>
+  <p>Vor echter Bankanbindung sollten Rollen/Rechte, Audit-Log, externe verschlüsselte Backups und eine sichere Ablage für Zugangsdaten aktiv sein. Bank-PINs dürfen nicht im Klartext in der Datenbank, in ZIP-Backups oder in Logs landen.</p>
+</div>
+{% endblock %}

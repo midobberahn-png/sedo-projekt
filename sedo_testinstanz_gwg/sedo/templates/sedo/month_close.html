@@ -1,0 +1,66 @@
+{% extends 'sedo/base.html' %}
+{% block title %}Monatsabschluss{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="h1">Monatsabschluss</div>
+    <div class="sub">Rechnungsexport für den Steuerberater.</div>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="metric">{{ invoice_count }}</div>
+    <div class="metric-label">Rechnungen im gewählten Monat</div>
+  </div>
+  <div class="card kpi-positive">
+    <div class="metric">{{ gross_total }} €</div>
+    <div class="metric-label">Bruttosumme</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head">
+    <h2>Steuerberater-Export</h2>
+  </div>
+  <p class="sub">Erzeugt eine E-Mail-Datei mit ZIP-Anhang. Enthalten sind ausschließlich die sichtbaren Rechnungs-PDFs des gewählten Monats.</p>
+  <form method="post" class="compact-form">
+    {% csrf_token %}
+    <div class="grid two">
+      <label>Monat
+        <input type="month" name="month" value="{{ selected_month }}">
+      </label>
+      <label>E-Mail Steuerberater
+        <input type="email" name="tax_email" value="{{ tax_email }}" placeholder="steuerberater@example.de">
+      </label>
+    </div>
+    <div class="toolbar mt-3">
+      <button class="btn primary" type="submit" name="action" value="export_tax_email"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg> PDF-Export als E-Mail erstellen</button>
+      <a class="btn" href="?month={{ selected_month }}">Aktualisieren</a>
+    </div>
+  </form>
+</div>
+
+
+<div class="card">
+  <div class="section-head"><h2>Rechnungen im Monat {{ selected_month }}</h2></div>
+  <table class="table">
+    <thead><tr><th>Nr.</th><th>Datum</th><th>Kunde</th><th>Objekt</th><th>Status</th><th class="num">Brutto</th><th>Aktion</th></tr></thead>
+    <tbody>
+      {% for inv in invoices %}
+      <tr>
+        <td><strong>{{ inv.number }}</strong></td>
+        <td>{{ inv.issue_date }}</td>
+        <td>{{ inv.customer.name }}</td>
+        <td>{% if inv.obj %}{{ inv.obj.name }}{% else %}—{% endif %}</td>
+        <td><span class="badge">{{ inv.get_status_display }}</span></td>
+        <td class="num">{{ inv.gross_total }} €</td>
+        <td><a class="btn small" href="{% url 'sedo:invoice_detail' inv.pk %}">Öffnen</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="muted">Keine Rechnungen für diesen Monat gefunden.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

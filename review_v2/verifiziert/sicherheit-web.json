@@ -1,0 +1,237 @@
+{
+ "modus": "verifizieren",
+ "dimension": "sicherheit-web",
+ "ergebnis": [
+  {
+   "title": "Ungeprüfte Monats-/Datumsparameter fließen in Dateisystempfade und int()-Parsing – Verzeichnisanlage außerhalb von media/ und 500er",
+   "file": "sedo/views.py",
+   "line": 2097,
+   "severity": "mittel",
+   "description": "month_close übernimmt selected_month aus POST/GET; die Validierung prüft nur, dass die ersten beiden '-'-Teile Integer sind, der Rest bleibt beliebig (inkl. '/' und '..'). Der Rohwert wird als Pfadkomponente für out_dir mit mkdir(parents=True) genutzt – dadurch können Verzeichnisse außerhalb von MEDIA_ROOT angelegt werden; die anschließende ZIP-Erstellung schlägt fehl (500). Ähnlich: _month_bounds(month) (views.py:1574, aufgerufen 1724 und 1942) wirft bei nicht 'YYYY-MM' ValueError → 500; cashbook_pdf (views.py:1480-1481 → pdf.py:237 `out_dir / f'Kassenbuch_{month}.pdf'`) → FileNotFoundError/500 bei '/' im Monat.",
+   "evidence": "views.py:2081: `selected_month = request.POST.get('month') or request.GET.get('month') or default_month`; 2085: `year, month = [int(x) for x in selected_month.split('-')[:2]]` (selected_month wird bei Erfolg NICHT normalisiert); 2097-2098: `out_dir = Path(settings.MEDIA_ROOT) / 'month_close' / selected_month; out_dir.mkdir(parents=True, exist_ok=True)`; 2099: `zip_path = out_dir / f'SEDO_Rechnungen_{selected_month}_Steuerberater_PDF.zip'`.",
+   "scenario": "POST /monatsabschluss/ mit action=export_tax_email und month=`2025-01-../../../../../../tmp/sedo_pwn` → mkdir legt /tmp/sedo_pwn an, ZipFile-Öffnen wirft FileNotFoundError → Server antwortet 500. GET /kassenbuch/pdf/?month=2025/01 → 500. POST /monatsrechnung/abo/erzeugen/ mit month=abc → ValueError in _month_bounds → 500.",
+   "impact": "Authentifizierter Nutzer (oder XSS/CSRF-Kette) kann Verzeichnisse an beliebigen schreibbaren Orten des Servers erzeugen; mehrere ungefangene Ausnahmen (bei DEBUG=1 mit Stacktrace/Settings-Leak).",
+   "fix": "Monat zentral mit `re.fullmatch(r'\\d{4}-(0[1-9]|1[0-2])', value)` validieren und bei Fehler 400/Message + Redirect; selected_month nach dem Parsen immer auf f'{year:04d}-{month:02d}' normalisieren; Pfade nur aus validierten Werten bauen.",
+   "effort": "S",
+   "dimension": "sicherheit-web",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen. sedo/views.py:2081 übernimmt selected_month roh aus POST/GET; 2085 `year, month = [int(x) for x in selected_month.split('-')[:2]]` prüft nur die ersten beiden Teile, im Erfolgsfall wird selected_month NICHT normalisiert (nur im except-Zweig 2087-2088). Bei POST action=export_tax_email fließt der Rohwert in 2097 `Path(settings.MEDIA_ROOT) / 'month_close' / selected_month` mit `mkdir(parents=True)` – ein Wert wie `2025-01-/../../../../tmp/x` besteht die int()-Prüfung und legt per os.makedirs Verzeichnisse außerhalb von MEDIA_ROOT an; das anschließende ZipFile-Öffnen (2101) scheitert an dem nicht existierenden Zwischenverzeichnis `SEDO_Rechnungen_2025-01-` → FileNotFoundError → 500. Ein Datei-Schreiben außerhalb media/ ist damit nicht möglich, nur mkdir. Ebenso bestätigt: `_month_bounds` (1573-1574) wirft bei Werten ohne genau zwei int-Teile ValueError, aufgerufen ungefangen in aareon_import 1724 und recurring_monthly_generate 1942; cashbook_pdf 1480-1481 → pdf.py:237 `out_dir / f'Kassenbuch_{month}.pdf'` → reportlab-Save auf nicht existierendem Unterordner → 500. Kein Decorator/Middleware/Form fängt das ab (Views sind nur @login_required; LoginRequiredMiddleware prüft nur Auth). Realistisch erreichbar: cashbook_list.html:4 ist ein Freitextfeld mit Placeholder YYYY-MM (Tippfehler wie `09/2025` → 500 beim PDF); die anderen Formulare nutzen `<input type=\"month\">`, dort nur per manipuliertem Request. Schwere mittel passt: authentifizierte Nutzer, keine Dateischreibung außerhalb media/, aber reproduzierbare 500er in realistischen Eingabefällen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Code bestätigt: sedo/views.py:2081 übernimmt selected_month roh aus POST/GET, 2085 prüft nur `[int(x) for x in selected_month.split('-')[:2]]`; im Erfolgsfall wird selected_month NICHT normalisiert (Normalisierung 2088 nur im except-Zweig). 2097-2098 `out_dir = Path(settings.MEDIA_ROOT) / 'month_close' / selected_month; out_dir.mkdir(parents=True, exist_ok=True)` – ein Wert wie `2025-01-x/../../../../tmp/y` passiert die int-Prüfung und legt Verzeichnisse außerhalb von media/ an; das anschließende ZipFile-Öffnen (2101) schlägt mit FileNotFoundError fehl (kein try/except) → 500. `_month_bounds` (1573-1574) wirft ValueError bei jedem Nicht-'YYYY-MM'-Wert, Aufrufer 1724 und 1942 fangen nichts ab. cashbook_pdf 1480-1481 → services/pdf.py:237 `out_dir / f'Kassenbuch_{month}.pdf'` ohne Prüfung. Keine Tests zu month_close/cashbook_pdf/month-Validierung in sedo/tests/ (grep leer), keine dokumentierte Entscheidung in CHANGELOG/DEPLOYMENT_SECURITY_NOTES. Einschränkung: alle Endpunkte sind @login_required, das ZIP selbst kann nicht außerhalb geschrieben werden (Präfix). Schwere mittel angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Datei-Uploads ohne Größen-/Typprüfung werden komplett in den Speicher gelesen bzw. an pandas/openpyxl übergeben",
+   "file": "sedo/views.py",
+   "line": 629,
+   "severity": "mittel",
+   "description": "customer_import liest CSV vollständig per file.read() und übergibt jede Nicht-CSV-Datei ungeprüft an pd.read_excel (kein try/except → beliebige Dateitypen führen zu 500). Bank-JSON (views.py:1323, 1444) und GWG-Mapping (views.py:1679, 1980 → pd.read_excel) haben ebenfalls keine Größen-/Typprüfung; DATA_UPLOAD_MAX_MEMORY_SIZE begrenzt Multipart-Dateien nicht. Nur der Audio-Upload ist auf 25 MB begrenzt (transcription.py:25/93) – allerdings erst nach vollständigem audio.read() in views.py:402. Im LAN-Betrieb steht kein Reverse-Proxy mit Body-Limit vor dem Prozess.",
+   "evidence": "views.py:630-638: `file = request.FILES['file']; name = file.name.lower(); if name.endswith('.csv'): decoded = file.read().decode('utf-8-sig').splitlines() … else: df = pd.read_excel(file)`; views.py:1323: `payload = json.loads(request.FILES['file'].read().decode('utf-8-sig'))`; keine Prüfung von file.size an diesen Stellen.",
+   "scenario": "Angemeldeter Nutzer lädt unter /kunden/import/ eine 2 GB große .csv oder eine XLSX-Zip-Bombe hoch → Prozess läuft in Speicherüberlast, Rechnungstool für beide Nutzer nicht mehr erreichbar. Upload einer .pdf → pandas-Exception → 500-Seite.",
+   "impact": "Dienstausfall des einzigen App-Prozesses; unfreundliche 500er statt Fehlermeldung.",
+   "fix": "Einheitliche Upload-Prüfung: file.size ≤ z. B. 10 MB, Whitelist der Endungen/Content-Types (.csv/.xlsx/.json), Verarbeitung in try/except mit messages.error; pandas nur für .xlsx/.xls aufrufen; Audio-Größe vor read() über audio.size prüfen.",
+   "effort": "S",
+   "dimension": "sicherheit-web",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt für customer_import (views.py:629-638): `file.read()` bzw. `pd.read_excel(file)` ohne Größen-/Typprüfung und ohne try/except – Upload einer .pdf/.txt führt zu einer ungefangenen pandas-Exception → 500 (realistischer Bedienfehler, da das Formular nur 'file' verlangt). settings.py enthält kein FILE_UPLOAD_MAX_MEMORY_SIZE/DATA_UPLOAD_MAX_MEMORY_SIZE (grep leer); Djangos DATA_UPLOAD_MAX_MEMORY_SIZE begrenzt Datei-Parts ohnehin nicht, Dateien >2,5 MB landen zwar per TemporaryFileUploadHandler auf Platte, `.read()` lädt sie danach aber komplett in den Speicher. Einschränkung gegenüber der Beschreibung: Bank-JSON (1322-1329, 1443-1461) und GWG-Mapping (1678-1683, 1979-1983) stehen in try/except → dort keine 500er, nur das Speicherproblem. Audio: views.py:402 `audio.read()` vor der 25-MB-Prüfung in transcription.py:93 – korrekt. Schwere mittel angemessen: Dienstausfall/500 durch authentifizierten Nutzer bzw. Bedienfehler, kein Angriffspfad von außen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "sedo/views.py:626-638 bestätigt: `file.read().decode('utf-8-sig')` ohne Größenprüfung, `pd.read_excel(file)` für jede Nicht-.csv-Datei ohne try/except → beliebiger Dateityp (z. B. PDF) erzeugt eine ungefangene Exception (500). Bank-JSON (1322-1329, 1442-1444) liest ebenfalls komplett in den Speicher, dort aber innerhalb try/except (kein 500, Speicherproblem bleibt). Audio: views.py:402 `audio.read()` vor der 25-MB-Prüfung in transcription.py:94. Django-Defaults (global_settings.py:307/311) begrenzen nur In-Memory-Schwelle bzw. Nicht-Datei-Bodies, nicht die Dateigröße – ORM/Framework fangen es nicht ab. Kein Test in sedo/tests/ zu customer_import oder Upload-Größen (grep leer). Nicht widerlegbar; mittel wegen realistischem Randfall (falscher Dateityp → 500) vertretbar.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Django-Entwicklungsserver (runserver) auf 0.0.0.0:8000 als Produktiv-/Tunnel-Server in allen Startskripten",
+   "file": "START_HIER.command",
+   "line": 30,
+   "severity": "mittel",
+   "description": "Alle Endnutzer-Starter (START_HIER.command:30, START_WINDOWS.bat:15, SEDO.vbs:100, SEDO.app/Contents/MacOS/sedo:75) starten die App mit `manage.py runserver 0.0.0.0:8000` – genau diese Instanz wird laut Bedrohungsmodell per Cloudflare-Tunnel ins Internet gestellt. runserver ist Djangos Entwicklungsserver: keine Begrenzung gleichzeitiger Threads, keine Header-/Slowloris-Timeouts, keine Obergrenze für Request-Bodies. Nur desktop.py nutzt waitress – aber ausschließlich auf 127.0.0.1.",
+   "evidence": "START_HIER.command:30 `python manage.py runserver 0.0.0.0:8000`; START_WINDOWS.bat:15; SEDO.vbs:100; SEDO.app/Contents/MacOS/sedo:75 `nohup python manage.py runserver 0.0.0.0:8000`; dagegen desktop.py:90 `serve(app=app, host='127.0.0.1', port=port, threads=6, ...)`",
+   "scenario": "Tunnel aktiv → ein anonymer Internet-Client öffnet einige tausend Verbindungen und sendet je nur einen halben Request-Header (Slowloris) oder streamt mehrere GB an /kunden/import/ → runserver spawnt pro Verbindung einen Thread ohne Limit, Prozess läuft in Speicher-/Thread-Erschöpfung.",
+   "impact": "Denial of Service der Rechnungsstellung von außen ohne Login; fehlende Robustheits-Eigenschaften eines WSGI-Servers (Timeouts, Body-Limits).",
+   "fix": "In allen Startern denselben Server wie desktop.py verwenden: `waitress-serve --listen=0.0.0.0:8000 --threads=6 --max-request-body-size=52428800 --channel-timeout=60 config.wsgi:application`. Optional Bindung standardmäßig auf 127.0.0.1 und 0.0.0.0 nur per Umgebungsvariable.",
+   "effort": "S",
+   "dimension": "sicherheit-web",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Belegt: START_HIER.command:30, START_WINDOWS.bat:15, SEDO.vbs:54 (nicht :100) und SEDO.app/Contents/MacOS/sedo:75 starten `manage.py runserver 0.0.0.0:8000`; nur desktop.py:90 nutzt waitress (127.0.0.1, threads=6). Djangos runserver basiert auf socketserver.ThreadingMixIn ohne Thread-Limit, Header-Timeouts oder Body-Obergrenze – die Eigenschaften fehlen tatsächlich. Das Szenario ist aber überzeichnet: Bei einem Cloudflare-Tunnel terminiert die Cloudflare-Edge die Client-Verbindungen (Slowloris trifft nicht direkt den Origin), Uploads sind dort auf 100 MB begrenzt; DEPLOYMENT_SECURITY_NOTES.md beschreibt für den externen Betrieb zudem einen Hetzner-Server mit nginx/systemd. Der Kern – Entwicklungsserver als Dauerbetriebsserver im Heimnetz und ggf. hinter einem Tunnel, entgegen Djangos ausdrücklicher Warnung – bleibt aber ein belegter Robustheitsmangel mit DoS-Potenzial im LAN und bei Tunnel-Betrieb ohne Access-Schutz. Schwere mittel vertretbar.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belege stimmen: START_HIER.command:30, START_WINDOWS.bat:15, SEDO.vbs:54 (nicht :100, Zeilenangabe im Fund leicht falsch) und SEDO.app/Contents/MacOS/sedo:75 starten `manage.py runserver 0.0.0.0:8000`; desktop.py:87 nutzt waitress nur auf 127.0.0.1. settings.py:89-96 dokumentiert ausdrücklich den 'Testbetrieb über Cloudflare Quick Tunnel' für genau diese Instanz. DEPLOYMENT_SECURITY_NOTES.md beschreibt nginx/systemd nur für einen Hetzner-Server, nicht für den Starter-/Tunnel-Fall; keine Entscheidung dokumentiert, runserver bewusst zu exponieren. Abschwächung: Cloudflare vor dem Tunnel dämpft Slowloris teilweise und deckelt Upload-Größen, das Grundproblem (Entwicklungsserver ohne Limits als Tunnel-Backend, von Django selbst als nicht produktionstauglich deklariert) bleibt. Mittel angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Sitzungen leben 14 Tage ohne Idle-Timeout – bei defektem Abmelden lässt sich eine Sitzung aus der App heraus nicht beenden",
+   "file": "config/settings.py",
+   "line": 203,
+   "severity": "mittel",
+   "description": "settings.py setzt nur SESSION_COOKIE_HTTPONLY/SECURE; SESSION_COOKIE_AGE, SESSION_EXPIRE_AT_BROWSER_CLOSE und SESSION_SAVE_EVERY_REQUEST bleiben auf Django-Defaults (14 Tage, False, False). Zusammen mit dem Fund, dass der Abmelden-Link per GET auf LogoutView geht und 405 liefert, existiert kein Weg, eine Sitzung aktiv zu beenden.",
+   "evidence": "config/settings.py:194-207 definieren nur `SESSION_COOKIE_SECURE = _env_bool(...)` (Zeile 195) und `SESSION_COOKIE_HTTPONLY = True` (Zeile 203); grep nach `SESSION_COOKIE_AGE|SESSION_EXPIRE_AT_BROWSER_CLOSE|SESSION_SAVE_EVERY_REQUEST` liefert keinen Treffer.",
+   "scenario": "Nutzer meldet sich unterwegs über die Tunnel-URL auf einem fremden Laptop an, schließt danach nur den Browser (Abmelden geht wegen 405 nicht). Jede Person mit Zugriff auf das Gerät ist innerhalb der nächsten 14 Tage ohne Passwort eingeloggt – inklusive Einstellungen mit Bank-PIN/SMTP/KI-Key.",
+   "impact": "Unbefugter Vollzugriff auf Kunden- und Finanzdaten über wiederhergestellte Sitzungen; kein Nutzer kann eine kompromittierte Sitzung selbst invalidieren.",
+   "fix": "`SESSION_COOKIE_AGE = 8*60*60`, `SESSION_EXPIRE_AT_BROWSER_CLOSE = True`, `SESSION_SAVE_EVERY_REQUEST = True`; Abmelden auf POST-Formular umstellen; `clearsessions` im Wochenbackup-Lauf.",
+   "effort": "S",
+   "dimension": "sicherheit-web",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt: config/settings.py definiert nur SESSION_COOKIE_SECURE (195, per Env, Default aus) und SESSION_COOKIE_HTTPONLY (203); SESSION_COOKIE_AGE, SESSION_EXPIRE_AT_BROWSER_CLOSE, SESSION_SAVE_EVERY_REQUEST fehlen (grep leer) → Django-Defaults 14 Tage, kein Idle-Timeout. Der referenzierte Abmelde-Defekt ist ebenfalls real: base.html:75 verlinkt `<a href=\"{% url 'logout' %}\">` (GET), config/urls.py:10 nutzt LogoutView, die in Django 6.0.8 `http_method_names = ['post', 'options']` hat (django/contrib/auth/views.py:131) → 405, Sitzung bleibt bestehen. Ein Nutzer kann seine Sitzung aus der App heraus also nicht beenden; die Sitzung bleibt bis zu 14 Tage gültig. Im Kontext (Tunnel-Betrieb, Einstellungen mit Bank-PIN/SMTP/KI-Key hinter dieser Sitzung) ist mittel angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "config/settings.py:194-207 setzt nur SESSION_COOKIE_SECURE (195) und SESSION_COOKIE_HTTPONLY (203); SESSION_COOKIE_AGE/EXPIRE_AT_BROWSER_CLOSE/SAVE_EVERY_REQUEST fehlen (grep leer) → Django-Defaults 14 Tage / False / False (global_settings.py:482/495/497). Der referenzierte Abmelde-Fund ist verifiziert: base.html:75 `<a href=\"{% url 'logout' %}\">` (GET), Django 6.0.8 LogoutView hat `http_method_names = [\"post\", \"options\"]` (auth/views.py:131) → 405; kein JS-Formular-Interzept (grep in static/templates leer). Kein Test zu Logout in sedo/tests/, keine dokumentierte Entscheidung. Nicht widerlegbar; mittel passend (Tunnel-Betrieb explizit vorgesehen).",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Kassenbuch-PDF: zustandsändernder GET-Endpunkt schreibt pro beliebigem month-Wert eine Datei nach media/ und liefert bei '/' im Wert HTTP 500",
+   "file": "sedo/views.py",
+   "line": 1479,
+   "severity": "niedrig",
+   "description": "`cashbook_pdf` ist ein GET-Endpunkt mit Seiteneffekt: er erzeugt bei jedem Aufruf eine neue PDF unter `media/cashbook/Kassenbuch_{month}.pdf`, wobei `month` ungeprüft aus dem Query-String kommt (kein Regex, keine Längenbegrenzung).",
+   "evidence": "sedo/views.py:1480 `month = request.GET.get('month') or timezone.localdate().strftime('%Y-%m')`; :1481 `path = generate_cashbook_pdf(month)`; sedo/services/pdf.py:237 `pdf_path = out_dir / f'Kassenbuch_{month}.pdf'`",
+   "scenario": "(a) `/kassenbuch/pdf/?month=2025/09` → Zielpfad mit nicht existierendem Unterverzeichnis → reportlab wirft beim Speichern → HTTP 500. (b) Wiederholte Navigationen auf `/kassenbuch/pdf/?month=<zufall>` → pro Aufruf eine neue, nie gelöschte Datei in media/, die in jedes Backup-ZIP wandert.",
+   "impact": "500er und unbegrenztes Anwachsen von media/ und Backups durch einen nicht validierten GET-Parameter; kein Traversal über media/ hinaus (Präfix `Kassenbuch_`).",
+   "fix": "`month` gegen `^\\d{4}-(0[1-9]|1[0-2])$` prüfen – zentral in `_parse_month()`; PDF in Temp-Verzeichnis rendern und per FileResponse streamen statt persistent in media/ zu schreiben.",
+   "effort": "S",
+   "dimension": "sicherheit-web",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt: views.py:1479-1485 – GET-Endpunkt ohne Validierung von `month` (1480), ruft generate_cashbook_pdf (pdf.py:230-239), das bei jedem Aufruf `media/cashbook/Kassenbuch_{month}.pdf` neu schreibt. Mit `/` im Wert (z. B. `09/2025` – realistisch, da cashbook_list.html:4 ein Freitextfeld mit Placeholder YYYY-MM ist) entsteht ein nicht existierender Unterordner → reportlab canvas.save() → FileNotFoundError → 500 (kein try/except, `path.exists()`-Prüfung in 1482 wird nie erreicht). Traversal über media/cashbook hinaus ist durch das feste Präfix `Kassenbuch_` und die feste Endung ausgeschlossen. Beliebige gültige Werte erzeugen je eine persistente Datei in media/. Überschneidet sich teilweise mit Fund 0 (500er-Teil); eigenständiger Kern ist der zustandsändernde GET und das Dateiwachstum. Schwere niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Fakten bestätigt: views.py:1480-1481 übergibt den ungeprüften GET-Parameter an generate_cashbook_pdf; pdf.py:234-237 mkdir + `Kassenbuch_{month}.pdf`, canvas.Canvas mit '/' im Wert → FileNotFoundError beim Speichern → 500; pro Aufruf entsteht eine persistente Datei in media/cashbook. Kein Test, keine dokumentierte Entscheidung. Einschränkung: Dies ist dasselbe Muster, das Fund 0 bereits explizit mit denselben Zeilen (1480-1481, pdf.py:237) aufführt – inhaltlich korrekt, aber redundant; sollte mit Fund 0 zusammengeführt werden. Schwere niedrig ist korrekt (nur eingeloggte Nutzer, kein Traversal über media/ hinaus).",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Sicherheitsstatus-Seite meldet „Bankanbindung vorbereitet“ trotz fehlgeschlagenem Passwort-Check und enthält einen hart auf ok=True gesetzten Prüfpunkt",
+   "file": "sedo/views.py",
+   "line": 2241,
+   "severity": "niedrig",
+   "description": "Die Seite /sicherheit/ ist laut DEPLOYMENT_SECURITY_NOTES die Freigabe-Grundlage für die Bankanbindung. `bank_ready` toleriert jedoch genau einen fehlgeschlagenen Check, und der Check „.env nicht im App-Backup“ ist statisch `ok: True` – er prüft nichts.",
+   "evidence": "sedo/views.py:2227-2232 `{'label': '.env nicht im App-Backup', 'ok': True, 'value': 'ausgeschlossen', ...}`; :2241 `'bank_ready': ok_count >= len(checks) - 1`; security_status.html:19 `{% if bank_ready %}Vorbereitet{% else %}Nacharbeit{% endif %}`",
+   "scenario": "Alle Umgebungsschalter gesetzt, aber der Admin-Account hat weiterhin „sedo1234“ → Check 1 schlägt fehl, ok_count = 9 von 10 → `bank_ready = 9 >= 9` → Kachel zeigt „Vorbereitet“. Der Nutzer hinterlegt Bank-PIN, während der Login mit Standard-Passwort über den Tunnel erreichbar ist.",
+   "impact": "Falsches Sicherheitsgefühl an der einzigen Stelle, an der die Anwendung selbst eine Freigabeempfehlung ausspricht.",
+   "fix": "`bank_ready = all(c['ok'] for c in checks)` bzw. Pflicht-Checks (Standard-Passwort, DEBUG, ALLOWED_HOSTS, Secure-Cookies) hart erzwingen; den .env-Check real implementieren oder als reinen Hinweis ohne ok-Wertung anzeigen.",
+   "effort": "S",
+   "dimension": "sicherheit-web",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Wörtlich belegt: views.py:2227-2232 statischer Check `'ok': True, 'value': 'ausgeschlossen'` ohne jede Prüfung; 2234 ok_count; 2241 `'bank_ready': ok_count >= len(checks) - 1` bei 10 Checks → 9 reichen; security_status.html:19 zeigt dann „Vorbereitet“. Da der statische Check immer zählt, darf effektiv einer der 9 echten Checks fehlschlagen – u. a. der Standard-Passwort-Check (2170-2175). DEPLOYMENT_SECURITY_NOTES.md nennt die Statusseite ausdrücklich als Kontrollinstrument vor Tunnel/Bankanbindung. Szenario tritt genau so ein. Niedrig ist angemessen (Fehlinformation, kein direkter Angriffspfad).",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py:2227-2232 hat `'ok': True` fest verdrahtet (kein Check; backup_utils.py:60 bestätigt zwar per Kommentar, dass .env nicht archiviert wird, geprüft wird es aber nicht); 2234 `ok_count`, 2241 `'bank_ready': ok_count >= len(checks) - 1` bei 10 Checks → 9 erfüllte reichen; security_status.html:19 zeigt daraufhin 'Vorbereitet'. Der Standard-Passwort-Check (2171-2178) kann also genau der tolerierte Fehlschlag sein. Denkbar war die Toleranz für den als optional formulierten HSTS-Check (2219 'Für Produktivbetrieb sinnvoll'), aber die Logik unterscheidet nicht, welcher Check fehlschlägt – keine Widerlegung. Kein Test zu security_status. Niedrig angemessen.",
+     "corrected_severity": null
+    }
+   ]
+  },
+  {
+   "title": "Kein Passwortwechsel in der Anwendung – Zugangsdaten lassen sich nach Verdacht auf Kompromittierung nur per Django-Admin oder CLI rotieren",
+   "file": "config/urls.py",
+   "line": 9,
+   "severity": "niedrig",
+   "description": "config/urls.py bindet nur LoginView/LogoutView ein; weder `django.contrib.auth.urls` noch eine eigene password_change-Route existieren. Die Sicherheitsseite verweist auf `python manage.py changepassword admin` – im PyInstaller-Bundle gibt es dieses manage.py nicht. Nicht-Staff-Nutzer haben keinen Weg, ihr Passwort zu ändern.",
+   "evidence": "config/urls.py:9-10 `path('login/', auth_views.LoginView.as_view(...))`, `path('logout/', auth_views.LogoutView.as_view(), name='logout')` – keine weiteren Auth-Routen; grep nach `password_change|auth.urls|PasswordChange` ohne Treffer; sedo/views.py:2177 Hinweistext `python manage.py changepassword admin`",
+   "scenario": "Der zweite Nutzer hat sein Passwort auf einem fremden Rechner eingegeben und möchte es sofort ändern → in der App gibt es keine Funktion, /admin/ verweigert ihm als Nicht-Staff den Zugang, im Desktop-Bundle existiert kein manage.py.",
+   "impact": "Verlängerte Angriffsfenster nach Passwort-Leak; Selbstbedienungs-Passwortwechsel fehlt in einem tunnel-exponierten System mit Bank-/Kundendaten.",
+   "fix": "`path('konto/passwort/', auth_views.PasswordChangeView.as_view(...), name='password_change')` ergänzen, Link in base.html, nach Wechsel andere Sessions des Nutzers löschen; AUTH_PASSWORD_VALIDATORS setzen.",
+   "effort": "S",
+   "dimension": "sicherheit-web",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Bestätigt: config/urls.py:7-16 enthält nur admin/, login/, logout/, sedo.urls und media; grep nach password_change/auth.urls/PasswordChange in config, sedo/urls.py, views und templates ohne Treffer; AUTH_PASSWORD_VALIDATORS in settings.py nicht gesetzt. Der Hinweistext views.py:2177 verweist auf `manage.py changepassword`, was im PyInstaller-Bundle (desktop.py, sys.frozen) nicht verfügbar ist. Ein Nutzer ohne is_staff kann sein Passwort in der App nicht ändern (Admin-Site verweigert Nicht-Staff, LoginRequiredMiddleware nimmt /admin/ nur von der Login-Pflicht aus). Schwere niedrig passt für 2 Nutzer, wobei der Punkt im Tunnel-Betrieb an Gewicht gewinnt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "config/urls.py:9-10 enthält nur LoginView/LogoutView; grep nach password_change/PasswordChange/auth.urls/set_password in sedo/urls.py, sedo/views.py, settings.html liefert nichts (nur SMTP-/PIN-/API-Key-Felder). AUTH_PASSWORD_VALIDATORS fehlt in settings.py. Hinweistext views.py:2177 verweist auf `python manage.py changepassword admin`; sedo_desktop.spec bündelt Django/sedo-Submodule, aber kein manage.py-Einstieg, desktop.py ruft nur migrate/ensure_admin auf (72-80). Einzige In-App-Möglichkeit ist /admin/ (nur is_staff). Nicht widerlegbar; niedrig passend, da Admin-/CLI-Weg für den Hauptnutzer existiert.",
+     "corrected_severity": null
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,501 @@
+{% extends 'sedo/base.html' %}{% load static %}{% block content %}
+<form method="post" id="offer-form">{% csrf_token %}
+<div class="work-dialog invoice-flow">
+  <div class="work-dialog-header">
+    <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg></div><div><h1>Neues Angebot</h1><div class="sub">In sechs Schritten zum fertigen Angebot – die KI übernimmt die Positionen.</div></div></div>
+    <a class="work-close" href="{% url 'sedo:offer_list' %}" title="Abbrechen">×</a>
+  </div>
+
+  <div class="work-body" data-wizard>
+    <ol class="wizard-nav" data-wizard-nav hidden></ol>
+
+    {% if form.non_field_errors %}<div class="card warning-card wizard-step-error">{{ form.non_field_errors }}</div>{% endif %}
+
+    <!-- ─── SCHRITT 1 · KUNDE ─────────────────────────────────────── -->
+    <section class="wizard-step" id="step-kunde" data-wizard-step data-step-label="Kunde">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></div>
+        <div><h2>Wer bekommt das Angebot?</h2><div class="sub">Kunden auswählen – alle Felder werden automatisch befüllt und können geprüft werden.</div></div>
+      </div>
+      <div class="form-card" id="section-customer">
+        <div class="form-card-title">
+          Kunde / Angebotsempfänger
+          <span class="autofill-badge">● autobefüllt</span>
+        </div>
+
+        <div class="field-wide" style="margin-bottom:14px">
+          <label>{{ form.customer.label }}</label>
+          <div class="customer-search-wrap">
+            <input type="search" id="customer-search" placeholder="Kunden suchen…" autocomplete="off">
+          </div>
+          {{ form.customer }}{{ form.customer.errors }}
+          <div class="hint">Kunden auswählen → alle Felder werden sofort automatisch befüllt.</div>
+
+          <div class="customer-selected-pill" id="customer-pill">
+            <strong id="pill-name">—</strong>
+            <span id="pill-info"></span>
+            <button type="button" class="clear-customer" id="clear-customer" title="Auswahl aufheben">×</button>
+          </div>
+        </div>
+
+        <div class="work-grid compact-form" id="customer-fields">
+          <div><label>Angebotsnummer</label><input value="AG (automatisch)" disabled></div>
+          <div><label>{{ form.salutation.label }}</label>{{ form.salutation }}{{ form.salutation.errors }}</div>
+          <div><label>{{ form.name.label }} *</label>{{ form.name }}{{ form.name.errors }}</div>
+          <div><label>{{ form.name2.label }}</label>{{ form.name2 }}{{ form.name2.errors }}</div>
+          <div><label>{{ form.customer_no.label }}</label>{{ form.customer_no }}{{ form.customer_no.errors }}</div>
+          <div><label>{{ form.customer_type.label }}</label>{{ form.customer_type }}{{ form.customer_type.errors }}</div>
+          <div><label>{{ form.contact_person.label }}</label>{{ form.contact_person }}{{ form.contact_person.errors }}</div>
+          <div><label>{{ form.phone.label }}</label>{{ form.phone }}{{ form.phone.errors }}</div>
+          <div><label>{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}</div>
+          <div><label>{{ form.street.label }}</label>{{ form.street }}{{ form.street.errors }}</div>
+          <div><label>{{ form.postcode.label }}</label>{{ form.postcode }}{{ form.postcode.errors }}</div>
+          <div><label>{{ form.city.label }}</label>{{ form.city }}{{ form.city.errors }}</div>
+          <div><label>{{ form.country.label }}</label>{{ form.country }}{{ form.country.errors }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 2 · OBJEKT ────────────────────────────────────── -->
+    <section class="wizard-step" id="step-objekt" data-wizard-step data-step-label="Objekt">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></div>
+        <div><h2>Wo wird gearbeitet?</h2><div class="sub">Leistungsort – erscheint im Angebot und später in der Rechnung.</div></div>
+      </div>
+      <div class="form-card" id="section-object">
+        <div class="form-card-title">
+          Objekt / Leistungsort
+          <span class="autofill-badge">● autobefüllt</span>
+        </div>
+        <div class="work-grid">
+          <div class="field-wide">
+            <label>{{ form.obj.label }}</label>
+            {{ form.obj }}{{ form.obj.errors }}
+            <div class="hint obj-hint" id="obj-hint">Wähle zuerst einen Kunden – dann erscheinen hier nur dessen Objekte.</div>
+          </div>
+          <div><label>{{ form.object_name.label }}</label>{{ form.object_name }}{{ form.object_name.errors }}</div>
+          <div><label>{{ form.object_street.label }}</label>{{ form.object_street }}{{ form.object_street.errors }}</div>
+          <div><label>{{ form.object_postcode.label }}</label>{{ form.object_postcode }}{{ form.object_postcode.errors }}</div>
+          <div><label>{{ form.object_city.label }}</label>{{ form.object_city }}{{ form.object_city.errors }}</div>
+          <div><label>{{ form.object_country.label }}</label>{{ form.object_country }}{{ form.object_country.errors }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 3 · ANGEBOTSDATEN ─────────────────────────────── -->
+    <section class="wizard-step" id="step-angebotsdaten" data-wizard-step data-step-label="Angebotsdaten">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></div>
+        <div><h2>Datum, Gültigkeit, Steuer</h2><div class="sub">Das heutige Datum ist bereits eingetragen – nur bei Bedarf ändern.</div></div>
+      </div>
+      <div class="form-card">
+        <div class="work-grid compact-form">
+          <div><label>{{ form.issue_date.label }}</label>{{ form.issue_date }}{{ form.issue_date.errors }}</div>
+          <div>
+            <label>{{ form.valid_days.label }}</label>{{ form.valid_days }}{{ form.valid_days.errors }}
+            <div class="due-preview hidden" id="valid-preview">Gültig bis: <strong id="valid-until-val">—</strong></div>
+          </div>
+          <div><label>{{ form.vat_rate.label }}</label>{{ form.vat_rate }}{{ form.vat_rate.errors }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 4 · KI-ASSISTENT ──────────────────────────────── -->
+    <section class="wizard-step" id="step-ki" data-wizard-step data-step-label="KI-Assistent">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg></div>
+        <div><h2>Was soll gemacht werden? <span class="info-tip" tabindex="0" aria-label="Hinweise zum KI-Diktat">i<span class="info-tip-text">Beispiele: „Beräumung Reihenhaus mit Entsorgung, 1200 Euro“ · „monatliche Treppenhausreinigung, 4 Etagen“. Bitte <strong>keine Namen oder Adressen</strong> ansagen – nur die Leistung. Annahmen und geschätzte Preise werden markiert. Kalkulationsangaben wie „3 Mann, 2 Tage“ helfen der KI beim Preis, erscheinen aber <strong>nicht</strong> im Angebot. Die Spracherkennung läuft lokal{% if stt_available %} (Whisper auf diesem Rechner){% else %} im Browser (Chrome empfohlen){% endif %} – das Audio verlässt den Rechner nicht, nur der Text geht an Claude. Kein Diktat nötig? Einfach auf <strong>Weiter</strong> klicken und die Positionen selbst eintragen.</span></span></h2><div class="sub">Einfach grob ansagen – die KI baut daraus die Positionen samt Leistungstexten.</div></div>
+      </div>
+      <div class="form-card" id="ai-assist-card">
+        <div class="toolbar" style="gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn accent" id="ai-record-btn"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg> Diktat starten</button>
+          <button type="button" class="btn primary" id="ai-extract-btn"><svg class="ico" aria-hidden="true"><use href="#i-sparkles"/></svg> Angebot erzeugen</button>
+          <span id="ai-rec-indicator" class="ai-rec-indicator" hidden><span class="ai-rec-dot" aria-hidden="true"></span> Aufnahme läuft&nbsp;·&nbsp;<span id="ai-rec-timer">0:00</span></span>
+          <span id="ai-status" class="hint" aria-live="polite"></span>
+        </div>
+        <div class="form-row" style="margin-top:12px">
+          <label for="ai-transcript">Ansage / Text (prüfen und bei Bedarf korrigieren)</label>
+          <textarea id="ai-transcript" rows="3" style="width:100%;resize:vertical" placeholder="Hier erscheint deine Ansage – alternativ Text direkt eintippen und auf ‚Angebot erzeugen‘ klicken."></textarea>
+        </div>
+        <div id="ai-assumptions"></div>
+        <div id="ai-hints"></div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 5 · POSITIONEN ────────────────────────────────── -->
+    <section class="wizard-step" id="step-positionen" data-wizard-step data-step-label="Positionen">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg></div>
+        <div><h2>Positionen prüfen <span class="info-tip" tabindex="0" aria-label="Hinweis zu den Positionen">i<span class="info-tip-text">Bezeichnung, Menge und Einzelpreis eingeben – Gesamtbeträge werden automatisch berechnet. Von der KI vorbefüllte Texte und Preise lassen sich frei anpassen.</span></span></h2><div class="sub">Von der KI vorbefüllt – Texte und Preise lassen sich frei anpassen.</div></div>
+      </div>
+      <div class="form-card">
+        {% if formset.non_form_errors %}<div class="card warning-card wizard-step-error" style="margin-bottom:12px">{{ formset.non_form_errors }}</div>{% endif %}
+        {{ formset.management_form }}
+        <div class="pos-table-wrap">
+        <table class="pos-table" id="position-list">
+          <thead><tr>
+            <th class="pos-c-no">Pos.</th><th>Bezeichnung</th><th class="pos-c-qty r">Menge</th>
+            <th class="pos-c-unit">Einheit</th><th class="pos-c-price r">Einzelpreis netto</th>
+            <th class="pos-c-total r">Gesamt</th><th class="pos-c-del"></th>
+          </tr></thead>
+        {% for f in formset %}
+          <tbody class="position-form{% if f.long_text.value or f.article_no.value or f.long_text.errors or f.article_no.errors %} has-desc{% endif %}">
+            <tr class="pos-main-row">
+              <td class="pos-no-cell">{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}<span class="pos-no">{{ forloop.counter }}</span></td>
+              <td class="pos-cell-desc">{{ f.description }}{{ f.description.errors }}</td>
+              <td class="pos-cell-qty">{{ f.quantity }}{{ f.quantity.errors }}</td>
+              <td class="pos-cell-unit">{{ f.unit }}{{ f.unit.errors }}</td>
+              <td class="pos-cell-price">{{ f.unit_price }}{{ f.unit_price.errors }}</td>
+              <td class="pos-line-total"><span class="pos-line-total-val">—</span></td>
+              <td class="pos-cell-del">{{ f.DELETE }}</td>
+            </tr>
+            <tr class="pos-desc-row">
+              <td></td>
+              <td colspan="5">
+                <button type="button" class="pos-desc-toggle">+ Beschreibung</button>
+                <div class="pos-desc-body">
+                  <div class="pos-desc-field"><label>Leistungsbeschreibung</label>{{ f.long_text }}{{ f.long_text.errors }}</div>
+                  <div class="pos-extra-field"><label>Artikelnr.</label>{{ f.article_no }}{{ f.article_no.errors }}</div>
+                </div>
+              </td>
+              <td></td>
+            </tr>
+          </tbody>
+        {% endfor %}
+        </table>
+        </div>
+        <!-- „+ Position hinzufügen" steht unter der jeweils letzten Position -->
+        <div class="add-position-row"><button class="btn small" type="button" id="add-position">+ Position hinzufügen</button></div>
+        <template id="empty-form-template"><tbody class="position-form"><tr class="pos-main-row"><td class="pos-no-cell">{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}<span class="pos-no">__num__</span></td><td class="pos-cell-desc">{{ formset.empty_form.description }}</td><td class="pos-cell-qty">{{ formset.empty_form.quantity }}</td><td class="pos-cell-unit">{{ formset.empty_form.unit }}</td><td class="pos-cell-price">{{ formset.empty_form.unit_price }}</td><td class="pos-line-total"><span class="pos-line-total-val">—</span></td><td class="pos-cell-del">{{ formset.empty_form.DELETE }}</td></tr><tr class="pos-desc-row"><td></td><td colspan="5"><button type="button" class="pos-desc-toggle">+ Beschreibung</button><div class="pos-desc-body"><div class="pos-desc-field"><label>Leistungsbeschreibung</label>{{ formset.empty_form.long_text }}</div><div class="pos-extra-field"><label>Artikelnr.</label>{{ formset.empty_form.article_no }}</div></div></td><td></td></tr></tbody></template>
+
+        <div class="live-summary" id="live-summary">
+          <div class="sum-line"><span class="sum-label">Nettobetrag</span><span class="sum-val" id="calc-net">0,00 €</span></div>
+          <div class="sum-line"><span class="sum-label">USt <span id="calc-vat-rate">19</span>%</span><span class="sum-val" id="calc-vat">0,00 €</span></div>
+          <div class="sum-line gross"><span class="sum-label">Gesamtbetrag</span><span class="sum-val" id="calc-gross">0,00 €</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 6 · PRÜFEN ────────────────────────────────────── -->
+    <section class="wizard-step" id="step-pruefen" data-wizard-step data-step-label="Prüfen">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></div>
+        <div><h2>Alles auf einen Blick <span class="info-tip" tabindex="0" aria-label="Hinweis zu Vorschau und Erstellen">i<span class="info-tip-text">„Vorschau“ zeigt das Angebot, ohne zu speichern. „Angebot erstellen“ speichert es und erzeugt direkt das PDF.</span></span></h2><div class="sub">Passt alles? Dann Angebot erstellen – das PDF wird sofort erzeugt.</div></div>
+      </div>
+      <div class="form-card">
+        <div class="info-list two">
+          <div><span>Kunde</span><strong id="rc-customer">—</strong></div>
+          <div><span>Objekt / Leistungsort</span><strong id="rc-object">—</strong></div>
+          <div><span>Angebotsdatum</span><strong id="rc-date">—</strong></div>
+          <div><span>Gültig bis</span><strong id="rc-valid">—</strong></div>
+          <div><span>Positionen</span><strong id="rc-count">0</strong></div>
+          <div><span>Gesamtbetrag (brutto)</span><strong id="rc-gross">0,00 €</strong></div>
+        </div>
+        <div id="rc-warnings"></div>
+      </div>
+    </section>
+
+    <div class="sticky-actions wizard-bar">
+      <a class="btn ghost" href="{% url 'sedo:offer_list' %}">Abbrechen</a>
+      <div class="wizard-bar-right">
+        <span class="wizard-progress" data-wizard-progress hidden>Schritt <b data-wizard-current>1</b> von <b data-wizard-total>6</b></span>
+        <button class="btn" type="button" data-wizard-prev hidden>← Zurück</button>
+        <button class="btn primary" type="button" data-wizard-next hidden>Weiter →</button>
+        <span class="wizard-final" data-wizard-final>
+          <button class="btn" type="submit" name="action" value="preview">Vorschau</button>
+          <button class="btn primary" type="submit" name="action" value="create">Angebot erstellen</button>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Hilfsfunktionen ───────────────────────────────────────────── */
+  function fmtMoney(v) {
+    var n = isNaN(v) ? 0 : parseFloat(v);
+    return n.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' €';
+  }
+  function setText(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+  function num(el) { return parseFloat(((el ? el.value : '0') || '0').replace(',', '.')) || 0; }
+
+  /** Feld befüllen + kurzer blauer Flash, damit man sieht was sich geändert hat */
+  function fill(id, val) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.value = (val !== null && val !== undefined) ? val : '';
+    el.classList.add('autofill-flash', 'filled');
+    setTimeout(function () { el.classList.remove('filled'); }, 1400);
+  }
+
+  var posList = document.getElementById('position-list');
+  var vatEl   = document.getElementById('id_vat_rate');
+  var lastNet = 0, lastGross = 0, lastCount = 0;
+
+  /* ── Kundenschnellsuche ────────────────────────────────────────── */
+  var searchInput  = document.getElementById('customer-search');
+  var customerSel  = document.getElementById('id_customer');
+  var customerPill = document.getElementById('customer-pill');
+  var pillName     = document.getElementById('pill-name');
+  var pillInfo     = document.getElementById('pill-info');
+  var clearBtn     = document.getElementById('clear-customer');
+
+  /* Trefferliste/Auswahl übernimmt customer_search.js (echtes Autocomplete). */
+
+  /* ── Kundenauswahl → Felder automatisch befüllen ───────────────── */
+  var objSel = document.getElementById('id_obj');
+
+  function updateObjectDropdown(objects) {
+    if (!objSel) return;
+    while (objSel.options.length > 1) objSel.remove(1);
+    var hint = document.getElementById('obj-hint');
+
+    if (objects && objects.length > 0) {
+      objects.forEach(function (obj) {
+        var opt = document.createElement('option');
+        opt.value = obj.id;
+        opt.textContent = obj.name + (obj.street ? ' – ' + obj.street : '');
+        opt.dataset.name     = obj.name;
+        opt.dataset.street   = obj.street   || '';
+        opt.dataset.postcode = obj.postcode || '';
+        opt.dataset.city     = obj.city     || '';
+        opt.dataset.country  = obj.country  || 'DE';
+        objSel.add(opt);
+      });
+      if (hint) hint.textContent = objects.length + ' Objekt' + (objects.length !== 1 ? 'e' : '') + ' verfügbar.';
+    } else if (hint) {
+      hint.textContent = 'Kein Objekt hinterlegt. Leistungsort direkt eingeben.';
+    }
+    objSel.value = '';
+  }
+
+  if (customerSel) {
+    customerSel.addEventListener('change', function () {
+      var pk = this.value;
+      var section = document.getElementById('section-customer');
+
+      if (!pk) {
+        if (section) section.classList.remove('section-autofilled');
+        if (customerPill) customerPill.classList.remove('visible');
+        updateObjectDropdown([]);
+        return;
+      }
+
+      fetch('/api/kunden/' + encodeURIComponent(pk) + '/daten/')
+        .then(function (resp) {
+          if (!resp.ok) throw new Error('API-Fehler');
+          return resp.json();
+        })
+        .then(function (d) {
+          fill('id_salutation',     d.salutation);
+          fill('id_name',           d.name);
+          fill('id_name2',          d.name2);
+          fill('id_customer_no',    d.customer_no);
+          fill('id_customer_type',  d.customer_type);
+          fill('id_contact_person', d.contact_person);
+          fill('id_phone',          d.phone);
+          fill('id_email',          d.email);
+          fill('id_street',         d.street);
+          fill('id_postcode',       d.postcode);
+          fill('id_city',           d.city);
+          fill('id_country',        d.country);
+
+          if (section) section.classList.add('section-autofilled');
+          if (customerPill && pillName && pillInfo) {
+            pillName.textContent = d.name || '';
+            pillInfo.textContent = [d.street, ((d.postcode || '') + ' ' + (d.city || '')).trim()]
+              .filter(Boolean).join(' · ');
+            customerPill.classList.add('visible');
+          }
+          updateObjectDropdown(d.objects || []);
+        })
+        .catch(function (e) {
+          console.warn('Kundendaten konnten nicht geladen werden:', e);
+          if (typeof window.showToast === 'function') {
+            window.showToast('Kundendaten konnten nicht geladen werden – bitte Felder prüfen.', 'warning');
+          }
+        });
+    });
+  }
+
+  if (clearBtn && customerSel) {
+    clearBtn.addEventListener('click', function () {
+      customerSel.value = '';
+      customerSel.dispatchEvent(new Event('change'));
+    });
+  }
+
+  /* ── Objektauswahl → Leistungsort befüllen ─────────────────────── */
+  if (objSel) {
+    objSel.addEventListener('change', function () {
+      var opt = this.options[this.selectedIndex];
+      if (!opt || !opt.value) return;
+      var section = document.getElementById('section-object');
+      fill('id_object_name',     opt.dataset.name || opt.text.split(' – ')[0]);
+      fill('id_object_street',   opt.dataset.street);
+      fill('id_object_postcode', opt.dataset.postcode);
+      fill('id_object_city',     opt.dataset.city);
+      fill('id_object_country',  opt.dataset.country || 'DE');
+      if (section) section.classList.add('section-autofilled');
+    });
+  }
+
+  /* ── Live-Kalkulation der Positionen ───────────────────────────── */
+  function recalcTotals() {
+    var net = 0, count = 0;
+    document.querySelectorAll('#position-list .position-form').forEach(function (row) {
+      var del = row.querySelector('input[name$="-DELETE"]');
+      if (del && del.checked) return;
+      var qty   = num(row.querySelector('input[name$="-quantity"]'));
+      var price = num(row.querySelector('input[name$="-unit_price"]'));
+      var line  = qty * price;
+      var out   = row.querySelector('.pos-line-total-val');
+      if (out) out.textContent = fmtMoney(line);
+      var desc = row.querySelector('input[name$="-description"]');
+      if (desc && desc.value.trim()) count++;
+      net += line;
+    });
+    var rate  = vatEl ? (parseFloat((vatEl.value || '19').replace(',', '.')) || 0) : 19;
+    var vat   = net * rate / 100;
+    lastNet = net; lastGross = net + vat; lastCount = count;
+    setText('calc-net',   fmtMoney(net));
+    setText('calc-vat',   fmtMoney(vat));
+    setText('calc-gross', fmtMoney(lastGross));
+    setText('calc-vat-rate', rate % 1 === 0 ? rate.toFixed(0) : rate.toFixed(2));
+  }
+
+  if (posList) {
+    posList.addEventListener('input',  recalcTotals);
+    posList.addEventListener('change', recalcTotals);
+  }
+  if (vatEl) vatEl.addEventListener('input', recalcTotals);
+
+  /* ── Gültig-bis-Vorschau ───────────────────────────────────────── */
+  var issueEl  = document.getElementById('id_issue_date');
+  var validEl  = document.getElementById('id_valid_days');
+  var validBox = document.getElementById('valid-preview');
+  var validVal = document.getElementById('valid-until-val');
+
+  function validUntilDate() {
+    if (!issueEl || !validEl) return null;
+    var d = new Date(issueEl.value);
+    var days = parseInt(validEl.value, 10);
+    if (isNaN(d.getTime()) || isNaN(days)) return null;
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+  function updateValidPreview() {
+    if (!validBox || !validVal) return;
+    var d = validUntilDate();
+    if (!d) { validBox.classList.add('hidden'); return; }
+    validVal.textContent = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    validBox.classList.remove('hidden');
+  }
+  if (issueEl) issueEl.addEventListener('change', updateValidPreview);
+  if (validEl) validEl.addEventListener('input',  updateValidPreview);
+
+  /* ── Position hinzufügen / neu nummerieren ─────────────────────── */
+  var addBtn = document.getElementById('add-position');
+  var tmpl   = document.getElementById('empty-form-template');
+  var total  = document.querySelector('#id_items-TOTAL_FORMS');
+
+  function renumber() {
+    document.querySelectorAll('#position-list .position-form').forEach(function (row, i) {
+      var b = row.querySelector('.pos-no');
+      if (b) b.textContent = String(i + 1);
+    });
+  }
+
+  if (addBtn && posList && tmpl && total) {
+    addBtn.addEventListener('click', function () {
+      var idx = parseInt(total.value, 10);
+      posList.insertAdjacentHTML('beforeend',
+        tmpl.innerHTML.replaceAll('__prefix__', String(idx)).replaceAll('__num__', String(idx + 1)));
+      total.value = idx + 1;
+      var last = posList.lastElementChild;
+      if (last) {
+        var d = last.querySelector('input[name$="-description"]');
+        if (d) d.focus();
+      }
+      renumber();
+      recalcTotals();
+    });
+  }
+
+  if (posList) {
+    posList.addEventListener('change', function (e) {
+      if (e.target && e.target.name && e.target.name.endsWith('-DELETE')) { renumber(); recalcTotals(); }
+    });
+  }
+
+  /* ── Zusammenfassung im letzten Schritt ────────────────────────── */
+  function textOf(id) {
+    var el = document.getElementById(id);
+    return el ? (el.value || '').trim() : '';
+  }
+  function selectedText(id) {
+    var el = document.getElementById(id);
+    if (!el || el.selectedIndex < 0) return '';
+    var opt = el.options[el.selectedIndex];
+    return (opt && opt.value) ? opt.text.trim() : '';
+  }
+  function updateRecap() {
+    recalcTotals();
+    var kunde = textOf('id_name') || selectedText('id_customer') || '—';
+    var objName = textOf('id_object_name') || selectedText('id_obj');
+    var objCity = [textOf('id_object_postcode'), textOf('id_object_city')].filter(Boolean).join(' ');
+    setText('rc-customer', kunde);
+    setText('rc-object', [objName, objCity].filter(Boolean).join(' · ') || '—');
+    var d = (issueEl && issueEl.value) ? new Date(issueEl.value) : null;
+    setText('rc-date', (d && !isNaN(d.getTime())) ? d.toLocaleDateString('de-DE') : '—');
+    var v = validUntilDate();
+    setText('rc-valid', v ? v.toLocaleDateString('de-DE') : '—');
+    setText('rc-count', String(lastCount));
+    setText('rc-gross', fmtMoney(lastGross));
+
+    /* Freundliche Hinweise – blockieren nichts, Django prüft beim Speichern */
+    var warn = [];
+    if (!textOf('id_name') && !selectedText('id_customer')) warn.push('Kein Kunde eingetragen – bitte Schritt 1 prüfen.');
+    if (!textOf('id_issue_date')) warn.push('Kein Angebotsdatum eingetragen – bitte Schritt 3 prüfen.');
+    if (lastCount === 0) warn.push('Noch keine Position mit Bezeichnung – bitte Schritt 5 prüfen.');
+    else if (lastNet <= 0) warn.push('Der Nettobetrag ist 0,00 € – Preise in Schritt 5 prüfen.');
+
+    var box = document.getElementById('rc-warnings');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!warn.length) return;
+    var div = document.createElement('div');
+    div.className = 'card warning-card';
+    div.style.marginTop = '14px';
+    var t = document.createElement('strong');
+    t.textContent = 'Bitte noch prüfen:';
+    div.appendChild(t);
+    var ul = document.createElement('ul');
+    ul.style.cssText = 'margin:8px 0 0 18px;padding:0';
+    warn.forEach(function (w) { var li = document.createElement('li'); li.textContent = w; ul.appendChild(li); });
+    div.appendChild(ul);
+    box.appendChild(div);
+  }
+
+  document.addEventListener('wizard:step', function (e) {
+    if (e.detail && e.detail.id === 'step-pruefen') updateRecap();
+  });
+
+  recalcTotals();
+  updateValidPreview();
+})();
+</script>
+<script>window.__sedoAiUrls={extract:"{% url 'sedo:ai_generate_offer' %}",transcribe:"{% url 'sedo:ai_transcribe' %}",sttAvailable:{{ stt_available|yesno:"true,false" }}};</script>
+<script src="{% static 'sedo/offer_ai.js' %}?v=3_23"></script>
+<script>window.__sedoMagicUrls={polish:"{% url 'sedo:ai_polish_text' %}"};</script>
+<script src="{% static 'sedo/magic_tone.js' %}?v=3_23"></script>
+<script src="{% static 'sedo/customer_search.js' %}?v=3_23"></script>
+<script src="{% static 'sedo/positions_table.js' %}?v=3_23"></script>
+<script src="{% static 'sedo/unsaved_guard.js' %}?v=2_1"></script>
+<script>window.__sedoPlausiUrls={check:"{% url 'sedo:ai_plausibility' %}"};</script>
+<script src="/static/sedo/plausibility.js?v=3_23"></script>
+{% endblock %}

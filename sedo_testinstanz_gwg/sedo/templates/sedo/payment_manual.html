@@ -1,0 +1,23 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<div class="topbar detail-topbar">
+  <div><div class="eyebrow">Zahlung erfassen</div><div class="h1">Rechnung {{ invoice.number }}</div><div class="sub">{{ invoice.customer }} · offen {{ invoice.open_amount }} €</div></div>
+  <div class="toolbar"><a class="btn" href="{% url 'sedo:invoice_detail' invoice.pk %}">Zur Rechnung</a><a class="btn" href="{% url 'sedo:open_items' %}">Offene Posten</a></div>
+</div>
+<div class="detail-grid">
+  <div class="card">
+    <h2>Zahlung buchen</h2>
+    <form method="post" class="form-grid">{% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.META.HTTP_REFERER|default:'' }}">
+      {% for field in form %}<div class="field"><label>{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="field-error">{{ field.errors }}</div>{% endif %}</div>{% endfor %}
+      <div class="form-actions"><button class="btn primary" type="submit">Zahlung speichern</button></div>
+    </form>
+  </div>
+  <div class="card totals-card">
+    <h2>Rechnung</h2>
+    <div class="sum-row"><span>Brutto</span><strong>{{ invoice.gross_total }} €</strong></div>
+    <div class="sum-row"><span>Bereits bezahlt</span><strong>{{ invoice.paid_amount }} €</strong></div>
+    <div class="sum-row total"><span>Offen</span><strong>{{ invoice.open_amount }} €</strong></div>
+    <div class="hint">Für Teilzahlungen einfach nur den tatsächlich eingegangenen Betrag erfassen. Der Restbetrag bleibt offen.</div>
+  </div>
+</div>
+{% endblock %}

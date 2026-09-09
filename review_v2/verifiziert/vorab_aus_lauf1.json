@@ -1,0 +1,322 @@
+[
+ {
+  "dimension": "sicherheit-web",
+  "title": "Kein Brute-Force-Schutz und keine Passwortregeln an /login/ und /admin/login/ trotz Tunnel-Exposition",
+  "file": "config/settings.py",
+  "line": 192,
+  "severity": "hoch",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Nachvollzogen: (1) config/settings.py enthält keine Zeile AUTH_PASSWORD_VALIDATORS (grep leer) – Django setzt damit den Default [] an, d. h. `changepassword`/Admin akzeptieren jedes Passwort, auch 'Sedo2025!' oder '1234'. (2) MIDDLEWARE (settings.py:115-128) besteht nur aus Django-Standard, WhiteNoise, sedo.middleware.LoginRequiredMiddleware und WeeklyBackupMiddleware – kein Throttling; requirements.txt enthält kein django-axes/ratelimit; grep über das Projekt (ohne .venv/dist) findet keinerlei eigene Versuchszähler/Lockout-Logik. (3) config/urls.py:9 nutzt den unveränderten auth_views.LoginView, config/urls.py:8 exponiert admin.site.urls; sedo/middleware.py EXEMPT_PREFIXES nimmt '/login/' und '/admin/' vom Login-Zwang aus, sodass beide Anmeldemasken anonym erreichbar sind. Django selbst bietet für LoginView/Admin-Login kein eingebautes Rate-Limiting oder Account-Lockout; nichts Vorgelagertes (Decorator, Manager, Middleware) verhindert unbegrenzte POSTs. Im Tunnelbetrieb (laut Projektbeschreibung real, DJANGO_ALLOWED_HOSTS wird dafür ohnehin auf den Tunnel-Host gesetzt) tritt das Szenario damit genau wie beschrieben ein. Schwere 'hoch' ist angemessen: ausnutzbare Schwäche mit realem Pfad zum einzigen Superuser-Account, aber abhängig von schwachem Passwort und aktivem Tunnel (keine unbedingte Lücke, daher nicht 'kritisch').",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "skeptiker",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Widerlegung nicht möglich, alle Belege bestätigt: (1) grep über config/, sedo/, requirements.txt nach AUTH_PASSWORD_VALIDATORS, axes, ratelimit, throttle, lockout liefert keinen Treffer; config/settings.py:115-128 MIDDLEWARE enthält nur Django-Standard, WhiteNoise, sedo.middleware.LoginRequiredMiddleware und WeeklyBackupMiddleware – keine Login-Drosselung. (2) config/urls.py:9 nutzt den unveränderten auth_views.LoginView; sedo/views.py/urls.py überschreiben keinen Login. (3) sedo/middleware.py:17-22 nimmt '/login/' und '/admin/' vom Login-Zwang aus, /admin/login/ ist also erreichbar. (4) sedo/tests/ enthält keinen Test zu brute/lockout/password-validation. (5) Django selbst bietet ohne AUTH_PASSWORD_VALIDATORS keinerlei Passwortregeln und nie Rate-Limiting; das ORM fängt nichts ab. (6) Der Tunnel-Betrieb ist ausdrücklich vorgesehen: settings.py:89-93 CSRF_TRUSTED_ORIGINS mit 'https://*.trycloudflare.com' (Quick Tunnel = kein Cloudflare Access davor), DEPLOYMENT_SECURITY_NOTES.md:12-20 verlangt nur SSL/Cookie-Flags/ALLOWED_HOSTS, keinen Zugriffsschutz oder Versuchslimit. Einziger Abschwächungshinweis: 'https://*.cloudflareaccess.com' in CSRF_TRUSTED_ORIGINS deutet an, dass Cloudflare Access optional genutzt werden kann – das ist aber nicht erzwungen und Quick Tunnel wird gleichrangig unterstützt. Schwere 'hoch' (ausnutzbare Schwäche, realer Angriffspfad bei aktivem Tunnel) ist angemessen.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Technisch bestätigt: config/settings.py enthält keine AUTH_PASSWORD_VALIDATORS (grep leer, Security-Block Z. 192-207 setzt nur Cookie/HSTS/Frame-Optionen); config/urls.py:8-9 exponiert `admin/` und den unveränderten `auth_views.LoginView`; sedo/middleware.py:17-22 nimmt `/login/` und `/admin/` vom Login-Zwang aus; in sedo/ und config/ gibt es keinerlei Lockout/Throttle-Code (grep nach lockout/ratelimit/throttle/login_attempt leer), requirements.txt enthält kein axes/ratelimit.\n\nRelevanz im Projektkontext: Der Tunnelbetrieb ist keine Randannahme, sondern ein dokumentierter Betriebsmodus – DEPLOYMENT_SECURITY_NOTES.md Z. 12-24 (\"NETZWERK / CLOUDFLARE-TUNNEL (extern erreichbar)\") nennt nur Cookie-/Host-/HTTPS-Flags, keinerlei Vorschaltschutz (Cloudflare Access, fail2ban für die App, IP-Beschränkung). Auch sedo/management/commands/ensure_admin.py Z. 3-6 und sedo/views.py:2177 gehen ausdrücklich von Tunnel-Erreichbarkeit aus. Der Code selbst rechnet mit schwachen Passwörtern im Bestand: security_status (views.py:2171-2178) prüft, ob der Admin noch \"sedo1234\" nutzt – bei einer solchen Alt-Installation ist die Anmeldemaske ohne Versuchslimit weltweit erreichbar, und ohne Validatoren kann das Passwort jederzeit per changepassword/Admin auf einen Wörterbuchwert gesetzt werden. Der einzige Account ist Superuser mit Zugriff auf Admin, Kundendaten, Backups und SMTP.\n\nWeder CHANGELOG.md noch DEPLOYMENT_SECURITY_NOTES.md dokumentieren das Fehlen von Passwortregeln/Brute-Force-Schutz als bewusste Entscheidung – die Notes listen im Gegenteil fail2ban für SSH, nicht aber für die App.\n\nSchwere: \"hoch\" ist korrekt. Nicht \"kritisch\", weil der Angriffspfad an zwei Bedingungen hängt (Tunnel aktiv UND schwaches/Alt-Passwort; das per token_urlsafe(9) erzeugte Zufallspasswort mit ~72 Bit ist online nicht brute-forcebar) und keine unmittelbare Datenkorruption/GoBD-Verletzung entsteht. Nicht \"mittel\", weil es sich um eine reale, ausnutzbare Schwäche des einzigen Superuser-Kontos in einem vom Projekt selbst vorgesehenen Exponierungsszenario handelt. Fix-Vorschlag (Validatoren + Cache-basiertes Throttling für /login/ und /admin/login/, Cloudflare Access im Tunnelbetrieb) ist angemessen; Validatoren greifen in Django auch bei `changepassword` und im Admin-Passwortformular.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-web",
+  "title": "Open Redirect: 'next' aus HTTP_REFERER wird ungeprüft an redirect() übergeben",
+  "file": "sedo/views.py",
+  "line": 1259,
+  "severity": "mittel",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "skeptiker",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Fund bestätigt, nach Widerlegungsversuch bleibt er bestehen. Belege: sedo/templates/sedo/payment_manual.html:10 schreibt `request.META.HTTP_REFERER` ungeprüft in das Hidden-Feld `next`; sedo/views.py:1259-1260 (invoice_add_payment) und 1291-1292 (invoice_mark_paid) machen `next_url = request.POST.get('next') or reverse(...)` und `return redirect(next_url)` ohne Prüfung. Widerlegungsversuche: (1) `url_has_allowed_host_and_scheme` kommt im gesamten Projekt nicht vor (grep über sedo/ leer). (2) Django selbst schützt hier nicht: `redirect()`/HttpResponseRedirect akzeptiert beliebige http(s)-URLs; nur LoginView/logout validieren `next`. (3) Kein Test in sedo/tests/ referenziert `next` (grep leer). (4) `SECURE_REFERRER_POLICY = 'same-origin'` (config/settings.py:202) begrenzt nur ausgehende Referer der eigenen App; im Angriffsszenario kommt der Referer beim GET auf /zahlung/ von der fremden Seite, die ihre eigene Referrer-Policy (`unsafe-url`) setzt – dieser Wert landet dann im Formular und beim CSRF-geschützten POST im Redirect. CSRF hilft nicht, weil der Nutzer das legitime Formular selbst absendet. (5) Es ist kein absichtliches Muster: open_items.html:86 nutzt für denselben Zweck korrekt `request.get_full_path` (relative URL), payment_manual.html weicht davon ab. Schwere „mittel“ ist angemessen: ausnutzbar nur mit angemeldetem Nutzer plus Klick auf fremden Link, Folge ist Phishing-Weiterleitung nach einer echten Buchung, kein direkter Datenzugriff; in der Praxis relevant, da die App zeitweise per Tunnel erreichbar ist.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Der Fund ist im Code nachvollziehbar und wird durch nichts Vorgelagertes verhindert.\n\nBelege:\n- sedo/templates/sedo/payment_manual.html:10: `<input type=\"hidden\" name=\"next\" value=\"{{ request.META.HTTP_REFERER|default:'' }}\">` – der eingehende Referer wird ungeprüft ins Formular geschrieben.\n- sedo/views.py:1259-1260 (invoice_add_payment): `next_url = request.POST.get('next') or reverse('sedo:invoice_detail', args=[invoice.pk]); return redirect(next_url)` – keine Prüfung mit `url_has_allowed_host_and_scheme`; in sedo/views.py gibt es keinen einzigen Aufruf dieser Funktion.\n- sedo/views.py:1291-1292 (invoice_mark_paid): identisches Muster; hier kommt `next` aus open_items.html:86 (`request.get_full_path`, also relativ und unkritisch), aber der View selbst akzeptiert beliebige POST-Werte.\n\nKeine vorgelagerte Abwehr:\n- Django's `redirect()`/`HttpResponseRedirect` validiert keine Hosts (nur `LoginView`/`LogoutView` tun das für ihr eigenes `next`).\n- sedo/middleware.py: LoginRequiredMiddleware (Z. 27-33) prüft nur Authentifizierung; WeeklyBackupMiddleware ist irrelevant. Keine Middleware prüft `next` oder Referer.\n- config/settings.py:202 `SECURE_REFERRER_POLICY = 'same-origin'` steuert nur den AUSGEHENDEN Referer der eigenen App; der eingehende Referer beim Klick von der Angreiferseite wird durch deren eigene Referrer-Policy (z. B. unsafe-url) bestimmt.\n\nSzenario trifft ein: Nutzer mit aktiver Session klickt auf einer fremden HTTPS-Seite einen Link auf https://<tunnel>/rechnungen/17/zahlung/ → GET wird mit Referer der Angreiferseite bedient → Hidden-Feld enthält die externe URL → nach \"Zahlung speichern\" folgt `redirect(<externe URL>)`. Einschränkung: Ist der Nutzer nicht eingeloggt, greift die Login-Umleitung (middleware.py:32) und der Referer nach dem Login ist die eigene Login-Seite – der Angriff setzt also eine bestehende Session voraus und erfordert Nutzerinteraktion (Zahlung tatsächlich buchen). Das rechtfertigt die Einstufung \"mittel\"; keine Korrektur nötig. Fix-Vorschlag (url_has_allowed_host_and_scheme mit request.get_host(), im Template relative URL statt Referer) ist korrekt.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Technisch bestätigt: sedo/templates/sedo/payment_manual.html:10 schreibt `request.META.HTTP_REFERER` ungeprüft in das Hidden-Feld `next`; sedo/views.py:1259-1260 (`next_url = request.POST.get('next') or reverse(...)`; `return redirect(next_url)`) leitet ohne `url_has_allowed_host_and_scheme` weiter. Es gibt im gesamten sedo/-Code keinen einzigen Aufruf von `url_has_allowed_host_and_scheme`. `SECURE_REFERRER_POLICY = 'same-origin'` (settings.py:202) schützt hier nicht – sie regelt nur, welchen Referer DIESE App nach außen sendet, nicht was eine fremde Seite beim Verlinken auf das Tool mitschickt. Selbst ohne `unsafe-url`-Meta reicht die Browser-Standardpolicy (strict-origin-when-cross-origin) bei HTTPS→HTTPS, um mindestens den Origin der Angreiferseite als Referer zu übertragen; der Redirect landet also auf der fremden Domain.\n\nRelevanz im Projektkontext: Der Angriff setzt voraus, dass (a) der Tunnel aktiv ist, (b) der Angreifer die Tunnel-URL kennt, (c) der Nutzer bereits eingeloggt ist (@login_required, views.py:1244) und (d) der Nutzer die Zahlung tatsächlich speichert. Das ist ein gezielter, aber realer Pfad: Die Weiterleitung erfolgt unmittelbar nach einer erfolgreichen, vertrauenswürdig wirkenden Buchung mit Django-Success-Message – ideal für eine „Sitzung abgelaufen“-Phishing-Maske; ein abgegriffenes Passwort öffnet Zugriff auf alle Kunden- und GoBD-relevanten Rechnungsdaten. Einschränkung des Funds: Für invoice_mark_paid (views.py:1291-1292) ist die Schwäche nur theoretisch – dort stammt `next` aus open_items.html:86 (`request.get_full_path`, immer relativ) bzw. fehlt in invoice_detail.html:56 ganz, und ein fremdes POST scheitert am CSRF-Schutz. Ausnutzbar ist praktisch nur invoice_add_payment. Weder CHANGELOG.md noch DEPLOYMENT_SECURITY_NOTES.md erwähnen Redirect/Referer, also keine dokumentierte Designentscheidung. Nebenbefund ohne Sicherheitsrelevanz: Bei Validierungsfehlern zeigt der Referer beim zweiten Absenden auf die Formularseite selbst, sodass nach dem Speichern wieder das leere Zahlungsformular statt der Ursprungsseite erscheint.\n\nSchwere „mittel“ ist angemessen: keine direkte Datenmanipulation, kein GoBD-Verstoß, aber ein echter, mit wenigen Zeilen (S) zu schließender Phishing-Pfad, der nur bei aktivem Tunnel greift. „Hoch“ wäre wegen der starken Vorbedingungen (Tunnel-URL bekannt, eingeloggter Nutzer, aktive Buchung) übertrieben, „niedrig“ angesichts des Passwort-Phishing-Ziels zu wenig.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-web",
+  "title": "Admin-Site erlaubt hartes Löschen und Ändern GoBD-relevanter Belege (Rechnungen, Zahlungen, Mahnungen) unter Umgehung des Soft-Delete",
+  "file": "sedo/admin.py",
+  "line": 18,
+  "severity": "kritisch",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt. Belege im Code:\n\n1. Admin ist aktiv und erreichbar: config/urls.py:8 `path('admin/', admin.site.urls)`; sedo/middleware.py:17-22 nimmt '/admin/' aus der Login-Pflicht aus (Django-Admin hat eigenen Login); Nav-Link in sedo/templates/sedo/base.html:74 `<a href=\"/admin/\">`. Der einzige angelegte Nutzer ist ein Superuser (sedo/management/commands/ensure_admin.py:22 `create_superuser('admin', ...)`), hat also im Admin alle Rechte.\n\n2. Kein Schutz gegen hartes Löschen/Ändern: sedo/admin.py:18-23 `InvoiceAdmin(admin.ModelAdmin)` mit `inlines=[InvoiceItemInline]`, ohne has_delete_permission/has_change_permission/readonly_fields; Zeile 36 `admin.site.register(Payment)`, 37 `CashbookEntry`, 40 `DunningDocument` mit Standard-ModelAdmin. SoftDeleteModel (sedo/models.py:28-51) definiert nur `soft_delete()`; `grep \"def delete\"` über sedo/*.py ist leer – der Admin ruft `obj.delete()` bzw. `queryset.delete()` und löscht physisch. InvoiceItem hängt mit `on_delete=models.CASCADE` an Invoice (sedo/models.py:216), Positionen verschwinden mit. Kein Signal/Manager/Middleware fängt das ab; der AuditLog wird nur in eigenen Views geschrieben.\n\n3. Klartext-Secrets: AppSetting (sedo/models.py:423-425) speichert `value` als TextField; sedo/views.py:1992/2025 schreibt `ai_api_key` und `fints_pin` direkt hinein, keine Verschlüsselung im Projekt (grep encrypt/fernet leer, backup_utils.py:18 kennt diese Keys nur als SECRET_SETTING_KEYS für den Backup-Export). `admin.site.register(AppSetting)` (admin.py:41) zeigt sie unverändert im Änderungsformular.\n\nSzenario tritt ein: Angemeldeter Superuser → /admin/sedo/invoice/ → Massenaktion „Ausgewählte löschen“ → Django `delete_selected` ruft `queryset.delete()` → Rechnung samt Positionen physisch weg, Nummernkreislücke, kein Audit-Eintrag. Ebenso frei editierbar: number, gross_total, status finalisierter Rechnungen.\n\nKleine Korrektur zur Beschreibung: CashbookEntry (models.py:389) und DunningDocument (models.py:443) erben von TimeStampedModel, nicht von SoftDeleteModel – dort wird kein Soft-Delete „umgangen“, sie sind aber ebenso ungeschützt hart löschbar. Der Kern des Funds (Invoice, Payment) stimmt.\n\nSchwere bleibt kritisch: technisch ungeschützte Veränderbarkeit/Löschbarkeit GoBD-relevanter Belege per Klick durch die regulären Nutzer, plus Klartext-Einsicht in API-Key/SMTP-Passwort/FinTS-PIN.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "skeptiker",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Widerlegung nicht möglich, alle Belege stimmen mit dem Code überein:\n\n- sedo/admin.py:18-23 `InvoiceAdmin` mit `inlines=[InvoiceItemInline]`, keine has_delete_permission/has_change_permission/readonly_fields; admin.py:36-41 `admin.site.register(Payment)`, `register(CashbookEntry)`, `register(DunningDocument)`, `register(AppSetting)` mit Standard-ModelAdmin. Nur AuditLogAdmin (Z. 44-55) ist abgesichert – der Autor kannte das Muster also, hat es aber bei den Belegen nicht angewandt.\n- sedo/models.py:28-51: `SoftDeleteModel` hat nur `soft_delete()`; kein `delete()`-Override, kein eigener QuerySet mit delete-Umleitung (`all_objects = models.Manager()`, Z. 37). grep nach `def delete|pre_delete|post_delete|has_delete_permission` in sedo/ liefert nur Formset-`can_delete`. sedo/signals.py enthält nur Login-Audit-Receiver, keine Delete-Guards. Admin-Löschaktion ruft also `Model.delete()` → physisches Löschen inkl. Cascade auf InvoiceItem.\n- Erreichbarkeit: config/urls.py:8 `path('admin/', admin.site.urls)`, config/settings.py:106 `django.contrib.admin` aktiv, sedo/templates/sedo/base.html:74 Nav-Link `/admin/`, sedo/middleware.py:19 `/admin/` in EXEMPT_PREFIXES, sedo/management/commands/ensure_admin.py:22 `create_superuser(...)` – der einzige angelegte Nutzer ist Superuser mit vollen Admin-Rechten.\n- AppSetting (models.py:423-425) speichert `value` als Klartext-TextField; views.py:1992/2008/2025 legen `ai_api_key`, `smtp_password`, `fints_pin` dort ab → im Admin-Formular sichtbar.\n- Tests: sedo/tests/test_security_hardening.py prüft nur das Zufallspasswort von ensure_admin; kein Test deckt Admin-Delete/Change ab (grep nach `/admin/` in sedo/tests/ leer).\n- Kein absichtliches Muster: Docstring models.py:29 sagt ausdrücklich \"kein hartes Löschen\".\n\nKleine Einschränkung: `/admin/` in EXEMPT_PREFIXES ist keine Auth-Lücke (Django-Admin erzwingt selbst is_staff-Login); das ändert am Kern (Superuser kann GoBD-Belege hart löschen/ändern, Secrets im Klartext) nichts. Schwere \"kritisch\" bleibt gerechtfertigt (Datenverlust + GoBD-Verstoß per Klick).",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Fund im Code bestätigt und im Projektkontext relevant; Schwere \"kritisch\" ist angemessen.\n\nBelege (nachgelesen):\n- sedo/admin.py:18-23 InvoiceAdmin ohne has_delete_permission/has_change_permission/readonly_fields; Zeile 36-41 Payment, CashbookEntry, DunningDocument, AppSetting per admin.site.register() mit Django-Vollrechten. Nur AuditLogAdmin (Z. 44-55) ist abgesichert – der Autor kennt das Muster also, hat es aber bei den Belegen nicht angewandt.\n- sedo/models.py:28-51: SoftDeleteModel definiert nur soft_delete(); kein delete()-Override, kein Save-Guard, kein is_locked auf Invoice (is_locked in Z. 399 gehört zu CashbookEntry). Docstring Z. 29 verspricht ausdrücklich \"kein hartes Löschen\" – der Admin bricht diese Zusicherung. Ergänzung: CashbookEntry (Z. 389) und DunningDocument (Z. 443) sind gar keine SoftDeleteModels, dort ist hartes Löschen ohnehin der einzige Weg.\n- Erreichbarkeit: sedo/templates/sedo/base.html:74 Nav-Link \"/admin/\"; config/urls.py:8 admin.site.urls; sedo/middleware.py:17-22 '/admin/' in EXEMPT_PREFIXES; ensure_admin.py:22 create_superuser – der einzige Nutzer ist Superuser, beide Anwender teilen faktisch Vollrechte im Admin. Kein Rate-Limit/Lockout für /admin/login/ gefunden (grep axes/ratelimit leer); ensure_admin.py:26 zeigt, dass Altinstallationen noch \"sedo1234\" nutzen können.\n- Secrets: views.py:1990-2025 speichert ai_api_key, smtp_password, fints_pin als AppSetting-Klartext; die eigene Einstellungsseite maskiert sie (views.py:1338 'banking_pin_stored': bool(...)), der Admin (admin.py:41) zeigt sie ungemaskt. Für die Schwere ist dieser Teil allein nur niedrig/mittel, da dieselben Nutzer die Werte selbst eingeben.\n\nKontextbewertung: Bei 2 Nutzern ist der reale Hauptpfad nicht der externe Angreifer, sondern Bedienfehler bzw. bewusste \"Aufräumaktion\" des eigenen Personals: \"Ausgewählte löschen\" auf /admin/sedo/invoice/ entfernt Rechnung + Positionen (Inline-Cascade) endgültig, ohne AuditLog-Eintrag (write_audit nur in eigenen Views, sedo/audit.py:13), ohne Storno, mit Lücke im NumberRange – genau der GoBD-Verstoß (Unveränderbarkeit/Vollständigkeit), den die Soft-Delete-Architektur verhindern soll. Beträge/Nummern versendeter Rechnungen lassen sich ebenfalls still ändern, was zudem zu Inkonsistenz mit bereits an Aareon/GWG übergebenen ZUGFeRD-XMLs führt. Der Tunnelbetrieb (DEPLOYMENT_SECURITY_NOTES.md:12) macht den Angriffspfad \"geratenes/altes Admin-Passwort\" zusätzlich real. Keine Doku, die den offenen Admin als bewusste Entscheidung deklariert; DEPLOYMENT_SECURITY_NOTES.md:63 führt \"Rollen/Rechte getrennt\" im Gegenteil als offenes To-do. Nach Rubrik (Datenverlust per Klick + GoBD-Verstoß + Angriffspfad) bleibt \"kritisch\"; corrected_severity daher null.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-web",
+  "title": "Toast-System rendert Django-Messages per innerHTML – gespeichertes XSS über nutzerkontrollierte Namen/Titel in Meldungstexten",
+  "file": "sedo/templates/sedo/base.html",
+  "line": 140,
+  "severity": "mittel",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "skeptiker",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Fund bestätigt, kein Widerlegungsgrund gefunden. (1) Code-Belege stimmen: sedo/templates/sedo/base.html:97 schreibt `{\"text\":\"{{ message|escapejs }}\",…}` in ein JS-Array; base.html:140-144 setzt `toast.innerHTML = \\`…<span class=\"toast-text\">${text}</span>…\\``; base.html:174-179 ruft `showToast(m.text, …)` direkt mit dem Roh-Text auf (der Kommentar „kommt über json_script\" ist falsch – es ist kein json_script, und selbst das würde hier nichts helfen). (2) escapejs schützt nur den JS-String-Kontext, nicht den HTML-Kontext: Verifiziert mit der Projekt-venv: escapejs('<img src=x onerror=alert(1)>') → '<img src=x onerror=alert(1)>'; die JS-Engine dekodiert das String-Literal wieder zu '<img …>', innerHTML parst es als HTML. (3) Django/ORM fängt nichts ab: ServiceCatalogItemForm (sedo/forms.py:196-204) hat kein clean_name, ServiceCatalogItem.name ist ein einfaches CharField(max_length=120) (models.py:326); die Views (views.py:559, 573, 586) hängen item.name ungefiltert per f-String in messages.success. Der Angriffs-String passt in 120 Zeichen. (4) Kein Test deckt das ab: grep nach toast/innerHTML/xss/escape in sedo/tests/ liefert nichts. (5) Keine Content-Security-Policy: config/settings.py definiert nur SECURE_CONTENT_TYPE_NOSNIFF/REFERRER_POLICY, kein CSP-Header; auch sonst keine CSP im Projekt. (6) Kein absichtliches Muster – es gibt nur diese eine Toast-Implementierung, die ganze Absicht war laut Kommentar json_script-artige Sicherheit. Schwere „mittel\" ist angemessen: Angriffspfad setzt einen böswilligen der zwei Nutzer oder KI-erzeugte Katalognamen voraus, ist aber real (Session-übergreifende Aktionen mit CSRF-Token aus dem DOM). Fix S wie vorgeschlagen (textContent statt innerHTML).",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Technisch bestätigt: sedo/templates/sedo/base.html:97 schreibt die Messages mit |escapejs in window.__sedoMessages, base.html:176-179 reicht m.text unverändert an showToast() weiter, und base.html:140-142 setzt `toast.innerHTML = \\`…<span class=\"toast-text\">${text}</span>…\\``. escapejs schützt nur den JS-String-Kontext; nach dem Dekodieren steht wieder rohes HTML im innerHTML. Der Kommentar in Zeile 177 („text kommt über json_script\") ist falsch – json_script wird nicht verwendet. Nutzerkontrollierte Werte landen tatsächlich in Messages: sedo/views.py:559/573/586 (item.name der Katalog-Leistung), :938 (tmpl.title aus recurring_title), :2044 (test_to), :1329 u. a. (Exception-Texte von Importen). Auch der KI-Pfad ist real: sedo/services/ai.py:397-413 legt ServiceCatalogItem mit dem von der KI gelieferten katalog_name an; _ai_clean_str (ai.py:254-260) entfernt kein HTML, d. h. ein im Diktat enthaltener Tag kann per Prompt-Injection als Katalogname persistiert werden und beim späteren Bearbeiten/Löschen (views.py:573/586) als Toast ausgeführt werden. CSRF-Token stehen in 25 Templates im DOM, ein Payload kann also authentifizierte POSTs (Einstellungen, SMTP-Test-Versand, Storno/Soft-Delete) im Namen des Opfers auslösen.\n\nKontextbewertung: Alle Views sind @login_required (60 Vorkommen in views.py), es gibt nur 2 vertrauenswürdige Nutzer, und es existiert kein unauthentifizierter Einstiegspunkt – ein externer Angreifer über den Tunnel kann den Payload ohne Login nicht platzieren. Der realistische Angriffspfad ist damit (a) ein böswilliger/kompromittierter Innentäter oder (b) Prompt-Injection über diktierten/eingefügten Text in den KI-Angebotsentwurf. Datenverlust ist wegen Soft-Delete/Storno begrenzt, GoBD-Nummernkreise werden nicht direkt verletzt; die Auswirkung ist „Aktionen im Namen des Opfers\", nicht Datenverlust oder Rechnungsfehler. Das ist echtes Fehlverhalten mit Sicherheitsrelevanz, aber ohne externen Angriffspfad → „mittel\" ist korrekt gesetzt; weder „hoch\" (kein ausnutzbarer Pfad für Außenstehende, keine falschen Rechnungen/XML) noch „niedrig\" (echtes Stored XSS mit CSRF-Umgehung, KI-Vektor, Fix trivial). CHANGELOG.md und DEPLOYMENT_SECURITY_NOTES.md enthalten keine bewusste Designentscheidung dazu (keine Erwähnung von XSS/innerHTML/CSP), also nicht widerlegt. Fix wie vorgeschlagen (textContent statt innerHTML in base.html:140-142, ggf. json_script) mit Aufwand S.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt. Kette nachvollzogen: (1) sedo/templates/sedo/base.html:97 schreibt jede Message als JS-String-Literal mit |escapejs in window.__sedoMessages. Verifiziert per Django-Render mit Payload: `{\"text\":\"Leistung „<img src=x onerror=alert(1)>\" wurde gelöscht.\",\"tags\":\"success\"}` – escapejs schützt nur den JS-String-Kontext, die JS-Engine dekodiert < wieder zu '<'. (2) base.html:175-179 übergibt m.text unverändert an showToast(). (3) base.html:140-144: `toast.innerHTML = \\`…<span class=\"toast-text\">${text}</span>…\\`` – der dekodierte String wird als HTML geparst; kein textContent, keine Escaping-Funktion. (4) Quellen sind nutzerkontrolliert: ServiceCatalogItem.name (models.py:326, CharField ohne Inhaltsprüfung; forms.py:196-204 ModelForm ohne clean_name) landet in views.py:559/573/586 per f-String in messages.success; ebenso recurring_title (views.py:936-938), test_to (views.py:2044) und Exception-Texte (views.py:1329, 1461, 1682). Zusätzlich legt services/ai.py:412-416 Katalogpositionen mit KI-generiertem Namen an (created_by_ai=True) – ein zweiter, nicht-menschlicher Injektionspfad. (5) Keine Gegenmaßnahme: config/settings.py:115-128 enthält keine CSP-Middleware/Header, Django-Autoescape greift bei einer clientseitigen innerHTML-Senke nicht. CSRF-Token stehen in 44 Templates im DOM. Schwere „mittel“ ist angemessen: echtes gespeichertes XSS, aber nur 2 vertrauenswürdige Nutzer im Heimnetz, Injektion erfordert Login (oder KI-Ausgabe); Fix trivial (textContent statt innerHTML).",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-web",
+  "title": "Audit-Log übernimmt Client-IP aus X-Forwarded-For (erstes Element) – von jedem Client fälschbar",
+  "file": "sedo/audit.py",
+  "line": 7,
+  "severity": "mittel",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "skeptiker",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Der Fund ist im Code wörtlich belegt: sedo/audit.py:6-10 `forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '') …; if forwarded: return forwarded.split(',')[0].strip(); return request.META.get('REMOTE_ADDR')` – der erste, clientkontrollierte XFF-Eintrag wird bedingungslos bevorzugt, ohne Prüfung, ob REMOTE_ADDR ein Proxy ist. Widerlegungsversuche: (1) Kein Test in sedo/tests/ referenziert HTTP_X_FORWARDED_FOR oder ip_address (grep leer). (2) Django fängt es nicht ab: config/settings.py:102 setzt nur SECURE_PROXY_SSL_HEADER für X-Forwarded-Proto; für XFF gibt es keine Django-Mechanik, und der Wert fließt direkt in AuditLog.objects.create (audit.py:32). Da create() kein full_clean() ausführt, wird sogar ein beliebiger Nicht-IP-String im GenericIPAddressField (sedo/models.py:485) auf SQLite persistiert – der Wert ist also nicht einmal formatgeprüft. (3) Der Wert wird tatsächlich als Audit-Merkmal genutzt (sedo/admin.py:46-49 list_display/search_fields, sedo/views.py:2254 Suche in audit_log_page). (4) Betriebsmodell laut Projektkontext: direkt 0.0.0.0:8000 im LAN ohne Proxy bzw. Cloudflare-Tunnel (settings.py:91-93 trycloudflare/cloudflareaccess) – in beiden Fällen bleibt das erste XFF-Element angreiferkontrolliert (Cloudflare hängt an, ersetzt nicht). Kein absichtliches Muster mit dokumentierter Begründung gefunden. Schwere „mittel\" ist angemessen: Der user-FK bleibt korrekt, nur die Herkunftsangabe ist fälschbar; Angreifer muss authentifizierter Nutzer sein. Aufwand S passt.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Technisch bestätigt: sedo/audit.py:6-10 nimmt bedingungslos `forwarded.split(',')[0]` aus HTTP_X_FORWARDED_FOR, ohne Prüfung, ob REMOTE_ADDR ein Proxy ist; es gibt im Projekt keine Proxy-/Trusted-IP-Konfiguration (kein SECURE_PROXY_SSL_HEADER, kein USE_X_FORWARDED_*, keine Cloudflare-Behandlung in settings/Docs). Die IP landet in AuditLog.ip_address (sedo/models.py:485), ist im Admin (sedo/admin.py:46-48) sichtbar/durchsuchbar und in audit_log_page (sedo/views.py:2254) filterbar. Keine dokumentierte Designentscheidung: CHANGELOG.md und DEPLOYMENT_SECURITY_NOTES.md erwähnen XFF/Client-IP nicht, also nicht widerlegt.\n\nSchwere ist aber im Projektkontext zu hoch angesetzt: (1) Der belastbare Herkunftsnachweis im Audit-Trail ist `user` (sedo/audit.py:18-20, nur authentifizierte Nutzer) plus `created_at`; GoBD verlangt Nachvollziehbarkeit von Wer/Wann/Was, keine IP-Protokollierung – die IP ist ein Zusatzfeld. (2) Der \"Angreifer\" ist im 2-Nutzer-Betrieb entweder einer der beiden authentifizierten Nutzer (Insider, der seine eigene, ohnehin per user-Spalte zugeordnete Aktion mit falscher IP versieht – kaum Nutzen) oder ein Session-Dieb über den Tunnel; im zweiten Fall verschlechtert sich die Forensik, aber es entsteht kein Datenverlust, keine falsche Rechnung, kein GoBD-Verstoß. (3) Kein Crash-Pfad: write_audit fängt alle Exceptions (Z. 37-40), GenericIPAddressField validiert beim create nicht, SQLite erzwingt keine Länge – ein manipulierter Header kann die Aktion selbst nicht stören. Damit passt \"niedrig\" (Robustheit/Klarheit mit geringer Auswirkung); der Fix (REMOTE_ADDR standardmäßig, XFF nur bei bekanntem Proxy, letztes Element bzw. CF-Connecting-IP) bleibt sinnvoll und klein (Aufwand S), gerade weil im LAN-Modus ohne Proxy XFF gar nicht benötigt, aber trotzdem bevorzugt wird.",
+    "corrected_severity": "niedrig"
+   },
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt. sedo/audit.py:6-10 nimmt bei gesetztem X-Forwarded-For bedingungslos das erste Element (`forwarded.split(',')[0].strip()`), unabhängig von REMOTE_ADDR. Kein vorgelagerter Schutz: config/settings.py:115-127 enthält nur Standard-Middleware plus sedo.middleware.LoginRequiredMiddleware/WeeklyBackupMiddleware (sedo/middleware.py) – keine davon entfernt oder validiert XFF; Django selbst rührt HTTP_X_FORWARDED_FOR nie an (nur SECURE_PROXY_SSL_HEADER für Proto, settings.py:102). write_audit (audit.py:32) schreibt den Wert direkt in AuditLog.ip_address (models.py:485), der im Admin (admin.py:46/48) und in views.py:2254 als Suchfeld genutzt wird. Reproduktion ohne DB per RequestFactory: Request mit REMOTE_ADDR=192.168.1.50 und Header X-Forwarded-For: 10.0.0.99 → _client_ip liefert '10.0.0.99'; ohne Header → '192.168.1.50'. Das Szenario (eingeloggter Nutzer setzt Header per curl/Extension, Audit-Eintrag zeigt fremde IP) tritt also genau so ein. Schwere „mittel“ ist angemessen: kein Datenverlust, aber fälschbarer Herkunftsnachweis im GoBD-Audit-Trail. Anmerkung am Rande (nicht Teil des Fundes): ein nicht-IP-Wert im Header (z. B. IPv6-ähnlich ungültig) könnte in GenericIPAddressField.get_prep_value eine ValidationError auslösen, die audit.py:38 schluckt – der Audit-Eintrag ginge dann ganz verloren.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "tests-konfig-deployment",
+  "title": "SECURE_PROXY_SSL_HEADER unbedingt gesetzt, obwohl der Server direkt auf 0.0.0.0:8000 erreichbar ist",
+  "file": "config/settings.py",
+  "line": 102,
+  "severity": "niedrig",
+  "status_vorab": "verworfen",
+  "votes": [
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt. config/settings.py:102 setzt `SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')` unbedingt (kein Env-Schalter, kein DEBUG-Bezug). config/settings.py:194 liest `SECURE_SSL_REDIRECT = _env_bool('DJANGO_SECURE_SSL_REDIRECT', '0')`, und DEPLOYMENT_SECURITY_NOTES.md:16-18 weist den Betreiber an, genau diese Variable (plus SESSION/CSRF_COOKIE_SECURE) vor dem Tunnel-Betrieb auf 1 zu setzen – der gemischte Betrieb (Tunnel + direkter LAN-Zugriff) ist also der dokumentierte Sollzustand. Die Startskripte START_HIER.command:30 und START_WINDOWS.bat:15 starten `python manage.py runserver 0.0.0.0:8000` ohne vorgeschalteten Proxy; nichts in MIDDLEWARE (settings.py:114-126) oder sedo/middleware.py entfernt oder prüft den X-Forwarded-Proto-Header. Django selbst verhindert das nicht: SecurityMiddleware.process_request leitet nur um, wenn `not request.is_secure()`, und `is_secure()` liest bei gesetztem SECURE_PROXY_SSL_HEADER den Client-Header direkt. Szenario reproduzierbar: Client sendet über http://<LAN-IP>:8000 den Header `X-Forwarded-Proto: https` → is_secure() = True → kein SSL-Redirect, CSRF-Origin-Prüfung läuft im HTTPS-Modus für eine Klartextverbindung. Praktische Relevanz gering (opt-in Redirect, 2 Nutzer im Heimnetz, Angreifer müsste selbst im LAN sein und umgeht nur seinen eigenen Redirect; Session-Cookies mit SESSION_COOKIE_SECURE=1 werden über HTTP ohnehin nicht vom Browser gesendet). Die Desktop-Variante desktop.py:90 bindet nur auf 127.0.0.1 und ist nicht betroffen. Schwere „niedrig“ ist angemessen; Fix (Env-Schalter für Proxy-Betrieb) mit Aufwand S korrekt.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": true,
+    "confidence": "hoch",
+    "reasoning": "Technisch stimmt der Befund (config/settings.py:102 setzt SECURE_PROXY_SSL_HEADER unbedingt, START_HIER.command:30 / START_WINDOWS.bat:15 binden runserver direkt auf 0.0.0.0:8000). Im Projektkontext ist er aber praktisch bedeutungslos, und das beschriebene Szenario trägt nicht:\n\n1. Wer den Header fälscht, ist ausschließlich der Client selbst. Ein gefälschtes `X-Forwarded-Proto: https` lässt Django nur für DIESE Verbindung `is_secure()=True` annehmen; kein anderer Nutzer wird dadurch auf Klartext heruntergestuft. Ein Angreifer, der sich selbst den HTTPS-Redirect erspart, gewinnt nichts.\n\n2. Die Behauptung \"Session-Cookie-Verkehr bleibt Klartext\" ist im dokumentierten Tunnel-Modus falsch: DEPLOYMENT_SECURITY_NOTES.md:16-18 verlangt ausdrücklich DJANGO_SECURE_SSL_REDIRECT=1 UND DJANGO_SESSION_COOKIE_SECURE=1 UND DJANGO_CSRF_COOKIE_SECURE=1 (settings.py:194-196). Mit Secure-Flag sendet der Browser das Session-Cookie über http://192.168.x.x:8000 gar nicht – egal, was der Server per Header glaubt. Im Modus LOKAL (settings.py:194-196 Default '0') gibt es keinen Redirect und keine Secure-Cookies, also auch nichts zu umgehen.\n\n3. Die CSRF-Prüfung wird durch ein vorgetäuschtes HTTPS nicht schwächer, sondern strenger (Django verlangt bei is_secure() zusätzlich den Referer-Check; CSRF_TRUSTED_ORIGINS in settings.py:91-96 sind ohnehin nur https-Origins plus localhost). Ein HSTS-Header auf einer Klartextantwort wird vom Browser ignoriert (settings.py:197 ist per Default 0).\n\n4. Der gemischte Betrieb, den das Szenario voraussetzt, ist in DEPLOYMENT_SECURITY_NOTES.md:5 ausdrücklich untersagt (\"NICHT mischen\"); mit SSL_REDIRECT=1 funktioniert ein LAN-Direktzugriff für den legitimen Nutzer ohnehin nicht (Redirect auf https://192.168.x.x:8000 ohne TLS-Endpunkt).\n\nBei 2 Nutzern im Heimnetz mit rein lokalem SQLite-Backend bleibt kein realer Angriffspfad und keine Auswirkung auf Rechnungen, XML oder GoBD. Ein Env-Schalter (DJANGO_BEHIND_PROXY) wäre reine Hygiene für `manage.py check --deploy`, aber kein Fund mit Auswirkung – daher refuted.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "skeptiker",
+    "refuted": true,
+    "confidence": "mittel",
+    "reasoning": "Code-Fakten stimmen (config/settings.py:102 setzt SECURE_PROXY_SSL_HEADER unbedingt, :194 liest SECURE_SSL_REDIRECT aus DJANGO_SECURE_SSL_REDIRECT, START_HIER.command:30 / START_WINDOWS.bat:15 starten runserver 0.0.0.0:8000 ohne Proxy). Das beschriebene Szenario hat aber keine reale Auswirkung: (1) Der einzige, der den Header 'X-Forwarded-Proto: https' setzt, ist der Client selbst – er umgeht damit nur für sich den Redirect; ein zweiter Nutzer/Opfer existiert nicht, und normale Browser senden diesen Header nie. (2) In der laut DEPLOYMENT_SECURITY_NOTES.md:16-18 bzw. .env.example:7-9 vorgesehenen Tunnel-Konfiguration ist zwingend auch SESSION_COOKIE_SECURE=1/CSRF_COOKIE_SECURE=1 gesetzt (settings.py:195-196); der Browser sendet Session-Cookies dann über http ohnehin nicht – \"Session-Cookie-Verkehr bleibt Klartext\" tritt nicht ein. (3) Der 'gemischte Betrieb' (Tunnel-Flags + direkter LAN-Zugriff) wird in DEPLOYMENT_SECURITY_NOTES.md:5 ausdrücklich verboten (\"NICHT mischen\"); das Szenario setzt also eine dokumentiert unzulässige Konfiguration voraus. (4) Der Header ist absichtlich und kommentiert (settings.py:101) für cloudflared/Hetzner-Reverse-Proxy nötig, wo er korrekt vom Proxy gesetzt wird; ohne ihn würde CSRF hinter dem Tunnel brechen. Die CSRF-Origin-Prüfung im 'HTTPS-Modus' ist zudem strenger, nicht schwächer. Es bleibt allenfalls ein Härtungshinweis ohne belegbares Fehlverhalten – kein Fund nach Regel 4/5. Die dist/-Treffer sind nur gebündelte Django-Defaults, keine Projektkonfiguration.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-web",
+  "title": "Abmelden-Link nutzt GET, LogoutView in Django ≥5 akzeptiert nur POST – Nutzer können sich nicht abmelden",
+  "file": "sedo/templates/sedo/base.html",
+  "line": 75,
+  "severity": "mittel",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt. sedo/templates/sedo/base.html:75 rendert `<a href=\"{% url 'logout' %}\">…Abmelden</a>` – ein reiner GET-Link, kein Formular, kein JS-Handler (grep über templates/static findet nur das SVG-Symbol). config/urls.py:10 mappt `logout/` direkt auf `auth_views.LogoutView.as_view()`; in der installierten Django 6.0.8 (.venv, django/contrib/auth/views.py:131) gilt `http_method_names = [\"post\", \"options\"]`. Keine Middleware (settings.py:115-127: nur Standard-Middlewares, LoginRequiredMiddleware, WeeklyBackupMiddleware) und kein Decorator fängt GET vorher ab. Empirisch mit dem Django-Testclient (eigene Test-DB) reproduziert: GET /logout/ → 405, Session bleibt authentifiziert; POST /logout/ → 302 und Session ist beendet. In settings.py sind weder SESSION_COOKIE_AGE noch SESSION_EXPIRE_AT_BROWSER_CLOSE gesetzt, also gilt der Django-Default von 14 Tagen. Das Szenario \"Klick auf Abmelden → 405, Session bleibt gültig\" tritt exakt so ein. Schwere \"mittel\" ist angemessen: kein Angriffspfad von außen, aber der einzige UI-Logout ist funktionslos, was bei Tunnel-/Fremdgeräte-Nutzung das Sitzungsfenster unnötig verlängert. Fix-Vorschlag (POST-Formular mit CSRF-Token) ist korrekt; für die Auswirkung wäre außerdem ein Test für den Logout-Pfad sinnvoll, da aktuell keiner existiert.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Technisch bestätigt: sedo/templates/sedo/base.html:75 rendert `<a href=\"{% url 'logout' %}\">…Abmelden</a>` (GET), config/urls.py:10 bindet `auth_views.LogoutView.as_view()`, und in .venv (Django 6.0.8) hat LogoutView `http_method_names = [\"post\", \"options\"]` (django/contrib/auth/views.py:131) mit ausschließlich `post()` (Z. 135) – ein Klick liefert 405, die Session bleibt bestehen. Kein Test deckt den Logout ab (kein Treffer in sedo/tests), keine SESSION_COOKIE_AGE/SESSION_EXPIRE_AT_BROWSER_CLOSE in config/settings.py (nur SESSION_COOKIE_SECURE via Env, Z. 195, und SESSION_COOKIE_HTTPONLY, Z. 203). CHANGELOG.md und DEPLOYMENT_SECURITY_NOTES.md dokumentieren keine bewusste Entscheidung dazu; die Notes erwähnen Sessions nur im Kontext von `manage.py check --deploy` (Z. 10) und SESSION_COOKIE_SECURE (Z. 17). Im Projektkontext relevant: Die Abmelden-Funktion ist komplett funktionslos, und bei Tunnelbetrieb bzw. Nutzung auf fremden Geräten kann eine Sitzung nicht beendet werden (Standard 14 Tage). Da es aber nur 2 Nutzer sind, überwiegend Heimnetz, und kein direkter Angriffspfad besteht (nur verlängertes Zeitfenster bei physischem Gerätezugriff), ist \"mittel\" angemessen – weder \"hoch\" (keine ausnutzbare Schwäche aus der Ferne, keine falschen Rechnungen) noch \"niedrig\" (eine Sicherheitsfunktion fehlt vollständig, Fix ist trivial). Schwere bleibt mittel.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "skeptiker",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Fund bestätigt, keine Widerlegung gefunden. Belege: sedo/templates/sedo/base.html:75 ist ein reiner `<a href=\"{% url 'logout' %}\">` (kein Formular, kein JS-Handler – grep über Templates/Static findet keinen weiteren logout-Bezug außer dem Icon-Symbol in Zeile 28). config/urls.py:10 mappt `logout/` auf `auth_views.LogoutView.as_view()`; in der installierten Django 6.0.8 (.venv/.../django/contrib/auth/views.py:131) gilt `http_method_names = [\"post\", \"options\"]`. Kein Test in sedo/tests/ deckt Logout ab (grep 'logout' in sedo/tests: keine Treffer). Empirisch mit dem Django-Testclient (temporärer Test in der Test-DB, danach wieder entfernt) verifiziert: eingeloggter Nutzer → GET /logout/ liefert 405 und `_auth_user_id` bleibt in der Session; POST /logout/ liefert 302 und die Session ist abgemeldet. Damit ist der Sidebar-Link 'Abmelden' funktionslos. Ergänzend: settings.py setzt weder SESSION_COOKIE_AGE noch SESSION_EXPIRE_AT_BROWSER_CLOSE (nur SESSION_COOKIE_SECURE/HTTPONLY, Zeilen 195/203), also Default 14 Tage. Das Signal sedo/signals.py:13 (audit_logout) feuert folglich nie über die UI. Schwere 'mittel' ist angemessen: kein GoBD-/Datenverlust, aber in Tunnel-/Shared-PC-Szenarien reale Ausweitung des Sitzungsfensters; kein aktiver Angriffspfad ohne Gerätezugriff, daher nicht 'hoch'.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-web",
+  "title": "CSRF_TRUSTED_ORIGINS enthält fest kodierte Wildcards für fremde Quick-Tunnel-Domains",
+  "file": "config/settings.py",
+  "line": 92,
+  "severity": "niedrig",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt und relevant, Schwere „niedrig“ ist korrekt. Belege: config/settings.py:91-96 setzt die Wildcards 'https://*.trycloudflare.com' und 'https://*.cloudflareaccess.com' fest; settings.py:97-99 hängt DJANGO_CSRF_TRUSTED_ORIGINS nur per `+=` an, ersetzt die Wildcards also nicht. Damit ist die in DEPLOYMENT_SECURITY_NOTES.md:13-20 dokumentierte Härtung („DJANGO_CSRF_TRUSTED_ORIGINS=https://<hostname>“, „nur die echten Hostnamen, kein Wildcard“) für die Origin-Prüfung faktisch wirkungslos – die Doku beschreibt also gerade KEINE bewusste Designentscheidung für Wildcards, sondern das Gegenteil; der Kommentar in settings.py:89-90 nennt es „temporären Testbetrieb“. Keine Entwarnung daher. Praktische Auswirkung bleibt aber gering: Im Projektcode gibt es kein csrf_exempt (grep über config/ und sedo/ leer), CsrfViewMiddleware ist aktiv (settings.py MIDDLEWARE), CSRF_COOKIE_HTTPONLY=True (settings.py:207), SameSite bleibt beim Django-Default Lax, CSRF_USE_SESSIONS nicht gesetzt. Der Token-Vergleich greift unabhängig von der Origin-Prüfung, ein Angreifer auf einer fremden trycloudflare-Subdomain kann den Token nicht lesen. Im Kontext (2 Nutzer, Tunnel nur zeitweise, Storno statt Löschen, keine echten Löschpfade) ist das eine reine Defense-in-Depth-Schwäche ohne eigenständigen Angriffspfad – Schwere „niedrig“ passt, Aufwand S (Wildcards entfernen, .env-Mechanismus nutzen) ist sinnvoll, weil sonst die eigene Sicherheitsdoku eine Schutzwirkung suggeriert, die nicht besteht.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "skeptiker",
+    "refuted": true,
+    "confidence": "mittel",
+    "reasoning": "Der Code-Beleg stimmt (config/settings.py:91-96 enthält die Wildcards, Z. 97-99 den .env-Mechanismus), aber der Fund beschreibt kein reales Fehlverhalten, sondern nur ein hypothetisches Szenario, das erst durch einen zukünftigen zweiten Fehler ausnutzbar würde. Widerlegungsgründe: (1) Im Projektcode gibt es keine einzige csrf_exempt-View (grep über sedo/ und config/ trifft nur die mitgebündelten Django-Kopien unter dist/). (2) Die Origin-Prüfung ist bei Django ohnehin nur die zweite Linie; die erste Linie (Token-Vergleich) bleibt intakt, zusätzlich CSRF_COOKIE_HTTPONLY=True (settings.py:207) und SESSION_COOKIE_HTTPONLY=True (Z. 203). (3) Der Session-Cookie hat Django-Default SameSite=Lax; ein Cross-Site-POST von boese-seite.trycloudflare.com trägt damit gar keine Session mit – selbst bei einem theoretischen Token-Bypass landet der Request unauthentifiziert im login_required-Redirect. Das Szenario im Fund scheitert also an drei unabhängigen Schichten, nicht nur an einer. (4) Der Kommentar in settings.py:89-90 (\"Temporärer Testbetrieb über Cloudflare Quick Tunnel\") und .env.example Z. 6 (DJANGO_CSRF_TRUSTED_ORIGINS=https://rechnung.sedo-magdeburg.de) zeigen, dass der Produktivbetrieb bereits die konkrete Domain per Env setzt; die Wildcards sind eine bewusste Entwicklungs-Bequemlichkeit. Nach Regel 4 (kein Fund ohne konkretes Fehlerszenario, keine Spekulation) ist das eine Härtungsempfehlung, kein belegter Fund. Kein Test in sedo/tests/ berührt CSRF, was aber nichts am fehlenden Angriffspfad ändert.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Nachvollzogen. config/settings.py:91-96 setzt CSRF_TRUSTED_ORIGINS fest auf 'https://*.trycloudflare.com' und 'https://*.cloudflareaccess.com' (plus optional DJANGO_CSRF_TRUSTED_ORIGINS, Z. 97-99). Django (django/middleware/csrf.py, _origin_verified Z. 271-295) prüft Wildcard-Einträge per is_same_domain(parsed_origin_netloc, host) gegen allowed_origin_subdomains – für Scheme https und Host '.trycloudflare.com' matcht damit jede beliebige Subdomain, also auch eine fremde 'boese-seite.trycloudflare.com'. Die Origin-Prüfung in process_view (Z. 437-441) lässt einen solchen cross-site POST daher durch; erst _check_token (Z. 465-468) lehnt ab, weil der Angreifer den Token nicht kennt (CSRF_COOKIE_HTTPONLY=True, Z. 207; SameSite-Default 'Lax', nicht überschrieben – kein CSRF_COOKIE_SAMESITE/SESSION_COOKIE_SAMESITE im Projekt). Im Projekt gibt es kein csrf_exempt (grep in sedo/ und config/ leer), CsrfViewMiddleware ist aktiv (settings.py:122). Das im Fund beschriebene Szenario tritt also genau so ein: die Origin-Barriere ist für den gesamten Quick-Tunnel-Namensraum wirkungslos, die Token-Prüfung (und Lax-Cookies, d. h. Session-Cookie wird bei cross-site POST ohnehin nicht mitgesendet) verhindert aktuell die Ausnutzung. Kein realer Angriffspfad, nur geschwächte Defense-in-Depth – Einstufung 'niedrig' ist korrekt. Fix (Wildcards entfernen, konkrete Tunnel-Origin per .env) ist mit dem vorhandenen Mechanismus Z. 97-99 umsetzbar; praktischer Haken: Quick-Tunnel-Hostnamen sind zufällig und ändern sich bei jedem Start, was die Wildcard erklärt.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-web",
+  "title": "KI-JSON-Endpunkt ai_cover_letter reicht untypisierte JSON-Werte direkt in ORM-Filter – 500 statt 400",
+  "file": "sedo/views.py",
+  "line": 488,
+  "severity": "niedrig",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Technisch bestätigt: sedo/views.py:488 `Invoice.objects.filter(pk=data.get('invoice')).first()` ohne Typprüfung; `_read_json_body` (Z. 417-425) prüft nur, dass der Body ein dict ist, nicht die Feldtypen. Nachgestellt (rein lesende ORM-Abfrage): `[1,2]` und `{'a':1}` → TypeError, `'abc'` → ValueError – alle außerhalb des try/except ab Z. 492, also ungefangener 500. Kontext-Bewertung: (1) Endpunkt ist @login_required + @require_POST (CSRF), also nur für die 2 angemeldeten Nutzer erreichbar; (2) der einzige Aufrufer (templates/sedo/invoice_detail.html:96) übergibt `invoiceId` als serverseitig gerenderten Integer – im normalen Betrieb tritt der Fehler nie auf; (3) DEBUG ist per Default aus (config/settings.py:46) und DEPLOYMENT_SECURITY_NOTES.md Z. 8 schreibt das ausdrücklich vor, sodass der Stacktrace-Abfluss nur bei bewusst falschem Betrieb möglich ist; (4) keine Auswirkung auf Rechnungen, Beträge, XML, Nummernkreise oder GoBD – es entsteht nur eine unschöne 500-Seite statt einer 400-Antwort. Damit ist der Fund real, aber ohne praktisches Risiko: Schwere \"niedrig\" ist korrekt (Robustheit/Klarheit). Nicht widerlegt, da es keine dokumentierte Designentscheidung ist und der 1-Zeilen-Fix (int()-Cast mit 400) sinnvoll bleibt.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt. sedo/views.py:485-488: `_read_json_body` (Z. 417-425) prüft nur, dass der Body ein JSON-Dict ist – die Werte darin bleiben untypisiert. Direkt danach folgt Z. 488 `invoice = Invoice.objects.filter(pk=data.get('invoice')).first()` ohne jede Typprüfung; der try/except-Block beginnt erst in Z. 492 und deckt nur `generate_cover_letter_text` ab. Decorators sind nur `@login_required` und `@require_POST` (Z. 475-476), die MIDDLEWARE-Liste (config/settings.py:115-128) enthält keine Exception-Middleware, es gibt keinen handler500/process_exception im Projekt. Reproduziert per `manage.py shell` gegen das Modell (pk ist BigAutoField): `filter(pk=[1,2])` → `TypeError: Field 'id' expected a number but got [1, 2].`, `filter(pk='abc')` → `ValueError: Field 'id' expected a number but got 'abc'.`, `filter(pk={'a':1})` → TypeError. Die Ausnahme entsteht bereits beim Aufbau des QuerySets (get_prep_value), wird nirgends gefangen und endet als HTTP 500. `None`, `'1'`, `1.5`, `True` laufen dagegen durch (None → kein Treffer → sauberer 404). Einordnung als „niedrig“ ist korrekt: Endpunkt ist authentifiziert (2 Nutzer), kein Datenverlust, Informationsabfluss nur bei DJANGO_DEBUG=1. Fix wie vorgeschlagen (int()-Cast mit 400-Antwort) ist passend; dasselbe Muster wäre auch bei anderen KI-Endpunkten mit `data.get(...)`-ID-Werten zu prüfen.",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "skeptiker",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Fund bestätigt, kein Widerlegungsgrund gefunden.\n\n1. Zeilenangabe stimmt: sedo/views.py:488 lautet wörtlich `invoice = Invoice.objects.filter(pk=data.get('invoice')).first()`; davor nur `_read_json_body` (views.py:417-425), das ausschließlich Bytes-Limit, JSON-Syntax und `isinstance(data, dict)` prüft – den Typ von `data['invoice']` prüft es nicht. Der try/except beginnt erst in Zeile 492 (nur um `generate_cover_letter_text`).\n\n2. Django/ORM fängt es nicht ab – im Gegenteil, der Fehler entsteht bereits beim Aufruf von `filter()` (get_prep_value des AutoField), nicht erst bei `.first()`. Reproduziert mit dem Projekt-venv gegen eine leere Scratch-DB (SEDO_HOME umgebogen, Live-DB unberührt): `[1,2]` → `TypeError: Field 'id' expected a number but got [1, 2].`, `'abc'` → `ValueError: Field 'id' expected a number but got 'abc'.`, `{'a':1}` → TypeError. (None/True/1.5 lösen keinen Fehler aus.)\n\n3. Kein Test deckt den Fall ab: sedo/tests/test_magic_tone.py CoverLetterTests prüft nur `{\"invoice\": 99999}` → 404 (test_unbekannte_rechnung_404) und einen gültigen pk (test_erfolg). Kein Test mit String/Liste.\n\n4. Keine Middleware mit process_exception in sedo/middleware.py (nur __call__-Middlewares, config/settings.py:115-127) – die Exception läuft bis zum Django-Default-Handler → HTTP 500.\n\n5. Kein absichtliches Muster: das Schwester-Endpoint `ai_plausibility` (views.py:513-517) validiert `positionen` explizit mit isinstance-Prüfungen und antwortet mit 400; `ai_cover_letter` weicht davon ab.\n\nSchwere \"niedrig\" ist angemessen: Endpunkt ist login- und CSRF-geschützt (@login_required, JSON-POST mit CsrfViewMiddleware), es entsteht nur ein unsauberer 500 statt 400; Info-Abfluss nur bei DEBUG. Fix-Vorschlag (int()-Cast mit try/except → 400) ist korrekt und minimal.",
+    "corrected_severity": null
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-secrets-banking",
+  "title": "SMTP_SSL ohne SSL-Kontext: keine Zertifikatsprüfung beim impliziten TLS-Versand (Passwort MITM-anfällig)",
+  "file": "sedo/services/mail.py",
+  "line": 111,
+  "severity": "hoch",
+  "status_vorab": "bestaetigt",
+  "votes": [
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Reproduziert. sedo/services/mail.py Z. 111: `smtplib.SMTP_SSL(cfg['host'], cfg['port'], timeout=SMTP_TIMEOUT_SECONDS)` ohne `context`; Z. 112 `server.login(cfg['user'], cfg['password'])`. In der Projekt-venv (Python 3.14.7) geprüft: `ssl._create_stdlib_context is ssl._create_unverified_context` → True, und `SMTP_SSL.__init__` setzt bei `context=None` genau diesen Kontext (verify_mode=CERT_NONE, check_hostname=False). Damit wird beim impliziten TLS auf Port 465 jedes Serverzertifikat akzeptiert; ein DNS-/ARP-Spoofer im Heimnetz oder am Tunnel-Endpunkt erhält Benutzername und SMTP-Passwort im Klartext innerhalb der TLS-Sitzung. Der Pfad ist realistisch erreichbar: settings.html Z. 29/46–47 und views.py Z. 2004 bieten „465 = SSL/TLS“ mit abgewähltem STARTTLS explizit an; `send_email_smtp` hat keine vorgelagerte Zertifikats- oder Kontextprüfung, kein Decorator/Middleware/Django-Mechanismus greift (Django-Mailbackend wird hier nicht benutzt). Der STARTTLS-Zweig Z. 104–107 verwendet korrekt `ssl.create_default_context()`. Schwere „hoch“ ist angemessen: ausnutzbare Schwäche mit Abfluss der Versandzugangsdaten, aber nur bei aktivem Netzwerkangreifer und nur in der Nicht-STARTTLS-Konfiguration. Fix: `context=ssl.create_default_context()` an SMTP_SSL übergeben (Aufwand S).",
+    "corrected_severity": null
+   },
+   {
+    "gutachter": "auswirkung",
+    "refuted": false,
+    "confidence": "mittel",
+    "reasoning": "Technisch bestätigt: sedo/services/mail.py Z. 111 ruft `smtplib.SMTP_SSL(cfg['host'], cfg['port'], timeout=SMTP_TIMEOUT_SECONDS)` ohne `context` auf; in der venv-Python (3.14) fällt SMTP_SSL.__init__ dann auf `ssl._create_stdlib_context()` zurück (nachgelesen: kein Hostname-/Zertifikats-Check). Der STARTTLS-Zweig Z. 104–107 nutzt dagegen `ssl.create_default_context()`. Keine bewusste Designentscheidung: weder CHANGELOG.md noch DEPLOYMENT_SECURITY_NOTES.md erwähnen SMTP-TLS/Zertifikatsprüfung. Relevanz im Projektkontext ist gegeben, aber eingeschränkt: (1) Standard ist `smtp_tls`='1' (mail.py Z. 69, views.py Z. 2001/2004 Default Port 587 + STARTTLS), der unsichere Pfad wird nur bei aktivem Abwählen der Option erreicht – allerdings legt der UI-Hinweis in settings.html Z. 29/47 („465 = SSL/TLS\") diese Konfiguration nahe. (2) Der Angriff braucht eine aktive On-Path-Position (Heim-WLAN, Router-/DNS-Manipulation); der zeitweise Tunnel erweitert die Angriffsfläche nicht, da SMTP ausgehend vom Host läuft. (3) Auswirkung bei Erfolg ist real: Abfluss des SMTP-Passworts (Rechnungsbetrug im Firmennamen) und zusätzlich Mitlesen der versendeten Rechnungs-/Mahn-PDFs mit Kundendaten (DSGVO). Da es sich um eine nicht-standardmäßige Konfiguration mit Angreifer-im-Netz-Voraussetzung handelt, passt eher „mittel\" (realistischer Randfall) als „hoch\"; der Fix (context=ssl.create_default_context()) ist trivial und sollte trotzdem umgesetzt werden.",
+    "corrected_severity": "mittel"
+   }
+  ]
+ },
+ {
+  "dimension": "sicherheit-secrets-banking",
+  "title": "Test-Suite schreibt „weekly_auto“-Backups in den echten backups/-Ordner (207 Dateien, keine enthält eine Datenbank)",
+  "file": "sedo/backup_utils.py",
+  "line": 51,
+  "severity": "mittel",
+  "status_vorab": "teilweise",
+  "votes": [
+   {
+    "gutachter": "reproduzieren",
+    "refuted": false,
+    "confidence": "hoch",
+    "reasoning": "Bestätigt, das Szenario tritt tatsächlich ein und ist im Projektordner nachweisbar.\n\nCode-Kette (nachgelesen):\n- config/settings.py:16 `SEDO_HOME = Path(os.environ.get('SEDO_HOME', BASE_DIR))`; Zeile 175–176 lenkt im Testlauf nur `MEDIA_ROOT` um, `SEDO_HOME` und damit der Backup-Ordner bleiben auf dem Projektordner.\n- sedo/backup_utils.py:50–53 `backup_dir()` = `SEDO_HOME / 'backups'`, kein Test-Guard.\n- sedo/backup_utils.py:110–124 `ensure_weekly_backup()`: Default `AppSetting.get('auto_weekly_backup_enabled', '1')` → aktiv; `last_weekly_backup_at` ist in der leeren Test-DB leer → `create_backup('weekly_auto')` wird sofort aufgerufen. Fehler werden geschluckt (Zeile 127–130), es gibt keine vorgelagerte Prüfung auf Testbetrieb.\n- sedo/middleware.py:36–46 `WeeklyBackupMiddleware` löst beim ersten Request pro Middleware-Instanz aus; `settings.py:127` ist sie aktiv, auch im Test. Jede `Client()`-Instanz baut ihre eigene Middleware-Kette, und die Test-DB (Transaktions-Rollback) setzt `last_weekly_backup_at` je Test zurück → ein ZIP pro Test-Client. `LoginRequiredMiddleware` (Zeile 124) verhindert das nicht, da Tests eingeloggt sind bzw. /login/ ausgenommen ist.\n- sedo/backup_utils.py:81–86: `data/`-Eintrag nur `if db_path.exists()` – bei `file:memorydb_default?mode=memory&cache=shared` ist das falsch, also keine DB im ZIP; stattdessen werden die Test-PDFs aus `sedo_test_media` (Zeile 87–97) eingepackt.\n\nEmpirisch (nur Dateinamen/BACKUP_INFO gelesen): backups/ enthält inzwischen 284 ZIPs, 199 MB, ausnahmslos `_weekly_auto.zip`, kein einziges mit `data/`-Eintrag; das jüngste BACKUP_INFO nennt „Datenbank: file:memorydb_default…“ und den Medienordner `…/T/sedo_test_media`. Der Bestand wächst seit dem Fund weiter (207 → 284).\n\nSchwere „mittel“ bleibt angemessen: kein Datenverlust an Live-Daten, aber der Backup-Ordner ist für eine Wiederherstellung praktisch unbrauchbar (jüngste ZIPs enthalten keine DB, gleiches Namensschema wie echte Backups) und wächst pro Testlauf. Fix wie vorgeschlagen (Test-Backup-Ordner in settings.py bzw. `SEDO_BACKUP_DIR`, oder Middleware/Setting im Test deaktivieren).",
+    "corrected_severity": null
+   }
+  ]
+ }
+]

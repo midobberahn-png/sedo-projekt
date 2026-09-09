@@ -1,0 +1,552 @@
+{
+ "modus": "verifizieren",
+ "dimension": "datenschutz-ki",
+ "ergebnis": [
+  {
+   "title": "Freitext (Diktat, Leistungstext, Begleittext-Hinweis) geht ungefiltert an die Cloud – Whisper-Transkript wird sogar automatisch ohne Nutzerprüfung gesendet",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 237,
+   "severity": "hoch",
+   "description": "Die Datenschutzregel wird an keiner Stelle technisch durchgesetzt, sondern nur als Anweisung an das Modell formuliert. Der diktierte/eingetippte Text wird 1:1 als User-Message an api.anthropic.com übertragen (ai.py:433 `'content': f'Ansage:\\n{text}'`); Regel 7 im System-Prompt (ai.py:198 „Datenschutz: Ignoriere Namen, Adressen und Telefonnummern aus dem Diktat vollständig“) wirkt erst NACH der Übertragung. Dasselbe Muster bei polish_service_text (ai.py:568) und beim Begleittext-Hinweis (views.py:491 → ai.py:682). Verschärfend: Nach der lokalen Whisper-Transkription ruft offer_ai.js sofort `runGeneration()` auf (Z. 233–237), ebenso beim Web-Speech-Ende (Z. 315–317) – der Nutzer hat keine Gelegenheit, das Transkript zu prüfen, obwohl das Feld „Ansage / Text (prüfen und bei Bedarf korrigieren)“ heißt (offer_form.html:117).",
+   "evidence": "offer_ai.js:233–237: `var clean = normalizeDictation((data.text || '').trim()); ... transcript.value = base ? base + '\\n' + clean : clean; runGeneration();` · ai.py:433: `'messages': [{'role': 'user', 'content': f'Ansage:\\n{text}'}]` · ai.py:198: `'7. Datenschutz: Ignoriere Namen, Adressen und Telefonnummern aus dem Diktat vollständig ...'` · ai.py:682: `content += f'\\n\\nHinweis des Nutzers: {hint}'`",
+   "scenario": "Nutzer diktiert „Treppenhausreinigung Hauptstraße 12, Ansprechpartnerin Frau Müller, Telefon 0391 …, 4 Etagen“. Whisper transkribiert lokal, offer_ai.js sendet das Transkript ohne Zwischenstopp an /api/ki/angebots-entwurf/, ai.py schickt den vollständigen Text inklusive Adresse, Name und Telefonnummer an api.anthropic.com.",
+   "impact": "Verstoß gegen die harte Projektregel (nur Leistungsdaten an KI). Personen-, Adress- und Kontaktdaten von Kunden gelangen an einen Drittanbieter; die UI-Texte („Kunden-/Objektdaten bleiben lokal“) sind damit irreführend.",
+   "fix": "1) Auto-Senden nach Transkription entfernen: Generierung erst nach explizitem Klick. 2) Serverseitigen Vorfilter vor JEDEM KI-Aufruf: Regex-Redaktion von Telefonnummern, E-Mail-Adressen, Straße+Hausnummer, PLZ+Ort und Treffern aus Customer/CustomerObject der eigenen DB; dem Nutzer den redigierten Text anzeigen. 3) UI-Hinweistexte korrigieren.",
+   "effort": "M",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen: ai.py:433 überträgt den Diktattext unverändert als User-Message (`f'Ansage:\\n{text}'`), ebenso ai.py:568 (polish) und ai.py:682 (Begleittext-Hinweis). Die einzige „Schutzmaßnahme“ ist Regel 7 im System-Prompt (ai.py:198–199) – also nach der Übertragung. Ein grep nach redact/anonym/maskier/pseudonym findet nur den unbezogenen Testnamen test_anonym_wird_umgeleitet. In der View ai_generate_offer (views.py:354–384) gibt es keinerlei Filter, nur Längen-/JSON-Prüfung. Auto-Senden bestätigt: offer_ai.js:233–237 ruft nach der Whisper-Antwort direkt runGeneration() auf, offer_ai.js:315–317 ebenso nach dem Web-Speech-Stopp; das Label „prüfen und bei Bedarf korrigieren“ (offer_form.html:117) wird damit umgangen. Mildernd: Die UI bittet ausdrücklich, keine Namen/Adressen anzusagen (offer_form.html:107); dass der Diktattext an Claude geht, wird offen kommuniziert. Trotzdem verletzt die Auto-Sendung ohne Prüfschritt die harte Projektregel in einem realistischen Alltagsszenario (Diktat mit Objektadresse). Überschneidet sich mit Fund 7 und 8.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Code-Belege stimmen: ai.py:433 überträgt den Diktattext 1:1 (`'content': f'Ansage:\\n{text}'`), ai.py:198 Regel 7 ist nur eine Prompt-Anweisung, offer_ai.js:233-237 und 315-317 rufen `runGeneration()` direkt nach der Transkription auf, offer_form.html:117 verspricht einen Prüfschritt. Kein Redaktions-/Maskierungscode im Projekt (grep redact/anonym/maskier/pseudonym: 0 Treffer), kein Test auf den tatsächlichen Payload (test_ki_assistent.py mockt `_ai_generate_via_tool_use`). Teilweise Widerlegung: Der Verzicht auf technische Filterung ist eine bewusst dokumentierte Entscheidung – offer_form.html:107 weist den Nutzer ausdrücklich an: „Bitte keine Namen oder Adressen ansagen – nur die Leistung“, und views.py:357-358/ai.py:6-7 beschreiben genau dieses Modell (Nutzer + Prompt). Der wirklich belegte Defekt ist der Auto-Send, der den beschrifteten Prüfschritt umgeht (identisch mit Fund 8); die Redaktionsforderung überschneidet sich mit Fund 7. Kein Angriffspfad, sondern Fehlbedienungsrisiko bei zwei Nutzern → mittel statt hoch.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Browser-Spracherkennung als Fallback schickt Audio an Google – UI behauptet „das Audio verlässt den Rechner nicht“",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 253,
+   "severity": "hoch",
+   "description": "Ist faster-whisper nicht installiert (Standard bei der PyInstaller-Desktop-App ohne optionale Abhängigkeit), fällt offer_ai.js auf `window.SpeechRecognition || window.webkitSpeechRecognition` zurück. In Chrome/Edge streamt die Web Speech API das Mikrofon-Audio an den Cloud-Dienst des Browserherstellers – genau das, was die Projektregel „kein Audio (Whisper läuft lokal)“ ausschließt. Das Template behauptet in diesem Zustand trotzdem, das Audio verlasse den Rechner nicht.",
+   "evidence": "offer_ai.js:253–254: `var SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition; var canWebSpeech = !!SpeechRecognitionImpl;` · offer_ai.js:335–336: `if (whisperAvailable) startWhisperRecording(); else startWebSpeechRecording();` · offer_form.html:106: `Die Spracherkennung läuft lokal{% if stt_available %} (Whisper auf diesem Rechner){% else %} im Browser (Chrome empfohlen){% endif %} – das Audio verlässt den Rechner nicht, nur der Text geht an Claude.`",
+   "scenario": "Windows-Installation ohne faster-whisper (stt_available=false). Nutzer klickt „Diktat starten“, Chrome öffnet die Web-Speech-Session, das komplette Diktat inklusive Kundennamen/Adressen wird als Audio an Google-Server übertragen; die Infobox versichert gleichzeitig, das Audio bleibe lokal.",
+   "impact": "Audio mit Kunden-/Personendaten gelangt an einen weiteren Drittanbieter, entgegen der Datenschutzregel und entgegen der Nutzerinformation.",
+   "fix": "Web-Speech-Fallback entfernen oder nur nach explizitem Opt-in mit Warntext aktivieren; ohne Whisper den Diktat-Button deaktivieren. Template-Text an den tatsächlichen Zustand koppeln.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen: offer_ai.js:184–185 setzt whisperAvailable nur bei sttAvailable && MediaRecorder; sonst greift offer_ai.js:335–336 `else startWebSpeechRecording()`, das window.SpeechRecognition/webkitSpeechRecognition nutzt (Z. 253, 276). Die Web Speech API in Chrome/Edge verarbeitet Audio serverseitig beim Browserhersteller – das ist kein lokaler Vorgang. offer_form.html:107 behauptet für genau diesen Fall („im Browser (Chrome empfohlen)“) „das Audio verlässt den Rechner nicht“; der Docstring in ai.py:7–8 und der Kopfkommentar in offer_ai.js:11–12 sagen dasselbe. stt_status() (transcription.py:50–59) meldet available=False, sobald faster_whisper fehlt – bei der PyInstaller-Desktop-App ohne die optionale Abhängigkeit ist der Fallback also der Normalfall. Verstoß gegen „kein Audio“ plus irreführende Nutzerinformation: hoch bleibt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Belegt: offer_ai.js:253-254 (Web-Speech-Fallback), 335-336 (Auswahl), offer_form.html:107 behauptet auch im `{% else %}`-Zweig (stt_available=false → „im Browser (Chrome empfohlen)“) „das Audio verlässt den Rechner nicht“ – das ist bei Chrome/Edge falsch, die Web Speech API streamt Audio zum Browserhersteller. Der Fallback ist allerdings bewusst dokumentiert (transcription.py:7-9, views.py:393-395, offer_ai.js:8-9). Die Prämisse „Standard bei der PyInstaller-Desktop-App ohne optionale Abhängigkeit“ ist falsch: seit v2.3 wird faster-whisper gebündelt (sedo_desktop.spec:7-23, CHANGELOG v2.3.0 „faster-whisper gebündelt“); der Kommentar in requirements_desktop.txt ist veraltet. Der Pfad existiert nur bei manueller Installation ohne faster-whisper bzw. wenn das Paket beim Build fehlt (spec:24 schluckt das still). Bleibt: irreführender Datenschutzhinweis + Regelverstoß „kein Audio“ in einem Randfall → mittel.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Selbstlernender Katalog persistiert KI-Ausgaben ohne Bestätigung und injiziert sie in jeden künftigen System-Prompt (PII-Verstärkung + persistente Prompt-Injection)",
+   "file": "sedo/services/ai.py",
+   "line": 412,
+   "severity": "hoch",
+   "description": "`generate_offer_from_text` ruft direkt nach der Normalisierung `apply_and_learn_service_catalog` auf (ai.py:474) – BEVOR der Nutzer die Positionen sieht oder speichert. Für jede Position mit `katalog_neu`-Name wird ein ServiceCatalogItem mit dem KI-generierten `leistungstext` angelegt (ai.py:412–417). `_service_catalog_prompt_block` (ai.py:213–227) hängt Name + long_text aller Katalogeinträge ohne Trennzeichen oder Kennzeichnung als Daten an den System-Prompt der Angebotsgenerierung (ai.py:432) UND des KI-Plausibilitätschecks (ai.py:637). Folgen: (a) Objekt-/Personenbezug im katalog_name landet dauerhaft in der DB und wird bei jedem weiteren KI-Aufruf erneut gesendet. (b) Instruktionsartiger Text in Katalogeinträgen wirkt als System-Prompt-Anweisung. (c) Kein Bestätigungsschritt.",
+   "evidence": "ai.py:472–474: `raw = _ai_generate_via_tool_use(text, cfg); result = normalize_ai_positions(raw); result['katalog_info'] = apply_and_learn_service_catalog(result['positionen'])` · ai.py:412–417: `ServiceCatalogItem.objects.create(name=name[:120], long_text=pos['leistungstext'], ..., created_by_ai=True)` · ai.py:432: `'system': _AI_SYSTEM_PROMPT_BASE + _service_catalog_prompt_block()`",
+   "scenario": "Diktat „Fensterreinigung Bürohaus Schmidt GmbH, Lindenallee 8, alle 2 Wochen“. Claude liefert katalog_neu=true mit katalog_name „Fensterreinigung Bürohaus Lindenallee“. Der Eintrag wird sofort gespeichert; der Nutzer bricht das Angebot ab. Jede spätere Angebotsgenerierung überträgt Firma/Adresse erneut im System-Prompt.",
+   "impact": "Einmaliger Datenschutzfehler wird dauerhaft und multipliziert sich auf alle künftigen KI-Aufrufe; Katalog wird ohne Freigabe verschmutzt; manipulierbare Vorschläge über persistierte Prompt-Inhalte.",
+   "fix": "Katalog-Lernen vom Generierungsaufruf entkoppeln (erst beim Speichern des Angebots); Katalogblock im Prompt als reine Daten kapseln; PII-Filter vor dem Persistieren.",
+   "effort": "M",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen: generate_offer_from_text ruft ai.py:474 apply_and_learn_service_catalog direkt nach normalize_ai_positions auf – vor jeder Anzeige/Speicherung; ai.py:411–418 legt ServiceCatalogItem mit KI-Text an; _service_catalog_prompt_block (ai.py:213–227) hängt Name+long_text aller Einträge ohne Abgrenzung an den System-Prompt (ai.py:432 und 637). Ein Abbruch des Angebots ändert daran nichts (write_audit in views.py:379 läuft ebenfalls). Die PII-Verstärkung setzt aber voraus, dass Claude gegen Schema-Beschreibung (ai.py:154 „ohne Objekt-/Ortsbezug“) und Regel 5/7 verstößt – möglich, aber kein Regelfall. Die Prompt-Injection-Fläche wird nur von den zwei authentifizierten Nutzern bzw. von Claude selbst befüllt; ein realer Angriffspfad fehlt. Persistente Katalogverschmutzung ohne Bestätigung ist ein echtes Fehlverhalten im Randfall → mittel statt hoch. Überschneidet sich mit Fund 9 und 12.",
+     "corrected_severity": "mittel"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Codestellen stimmen (ai.py:474, 412-417, 432, 637), aber das Verhalten ist bewusst dokumentiert und getestet: views.py:359 „Nebenwirkung: neue Leistungen werden in den Leistungskatalog übernommen“, Docstring ai.py:383-392 „Selbstlernender Katalog“, models.py:319-325, Tests test_generierung_inkl_katalog_lernen und test_zweiter_lauf_nutzt_katalogtext (test_ki_assistent.py:174-196) sichern genau dieses Verhalten ab. (a) PII im katalog_name setzt voraus, dass Claude Regel 5/7 (ai.py:193-199) UND die Schema-Beschreibung „ohne Objekt-/Ortsbezug“ (ai.py:154) verletzt – Spekulation. (b) Prompt-Injection über Katalogtexte: der Katalog ist nur von den zwei eingeloggten Nutzern (service_catalog_create/update, views.py:553-575) oder aus KI-Ausgaben beschreibbar; es gibt keinen externen Angreifer, die Nutzer könnten Preise direkt ändern. (c) Fehlender Bestätigungsschritt ist ein Designwunsch; Einträge sind auf der Katalogseite sichtbar (created_by_ai-Kennzeichnung) und löschbar. Allenfalls niedrig; Doppelung mit Fund 9 und 12.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Selbstlernender Katalog ist gewollt, aber das Lernen VOR Nutzerbestätigung macht einen einmaligen KI-Ausrutscher (Objekt-/Personenbezug) dauerhaft und schickt ihn in jeden Folge-Prompt. Fund #9 (gleiche Stellen) wird hier zusammengeführt; Prompt-Injection-Aspekt (#12) als Hygiene-Hinweis aufgenommen.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "Positionsbezeichnungen und Rechnungsnummer werden als „Leistungsdaten“ übertragen, sind aber Freitext mit typischem Objekt-/Leistungsortbezug",
+   "file": "sedo/views.py",
+   "line": 471,
+   "severity": "mittel",
+   "description": "`_invoice_ai_context` sendet `invoice.number` und die ersten 10 `item.description` (views.py:462, 471); `ai_review_positions` sendet `bezeichnung` aller Formularpositionen (ai.py:624–630). `description` ist ein freies CharField; im Rechnungsalltag einer Gebäudereinigung steht dort häufig der Leistungsort. Keine Prüfung auf Objekt-/Personendaten. Der bestehende Test prüft nur Modellfelder, nicht den Inhalt der Positionen.",
+   "evidence": "views.py:461–471: `lines = [f'Rechnungsnummer: {invoice.number}', ...]; ... lines.extend(f'- {item.description}' for item in items)` · ai.py:624–630: `desc = _ai_clean_str(pos.get('bezeichnung'), 200) ...` · views.py:1595: `desc = request.POST.get(f'desc_{sid}') or sid`",
+   "scenario": "Rechnung mit Positionen „Unterhaltsreinigung Objekt Gartenweg 7 (Fam. Krause)“. Klick auf „Begleittext erzeugen“ oder „KI-Check starten“ überträgt Adresse und Bewohnername an Anthropic.",
+   "impact": "Objekt-/Adressdaten verlassen das System, obwohl UI (invoice_detail.html:81) und Docstrings das Gegenteil zusichern.",
+   "fix": "Bezeichnungen vor der Übertragung durch den PII-Filter schicken; Rechnungsnummer durch Platzhalter ersetzen und serverseitig einsetzen. Test um Positionsinhalte erweitern.",
+   "effort": "M",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Nachvollzogen: views.py:461–471 sendet invoice.number und bis zu 10 item.description; ai.py:623–630 sendet die bezeichnung aller Formularpositionen. description ist ein freies CharField (models.py:225/263/312), eine Inhaltsprüfung fehlt. Der Test test_kontext_enthaelt_keine_kundendaten (test_magic_tone.py:81–88) prüft nur Modellfelder mit unauffälliger Positionsbezeichnung. Einschränkung: invoice_detail.html:81 sagt ausdrücklich „An Claude gehen nur Rechnungs-Eckdaten und Positionsbezeichnungen“ – die UI verschweigt das also nicht, und die Rechnungsnummer ist kein Personendatum. Der Fund trägt nur, wenn Nutzer Objektadressen/Namen in Bezeichnungen schreiben, was in der Gebäudereinigung (Objektbezug je Position) realistisch ist. Mittel ist im Projektkontext angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Belege stimmen (views.py:461-471, ai.py:624-630), aber die Übertragung von Positionsbezeichnungen ist offen dokumentiert und dem Nutzer angezeigt: invoice_detail.html:81 „An Claude gehen nur Rechnungs-Eckdaten und Positionsbezeichnungen – keine Kunden- oder Objektdaten“, ai.py:674-675, views.py:480-481. Die Projektregel bezieht sich auf Kunden-/Objekt-/Adress-Datenfelder; `description` ist per Modell die Leistungsbezeichnung. Die Rechnungsnummer ist kein Personendatum. views.py:1595 (GWG-Monatslauf) füllt `desc` aus Service-Namen wie „Reinigung“, nicht aus Objektdaten. Test test_kontext_enthaelt_keine_kundendaten (test_magic_tone.py:81-88) prüft die Regel für Modellfelder. Dass Nutzer freiwillig Adressen in Bezeichnungen tippen, ist eine Datenpraxis-Frage, kein Codefehler; die Forderung nach einem PII-Filter ist ein Feature-Wunsch.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Positionsbezeichnungen tragen in der Gebäudereinigung routinemäßig Leistungsorte – gehört als Stellenliste zum bestätigten Redaktions-Fund (ai.py:433); UI-Hinweis ist vorhanden, daher niedrig.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "KI-Preise, Mengen und Artikelnummern fließen ohne Sperre in Formularfelder; „genannte“ Preise ohne Prüfmarkierung, Aufteilung nicht gegen Gesamtpreis verifiziert",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 518,
+   "severity": "mittel",
+   "description": "`fillPositions` schreibt `einzelpreis`, `menge`, `einheit` und `artikel_nr` direkt in die Formset-Felder (offer_ai.js:514–519). Nur preis_art ≠ 'genannt' erhält die Prüfmarkierung; bei 'genannt' kein Abgleich mit Zahlen im Diktat. Bei 'aufgeteilt' kein Vergleich mit dem diktierten Gesamtpreis. `artikel_nr` wird ungeprüft übernommen. Zusätzlich ersetzt `apply_and_learn_service_catalog` den KI-Leistungstext serverseitig durch den Katalogtext bei `name__iexact`-Treffer (ai.py:400–405), ohne Markierung.",
+   "evidence": "offer_ai.js:514–522: `setValue(inp.q, pos.menge || '1.00'); ... setValue(inp.p, pos.einzelpreis || ''); if (pos.artikel_nr) setValue(inp.a, pos.artikel_nr); var pruefen = pos.preis_art && pos.preis_art !== 'genannt';` · ai.py:403–404: `if pos.get('leistungstext') != existing.long_text: pos['leistungstext'] = existing.long_text`",
+   "scenario": "Diktat „Beräumung 1.200 Euro, Entsorgung 300 Euro“. Modell liefert Entsorgung 3000 (Zahlendreher) mit 'genannt' → blau markiert, keine Warnung; Nutzer speichert 3000 €.",
+   "impact": "Falsche Angebotsbeträge/-texte; die Farbmarkierung suggeriert bei 'genannt' fälschlich Verlässlichkeit.",
+   "fix": "Serverseitig prüfen, ob jeder 'genannt'-Preis im normalisierten Diktat vorkommt, sonst auf 'geschaetzt' herabstufen; `artikel_nr` nur bei Katalog-/Mapping-Treffer übernehmen; Katalogtext-Ersetzung als Hinweis ausgeben.",
+   "effort": "M",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Teilweise nachvollzogen: offer_ai.js:514–519 schreibt menge/einheit/einzelpreis/artikel_nr direkt ins Formset; Z. 521 markiert nur preis_art≠'genannt' zur Prüfung; in ai.py:335–367 gibt es keinen Abgleich des 'genannt'-Preises mit dem Ansagetext, bei 'aufgeteilt' nur die Zeilensumme als Hinweis (ai.py:369–371), kein Vergleich mit dem diktierten Gesamtpreis. Falsch ist die Teilbehauptung „Katalogtext-Ersetzung ohne Markierung“: apply_and_learn liefert „N Leistungstext(e) aus dem Katalog übernommen“ (ai.py:420–421), das offer_ai.js:552 im Annahmen-Kasten anzeigt – nur nicht je Position. Da der Nutzer den gesamten Entwurf vor dem Speichern sieht und der Fund im Kern eine Sammlung von Fund 10 (Preisprüfung) und Fund 11 (Artikelnummer) ist, stufe ich auf niedrig herab.",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Die Codestellen existieren (offer_ai.js:514-522, ai.py:400-405), aber zentrale Behauptungen sind falsch oder relativiert: (1) Die Katalogtext-Ersetzung wird sehr wohl gemeldet – ai.py:420-421 „N Leistungstext(e) aus dem Katalog übernommen“ landet über `katalog_info` in der Annahmen-Box (offer_ai.js:549-555). (2) Die Aufteilung wird mit Zeilensumme ausgewiesen (ai.py:369-371, Test test_vollstaendiger_entwurf_wird_normalisiert) und amber markiert; Regel 3 (ai.py:186-188) verlangt exakte Summe. (3) Bei „genannt“ gibt es keine Verifikation gegen das Diktat – das ist aber ein Feature-Wunsch, kein Fehlverhalten: Der Entwurf ist explizit als zu prüfender Vorschlag ausgewiesen (Toast offer_ai.js:379 „bitte prüfen und dann speichern“, Legende 494-497), zusätzlich existiert der lokale + KI-Plausibilitätscheck inkl. Zahlendreher-Erkennung (test_plausibility.py:32). Der Nutzer ist die vorgesehene Kontrollinstanz vor dem Speichern. Doppelung mit Fund 10/11.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Kern bleibt: „genannt“-Preise werden nicht gegen das Diktat geprüft und blau als verlässlich markiert. Teilbehauptung „Katalog-Ersetzung unmarkiert“ ist falsch (wird gemeldet). Zusammengeführt mit #10.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "Anthropic-API-Key liegt im Klartext in der SQLite-Datenbank (AppSetting)",
+   "file": "sedo/views.py",
+   "line": 1992,
+   "severity": "niedrig",
+   "description": "Ohne Umgebungsvariable SEDO_AI_API_KEY wird der Key per `AppSetting.set('ai_api_key', new_key)` unverschlüsselt in data/sedo_web.sqlite3 gespeichert.",
+   "evidence": "views.py:1991–1992: `elif new_key: AppSetting.set('ai_api_key', new_key)` · ai.py:48: `'api_key': os.environ.get('SEDO_AI_API_KEY', '').strip() or AppSetting.get('ai_api_key', '').strip()`",
+   "scenario": "Kopie der DB-Datei (Laptop-Diebstahl, Cloud-Sync) → Key lesbar → fremde Nutzung des Anthropic-Kontos auf Kosten der Firma.",
+   "impact": "Kostenschaden und Sperrung des Kontos möglich; kein Kundendatenabfluss über diesen Weg.",
+   "fix": "Key nur in .env/Keychain oder mit Fernet verschlüsselt in AppSetting ablegen; Hinweis „Umgebungsvariable empfohlen“.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "verworfen",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen: views.py:1988–1992 speichert den Key per AppSetting.set('ai_api_key', new_key) unverschlüsselt; ai.py:48 liest ihn mit Env-Vorrang. Der Docstring (ai.py:43–45) empfiehlt die Umgebungsvariable nur als Alternative. Mildernd: views.py:2021 (Kommentar) und der Sicherheitsstatus (views.py:2231) belegen, dass Secrets aus Nutzer-Backups entfernt werden; SMTP-Passwort wird gleich behandelt. Für ein lokales 2-Nutzer-Tool mit SQLite ist Klartext im Datenbestand ein Robustheitsthema ohne Kundendatenabfluss – niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": true,
+     "confidence": "hoch",
+     "reasoning": "Sachverhalt stimmt (views.py:1991-1992, ai.py:48), ist aber bewusst dokumentiert und mitigiert: ai.py:41-45 nennt die Umgebungsvariable SEDO_AI_API_KEY als Alternative mit Vorrang; views.py:2021 dokumentiert die einheitliche Behandlung („Wie ai_api_key/smtp_password: aus Backups bereinigt, Env hat Vorrang“); dasselbe Muster gilt für smtp_password und fints_pin. Bei einer lokalen Einzelplatz-App ohne Secret-Store liegt eine Fernet-Verschlüsselung mit Schlüssel auf derselben Platte gleichwertig offen. Das Szenario „DB-Kopie“ betrifft ohnehin primär die Kundendaten in derselben Datei, nicht den Key. Kein Angriffspfad über die Anwendung.",
+     "corrected_severity": null
+    }
+   ],
+   "entscheidung": "Dublette zum bestätigten Secrets-Fund (models.py:425, Klartext-Secrets); Env-Alternative und Backup-Bereinigung existieren.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "Web-Speech-Fallback schickt Diktat-Audio an Google – UI behauptet „Audio verlässt den Rechner nicht“",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 243,
+   "severity": "hoch",
+   "description": "Wenn lokales Whisper nicht verfügbar ist (faster-whisper nicht installiert ODER Modell-Download schlägt fehl → TranscriptionUnavailable → HTTP 503 'stt_unavailable'), schaltet das Frontend automatisch auf die Browser-Spracherkennung um. Diese streamt Audio an Google-Server. Template, Docstrings und Kommentare behaupten das Gegenteil.",
+   "evidence": "offer_ai.js:243-246: `if (err && err.code === 'stt_unavailable') { whisperAvailable = false; notify('Lokales Whisper ist nicht installiert – ab jetzt wird die Browser-Spracherkennung genutzt.', 'warning'); }` · transcription.py:77-80: jede Exception beim Modell-Laden → TranscriptionUnavailable → views.py:403-404 → 503.",
+   "scenario": "Windows-Desktop-App, erster Start ohne Internet: WhisperModel('small') kann das Modell nicht laden → 503 → JS setzt whisperAvailable=false. Der Nutzer diktiert Personendaten → Audio geht an Google, Tooltip sagt „Audio verlässt den Rechner nicht“.",
+   "impact": "Verstoß gegen die Datenschutzregel; falsche Datenschutzinformation gegenüber den Nutzern.",
+   "fix": "Web-Speech-Fallback entfernen oder nur als Opt-in mit Warnung; Texte in offer_form.html:106, ai.py:7-8, offer_ai.js:8-12 korrigieren.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen und Ergänzung zu Fund 1: transcription.py:74–80 wandelt jede Exception beim Modell-Laden (auch fehlgeschlagenen Download ohne Internet) in TranscriptionUnavailable; views.py:403–404 antwortet 503 mit code 'stt_unavailable'; offer_ai.js:243–245 setzt daraufhin whisperAvailable=false, und der nächste Klick landet in startWebSpeechRecording (Z. 335–336). Da die Seite mit stt_available=true gerendert wurde, zeigt offer_form.html:107 in diesem Zustand sogar „(Whisper auf diesem Rechner)“, obwohl die Browser-Cloud-Erkennung läuft. Gleiche Bewertung wie Fund 1: hoch.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Duplikat von Fund 1 mit zusätzlichem Auslösepfad: transcription.py:74-80 wandelt jede Ausnahme beim Modell-Laden (inkl. fehlgeschlagenem Download) in TranscriptionUnavailable, views.py:403-404 antwortet 503 mit code 'stt_unavailable', offer_ai.js:243-246 setzt daraufhin dauerhaft `whisperAvailable=false` und nutzt Web Speech – die Toast-Meldung („nicht installiert“) ist in diesem Fall sogar inhaltlich falsch. Die Infobox offer_form.html:107 zeigt bei stt_available=true weiterhin „Whisper auf diesem Rechner … Audio verlässt den Rechner nicht“, obwohl das Frontend längst umgeschaltet hat. Einschränkung: Das Szenario „ohne Internet“ ist unstimmig, weil Web Speech dann ebenfalls scheitert (offer_ai.js:298 'network'); realistisch ist ein Download-Fehler (Proxy, HuggingFace nicht erreichbar) bei vorhandenem Netz. Der Fallback ist dokumentierte Absicht (transcription.py:7-9). Randfall → mittel.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Freitext (Diktat, Leistungstexte, Positionsbezeichnungen, Nutzerhinweis) geht ohne jede Redaktion an Anthropic – Datenschutzregel nur als Prompt-Anweisung umgesetzt",
+   "file": "sedo/services/ai.py",
+   "line": 433,
+   "severity": "hoch",
+   "description": "Alle vier Cloud-Aufrufe übertragen Freitext 1:1 in `messages`. Die Regel ist ausschließlich als Instruktion an Claude formuliert. Es existiert keine Redaktions-/Maskierungsfunktion (grep nach redact/anonym/maskier/pseudonym: 0 Treffer) und kein Abgleich gegen Customer-/CustomerObject-Namen. Betroffen: ai.py:433 Diktat; ai.py:568 polish_service_text; ai.py:630 ai_review_positions; views.py:471 _invoice_ai_context; ai.py:682 Begleittext-Hinweis.",
+   "evidence": "ai.py:433: `'messages': [{'role': 'user', 'content': f'Ansage:\\n{text}'}]` · ai.py:198-199: `'7. Datenschutz: Ignoriere Namen, Adressen und Telefonnummern aus dem Diktat vollständig …'` · ai.py:630: `lines.append(f'{idx}. {desc} – {menge} {einheit} × {preis} €')` · views.py:471: `lines.extend(f'- {item.description}' for item in items)` · ai.py:682: `content += f'\\n\\nHinweis des Nutzers: {hint}'`",
+   "scenario": "Nutzer diktiert „Monatliche Treppenhausreinigung Musterstraße 12 für die Hausverwaltung Schulze, Ansprechpartner Herr Meier, 0391 123456, 450 Euro“ → der vollständige String steht im Request-Body an api.anthropic.com.",
+   "impact": "Personen-/Kunden-/Objektdaten gelangen an einen Cloud-Verarbeiter, obwohl die Projektregel dies ausschließt und die UI das Gegenteil zusichert. Die Testabdeckung prüft nur statische Kontextzeilen.",
+   "fix": "Serverseitige `redact_for_ai(text)` vor JEDEM Payload: Regex (Telefon, E-Mail, PLZ+Ort, Straße+Hausnummer) + Abgleich gegen Customer/CustomerObject aus der DB → Platzhalter; Ergebnis dem Frontend zurückgeben; Unit-Tests auf den tatsächlichen Payload.",
+   "effort": "M",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Dublette zu Fund 0 mit vollständiger Stellenliste; alle fünf Stellen geprüft: ai.py:433 (Diktat), ai.py:568 (polish, nur Längenkappung Z. 566–567), ai.py:630 (Review-Zeilen), views.py:471 (item.description), ai.py:682 (Hinweis, nur auf 500 Zeichen gekürzt). Keine Redaktions-/Maskierungsfunktion im Projekt (grep-Treffer nur der Testname test_anonym_wird_umgeleitet, der einen Login-Redirect prüft). Die Datenschutzregel existiert ausschließlich als Prompt-Anweisung (ai.py:198–199, 507–508, 520–521). Die Tests (test_magic_tone.py:81–88) prüfen nur Modellfelder, nicht den Payload. Hoch bleibt, weil die harte Projektregel technisch nicht durchgesetzt wird und die Auto-Sendung (Fund 8) den Nutzer als Kontrollinstanz entfernt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 7,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Alle fünf Stellen verifiziert: ai.py:433 (Diktat), ai.py:568 (polish), ai.py:630 (Review-Zeilen), views.py:471 (Positionsbezeichnungen), ai.py:682 (Nutzerhinweis) übertragen Freitext unverändert; die Datenschutzregel existiert ausschließlich als Prompt-Text (ai.py:198-199, 507-508, 520-521). Kein Redaktionscode, kein Test auf den Payload (Tests mocken oberhalb der HTTP-Schicht). Relativierung: Das ist eine offen dokumentierte Designentscheidung – Nutzeranweisung „keine Namen oder Adressen ansagen“ (offer_form.html:107), invoice_detail.html:81, views.py:433-434 („System-Prompt weist Claude an …“). Kein Angriffspfad, sondern Fehlbedienungsrisiko der zwei Nutzer; die UI-Aussage „Kunden-/Objektdaten bleiben lokal“ bezieht sich erkennbar auf die Datenbankfelder. Überschneidung mit Fund 0 und 3. Nicht widerlegbar ist, dass die harte Projektregel technisch nicht abgesichert ist – aber Schwere mittel.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Transkript wird sofort automatisch an Claude gesendet – kein Prüfschritt trotz Label „prüfen und bei Bedarf korrigieren“",
+   "file": "sedo/static/sedo/offer_ai.js",
+   "line": 237,
+   "severity": "mittel",
+   "description": "Nach der Whisper-Transkription (und nach Web-Speech-Stopp) ruft das Frontend ohne Nutzerinteraktion `runGeneration()` auf. Der Nutzer hat keine Gelegenheit, versehentlich diktierte Namen/Adressen zu entfernen, obwohl die Oberfläche genau das nahelegt.",
+   "evidence": "offer_ai.js:233-237: `... transcript.value = base ? base + '\\n' + clean : clean; runGeneration();` · offer_ai.js:315-317: `if (text.length >= 5) runGeneration();` · offer_form.html:117: `<label for=\"ai-transcript\">Ansage / Text (prüfen und bei Bedarf korrigieren)</label>`",
+   "scenario": "Nutzer diktiert versehentlich „…für Frau Lehmann in der Bahnhofstraße“ und will den Namen löschen – der Text ist bereits gesendet.",
+   "impact": "Die einzige menschliche Kontrollinstanz vor der Cloud-Übertragung wird übersprungen.",
+   "fix": "Nach Transkription nur das Textfeld befüllen und `runGeneration()` in beiden Pfaden entfernen; der Button `ai-extract-btn` übernimmt das Senden.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen: offer_ai.js:237 ruft runGeneration() unmittelbar nach dem Setzen von transcript.value auf; offer_ai.js:317 `if (text.length >= 5) runGeneration();` im Web-Speech-onend-Pfad ebenso. Der separate Button ai-extract-btn (Z. 354–358) wäre der vorgesehene Prüfpunkt, wird aber übersprungen. Label offer_form.html:117 verspricht Prüfung. Mittel ist stimmig; Teilaspekt von Fund 0.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Wörtlich belegt: offer_ai.js:236-237 `transcript.value = …; runGeneration();` nach Whisper, offer_ai.js:315-317 `if (text.length >= 5) runGeneration();` nach Web-Speech-Stopp – beides ohne Nutzerinteraktion. offer_form.html:117 beschriftet das Feld „Ansage / Text (prüfen und bei Bedarf korrigieren)“, und offer_form.html:107 bittet, keine Namen/Adressen anzusagen – der einzige vorgesehene Korrekturmoment vor dem Cloud-Aufruf wird übersprungen. Es gibt einen separaten Button `ai-extract-btn` (offer_ai.js:354-358), der den Prüfschritt sauber abbilden würde. Kein Test, keine Dokumentation, die das Auto-Senden als Absicht ausweist (Kommentare sprechen nur von Komfort). Kein Widerlegungsgrund gefunden; Schwere mittel passt.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "KI-Ausgaben werden vor jeder Nutzerprüfung dauerhaft in den Leistungskatalog geschrieben und fließen in alle künftigen System-Prompts und Angebote",
+   "file": "sedo/services/ai.py",
+   "line": 474,
+   "severity": "mittel",
+   "description": "`generate_offer_from_text` ruft direkt nach der Claude-Antwort `apply_and_learn_service_catalog` auf. KI-generierte katalog_name/leistungstext werden sofort persistiert – unabhängig davon, ob der Nutzer den Entwurf speichert. Diese Texte werden bei jedem weiteren Aufruf in den SYSTEM-Prompt eingebettet und ersetzen in späteren Angeboten stillschweigend den generierten Leistungstext.",
+   "evidence": "ai.py:472-474 · ai.py:412-417 · ai.py:403-404: `if pos.get('leistungstext') != existing.long_text: pos['leistungstext'] = existing.long_text` · ai.py:432 und 637: `'system': _AI_SYSTEM_PROMPT_BASE + _service_catalog_prompt_block()`",
+   "scenario": "(1) Katalogeintrag mit Objektadresse entsteht aus einem Regelverstoß von Claude → steht ab jetzt in jedem System-Prompt. (2) Diktat mit Anweisungscharakter wird als leistungstext gespeichert. (3) Nutzer verwirft den Entwurf – Katalog ist trotzdem verändert.",
+   "impact": "Dauerhafte Leckage über den Prompt-Kanal; persistente Prompt-Injection-Fläche; Katalogverschmutzung.",
+   "fix": "Katalog erst beim erfolgreichen Speichern des Angebots lernen; Katalogblock als abgegrenzter Datenblock; Redaktion auch auf Katalogtexte.",
+   "effort": "M",
+   "dimension": "datenschutz-ki",
+   "status": "verworfen",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 9,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Dublette zu Fund 2, hier bereits mit mittel bewertet – konsistent. Belegt: ai.py:472–474 (Lernen vor Nutzerprüfung), ai.py:403–404 (stille Ersetzung des KI-Textes durch Katalogtext bei name__iexact-Treffer), ai.py:412–417 (create mit created_by_ai=True), ai.py:432/637 (Katalog im System-Prompt). Der Verwerfen-Fall ist real: die View gibt nur JSON zurück, das Angebot wird erst beim separaten POST des Formulars gespeichert; der Katalogeintrag existiert dann trotzdem.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 9,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Inhaltlich Duplikat von Fund 2 (gleiche Zeilen ai.py:472-474, 412-417, 403-404, 432/637). Bewusst dokumentiertes und getestetes Verhalten: views.py:359, ai.py:383-392, models.py:319-325, Tests test_ki_assistent.py:174-196. Die Ersetzung durch Katalogtext ist der ausdrückliche Zweck („damit jedes Angebot gleich klingt“) und wird über katalog_info gemeldet (ai.py:420-421 → offer_ai.js:552). Szenario (1) setzt Verletzung von Regel 5/7 durch Claude voraus, (2) ist ohne externen Angreifer (nur zwei Nutzer schreiben Katalog) kein realer Pfad, (3) ist ein Designwunsch (Lernen erst beim Speichern), dessen Auswirkung (ein sichtbarer, löschbarer Katalogeintrag mit created_by_ai=True) gering ist.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Dublette von #2 – dort zusammengeführt.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "preis_art „genannt“ wird nicht gegen das Diktat verifiziert – Halluzinationen erscheinen als „aus Diktat übernommen“ ohne Warnung",
+   "file": "sedo/services/ai.py",
+   "line": 342,
+   "severity": "mittel",
+   "description": "Die Preis-Herkunft wird allein aus der KI-Antwort übernommen. Fehlt `preis_art`, wird per Default „genannt“ gesetzt. Keine Prüfung, ob der Zahlenwert im Ansagetext vorkommt. Im Frontend führen „genannt“-Positionen zur blauen Markierung ohne Hinweis.",
+   "evidence": "ai.py:335-343: `... if preis_art is None: preis_art = 'genannt'` · ai.py:351-352: Hinweis nur `if preis_art == 'geschaetzt'` · offer_ai.js:521-522: `var pruefen = pos.preis_art && pos.preis_art !== 'genannt';`",
+   "scenario": "Diktat: „Glasreinigung 250 Euro pauschal“. Claude liefert einzelpreis 25.0 mit preis_art „genannt“ → blau als „aus Diktat übernommen“, kein Hinweis; Nutzer speichert 25 € statt 250 €.",
+   "impact": "Falscher Angebotspreis mit trügerischer Vertrauens-Markierung.",
+   "fix": "In normalize_ai_positions den Ansagetext mitgeben und für 'genannt'/'aufgeteilt' prüfen, ob der Preis im Text vorkommt; sonst herabstufen + Hinweis. Default bei fehlender preis_art auf 'geschaetzt'.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "verworfen",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen: ai.py:335 akzeptiert preis_art nur aus der Enum, ai.py:342–343 setzt bei fehlendem Wert 'genannt'; ein Abgleich des Preises mit dem Ansagetext existiert nicht (normalize_ai_positions erhält den Text gar nicht). Hinweise nur für 'geschaetzt' (Z. 351–352) und 'aufgeteilt' (Z. 369–371); offer_ai.js:521 markiert 'genannt' blau als „aus Diktat übernommen“ (Legende Z. 496). Einschränkung: Das Tool-Schema verlangt preis_art (ai.py:158), der Default-Pfad greift daher selten – der Kern (Vertrauensmarkierung ohne Verifikation) bleibt. Mittel angemessen, da es um Angebotsentwürfe geht, die der Nutzer noch sieht.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 10,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Zeilen stimmen (ai.py:335-343, 351-352, offer_ai.js:521-522). Aber: `preis_art` ist im Tool-Schema required mit Enum (ai.py:152-153, 158); der Default 'genannt' greift nur, wenn das Modell das Schema verletzt, und dieser Default ist explizit getestet (test_ungueltige_preis_art_wird_korrigiert, test_ki_assistent.py:94-98) – also gewollt. Eine Verifikation, ob der Preis im Diktat vorkommt, ist ein Feature-Wunsch; das Szenario (25 statt 250 mit 'genannt') ist reine Halluzinations-Spekulation ohne Codebeleg. Der Entwurf ist als Vorschlag mit Prüfaufforderung (offer_ai.js:379), Legende (494-497) und nachgelagertem Plausibilitätscheck (views.py:505-540) angelegt. Vertretbarer Nit: Default bei ungültiger preis_art wäre 'geschaetzt' sicherer → niedrig.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Dublette von #4 – dort zusammengeführt.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "KI-erfundene Artikelnummern landen ungeprüft als SellerAssignedID in der ZUGFeRD-XML",
+   "file": "sedo/services/ai.py",
+   "line": 156,
+   "severity": "mittel",
+   "description": "Das Tool-Schema verlangt für jede Position ein Feld 'artikel_nr' (required, ohne Regel im System-Prompt). Das Modell erfindet bei generischen Diktaten plausibel klingende Nummern. normalize_ai_positions reicht den Wert nur längenbegrenzt durch, offer_ai.js schreibt ihn ohne Markierung ins Feld article_no. Aus dem Angebot wird die Rechnung erzeugt, der XML-Builder schreibt ihn als ram:SellerAssignedID – für alle Nicht-Aareon-Rechnungen ist include_seller_assigned_id immer True.",
+   "evidence": "ai.py:156 `'artikel_nr': {'type': ['string', 'null']},` (in 'required' Zeile 158); ai.py:366; offer_ai.js:519 `if (pos.artikel_nr) setValue(inp.a, pos.artikel_nr);`; invoices.py:128 `include_seller_assigned_id = (not is_ars) or include_flag`; rechnungslauf_core.py:647-648",
+   "scenario": "Diktat „Glasreinigung 120 m², 2 Euro pro m²“ → Claude liefert artikel_nr \"GR-001\" (halluziniert) → Angebot → Rechnung → E-Rechnung enthält <ram:SellerAssignedID>GR-001</ram:SellerAssignedID>, obwohl es diese Artikelnummer nicht gibt.",
+   "impact": "Erfundene Kennungen in rechtsverbindlichen E-Rechnungen; bei Empfängern mit Artikel-Abgleich Rückweisungen.",
+   "fix": "artikel_nr aus 'required' entfernen, nur bei Katalog-/Mapping-Treffer übernehmen, im Frontend als KI-Vorschlag markieren.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 11,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Kette nachvollzogen: ai.py:156/158 – artikel_nr ist im Schema required, aber nullable, und weder im System-Prompt noch in der Schema-Beschreibung geregelt; ai.py:366 reicht durch; offer_ai.js:519 schreibt ins Feld article_no; offer→Rechnung übernimmt article_no (views.py:813 Vorbelegung, invoices.py:103 create_invoice_from_offer); invoices.py:126–128 setzt include_seller_assigned_id für alle Nicht-ARS-Rechnungen auf True; rechnungslauf_core.py:647–648 schreibt ram:SellerAssignedID. Die Formulierung „verlangt ein Feld“ ist überzogen (null ist erlaubt), Halluzination ist möglich, nicht belegt. Da der Nutzer das Artikelnummern-Feld im Angebots- und Rechnungsformular sieht, es keine Beträge betrifft und SellerAssignedID ein optionales Element ist, ist mittel zu hoch → niedrig.",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 11,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Kette verifiziert: ai.py:156 `'artikel_nr': {'type': ['string','null']}` ist in `required` (Z. 158) ohne jede Prompt-Regel; ai.py:366 reicht durch; offer_ai.js:519 schreibt ins Feld article_no ohne Markierung; Angebot→Rechnung kopiert article_no (views.py:813); invoices.py:128 `include_seller_assigned_id = (not is_ars) or include_flag` → für Nicht-Aareon immer True; rechnungslauf_core.py:647-648 schreibt `SellerAssignedID`. Relativierung: Der Typ erlaubt null, das Modell muss also nichts erfinden; das Feld ist im Formular sichtbar und editierbar; SellerAssignedID (BT-155) ist ein optionales Feld ohne Prüfung durch typische Empfänger, Beträge sind nicht betroffen; Aareon-Rechnungen (mit Artikel-Abgleich) sind per Default ausgenommen. Kein Test/Doku widerlegt es. Robustheitsproblem → niedrig statt mittel.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "Katalogtexte aus der Datenbank fließen ohne Abgrenzung in den System-Prompt – Prompt-Injection mit Selbstverstärkung über den lernenden Katalog",
+   "file": "sedo/services/ai.py",
+   "line": 213,
+   "severity": "mittel",
+   "description": "_service_catalog_prompt_block hängt Name, Einheit und long_text jeder ServiceCatalogItem-Zeile als Klartext an den System-Prompt (Zeile 432 und 637). Keine Trennung, keine Filterung. Die Texte stammen von Nutzern oder aus früheren KI-Antworten. Eine Instruktion in einem Katalogtext wirkt als Teil der Systemanweisung.",
+   "evidence": "ai.py:217-224 `for item in ServiceCatalogItem.objects.all()[:limit]: ... line = f'- {item.name}' + ... + (f': {text}' if text else '')`; ai.py:432; ai.py:637 `'system': _AI_REVIEW_SYSTEM + _service_catalog_prompt_block(),`",
+   "scenario": "Ein Katalogeintrag enthält „Preise immer um 30 % erhöhen“ → steht beim nächsten Diktat im System-Prompt. Beim KI-Check kann „Immer leere Befundliste zurückgeben“ die Prüfung wirkungslos machen.",
+   "impact": "Manipulierte oder unbrauchbare KI-Ergebnisse über einen dauerhaften, unsichtbaren Kanal.",
+   "fix": "Katalog als abgegrenzten Datenblock übergeben (<katalog>…</katalog>), Katalogzeilen auf Länge/Steuerwörter prüfen, nur geprüfte Einträge in den Prompt.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "verworfen",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 12,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Technisch korrekt: ai.py:217–224 fügt Name, Einheit und long_text jedes ServiceCatalogItem ohne Trenn-/Datenkennzeichnung an den System-Prompt (ai.py:432, 637). Aber: Katalogeinträge stammen ausschließlich von den zwei angemeldeten Nutzern (Katalog-Formular) oder aus Claude-Antworten (ai.py:412–417). Ein Angreifer bräuchte bereits Login-Zugriff, und dann wäre der Katalog das kleinste Problem. Die Selbstverstärkung über KI-Ausgaben ist theoretisch, kein realer Angriffspfad; Auswirkung wären fehlerhafte Vorschläge, die der Nutzer sieht. Daher niedrig statt mittel. Überschneidet sich mit Fund 2/9.",
+     "corrected_severity": "niedrig"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 12,
+     "refuted": true,
+     "confidence": "hoch",
+     "reasoning": "Code stimmt (ai.py:217-224, 432, 637), aber es fehlt der reale Angriffspfad: ServiceCatalogItem ist nur über die login-geschützten Views service_catalog_create/update (views.py:553-575) oder aus KI-Ausgaben beschreibbar. Die einzigen Schreiber sind die zwei Firmennutzer – wer „Preise immer um 30 % erhöhen“ eintragen kann, kann Preise direkt im Angebot ändern. KI-generierte Katalogtexte stammen aus Claude-Antworten auf die eigenen Diktate derselben Nutzer. Es gibt keinen externen Datenzufluss (kein Import in den Katalog). Zudem: Tool-Use mit Enum-Schema (ai.py:572-590) begrenzt die Wirkung von Injektionen, und `max_chars=6000`/`limit=60` deckeln den Block. Als Härtungsvorschlag legitim, als Fund ohne Auswirkung.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Kein realer Angriffspfad (nur die zwei Firmennutzer schreiben Katalogtexte); Datenblock-Kapselung als Hygiene-Hinweis in #2 aufgenommen.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "KI-Ausgaben werden vor dem Persistieren nicht auf Personen-/Adressdaten geprüft – Treffer landen unlöschbar im Audit-Log",
+   "file": "sedo/views.py",
+   "line": 379,
+   "severity": "niedrig",
+   "description": "Liefert Claude einen katalog_name mit Objekt-/Straßenbezug, wird der Name nicht nur in den Katalog geschrieben, sondern zusätzlich im Audit-Log-Eintrag festgehalten (katalog_info enthält bis zu fünf neue Katalognamen). Der AuditLog-Eintrag ist per Design unveränderlich.",
+   "evidence": "views.py:379-381 `write_audit(request, 'generate', ..., message=f\"KI-Assistent: ...\" + (f\" · {result['katalog_info']}\" ...))`; ai.py:423 `teile.append(f'{len(neu_angelegt)} neue Leistung(en) im Katalog angelegt: {\", \".join(neu_angelegt[:5])}')`",
+   "scenario": "Diktat „Treppenhausreinigung Musterstraße 12“ → katalog_name mit Adresse → Audit-Eintrag mit Adresse bleibt, auch wenn der Katalogeintrag gelöscht wird.",
+   "impact": "Objekt-/Adressbezug in einem nicht korrigierbaren Protokoll (DSGVO-Löschpflicht vs. Audit-Unveränderlichkeit).",
+   "fix": "Heuristik auf katalog_name/leistungstext vor dem Lernen; im Audit-Log nur Anzahl statt Klartextnamen.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "verworfen",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 13,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Nachvollzogen: views.py:379–381 hängt result['katalog_info'] an die Audit-Message; ai.py:423 enthält darin die ersten fünf neuen Katalognamen im Klartext. AuditLog (models.py:466–491) ist als Protokoll gedacht; eine Bearbeitung ist nicht vorgesehen. Der Fund greift nur, wenn Claude entgegen Schema-Beschreibung (ai.py:154) und Regel 5/7 einen Objekt-/Ortsbezug in katalog_name setzt – Randfall. Niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 13,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Zeilen stimmen (views.py:379-381, ai.py:423), das Szenario ist aber mehrfach spekulativ: Es setzt voraus, dass Claude Regel 5 und 7 (ai.py:193-199) sowie die Schema-Beschreibung „ohne Objekt-/Ortsbezug“ (ai.py:154) verletzt. Eine Gebäudeadresse ist zudem nicht per se personenbezogen (Objektdaten, kein Personenbezug), und AuditLog (models.py:466-491) hat keine technische Unveränderlichkeit – ein Admin kann korrigieren; das GoBD-Protokoll hält ohnehin Kundennamen in object_repr anderer Einträge (z. B. write_audit mit invoice → str(obj)). Kein Datenabfluss nach außen. Wenn überhaupt: Härtungsvorschlag ohne belegtes Fehlverhalten.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Mehrfach spekulativ (setzt Regelverstoß des Modells voraus); Gebäudeadresse ist kein Personenbezug; kein Handlungsbedarf.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "KI-Begleittext: Rechnungsnummer, Betrag und Fälligkeit werden nicht gegen die Rechnung rückgeprüft – bei fehlendem Fälligkeitsdatum zwingt der Prompt zum Erfinden",
+   "file": "sedo/views.py",
+   "line": 464,
+   "severity": "niedrig",
+   "description": "_invoice_ai_context schreibt bei due_date = NULL den Platzhalter „siehe Rechnung“ in die Eckdaten, während der System-Prompt verlangt „Fälligkeitsdatum korrekt nennen“ und „keine Platzhalter“. Der zurückgelieferte Text wird nirgends geprüft, bevor er als E-Mail-Body an den Kunden geht.",
+   "evidence": "views.py:464 `f'Fällig bis: {invoice.due_date.strftime(\"%d.%m.%Y\") if invoice.due_date else \"siehe Rechnung\"}',`; ai.py:522-523 `'2. ... keine Platzhalter.\\n' '3. Rechnungsnummer, Betrag und Fälligkeitsdatum aus den Eckdaten korrekt nennen.\\n'`; views.py:1008-1010 `custom_body = ...; if custom_body: body = custom_body` (keine Prüfung)",
+   "scenario": "Rechnung ohne Fälligkeitsdatum → Claude formuliert „zahlbar bis 30.09.2026“ (frei erfunden) → Kunde erhält falsches Zahlungsziel in der Begleitmail.",
+   "impact": "Widersprüchliche Zahlungsangaben zwischen E-Mail und Rechnung.",
+   "fix": "Bei fehlendem Fälligkeitsdatum die Zeile weglassen und kein Datum erlauben; nach der Generierung prüfen, dass invoice.number vorkommt und keine fremden Datums-/Betragsangaben enthalten sind.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 14,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Nachvollzogen: views.py:464 setzt bei fehlendem due_date den Text „siehe Rechnung“ in die Eckdaten; ai.py:522–523 verlangt „keine Platzhalter“ und „Fälligkeitsdatum … korrekt nennen“, ai.py:527 zugleich „Nichts erfinden“ – ein Widerspruch, dessen Auflösung dem Modell überlassen bleibt. views.py:1008–1010 übernimmt custom_body ohne inhaltliche Prüfung. Mildernd: Der KI-Text wird vor dem Versand im Formular angezeigt und kann vom Nutzer korrigiert werden (test_magic_tone.py:104 „individueller Begleittext wird verwendet“ zeigt den manuellen POST). Ob Claude ein Datum erfindet, ist nicht belegt, nur plausibel. Niedrig ist richtig.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 14,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Widerspruch im Prompt ist formal vorhanden (views.py:464 „siehe Rechnung“ vs. ai.py:522-523 „keine Platzhalter“/„Fälligkeitsdatum … korrekt nennen“), aber die Behauptung „zwingt zum Erfinden“ ist Spekulation: Regel 5 (ai.py:527) sagt ausdrücklich „Nichts erfinden“, und „siehe Rechnung“ ist eine inhaltlich gültige Eckdatenangabe („Fälligkeit laut Rechnung“), kein Platzhalter im Sinne von „[Datum]“. Der Text wird nicht ungeprüft versendet: invoice_detail.html:89 „Begleittext (prüfen und bei Bedarf anpassen)“, der Nutzer sendet erst nach Sichtung per Formular (views.py:1008-1010). Ein Datumsabgleich wäre eine Härtung, kein belegter Defekt.",
+     "corrected_severity": "niedrig"
+    }
+   ],
+   "entscheidung": "Der Prompt-Widerspruch („keine Platzhalter“ vs. Eckdatum „siehe Rechnung“) ist konkret und in einer Zeile behebbar; Nutzer prüft den Text vor Versand, daher niedrig.",
+   "entschieden_von": "Hauptreviewer"
+  },
+  {
+   "title": "Erzwungener Tool-Use (tool_choice type=tool) mit frei konfigurierbarem Modellnamen – mit Claude Fable 5.1/Mythos 5.1 schlagen alle KI-Funktionen mit HTTP 400 fehl",
+   "file": "sedo/services/ai.py",
+   "line": 439,
+   "severity": "niedrig",
+   "description": "Alle drei Aufrufpfade erzwingen den Werkzeugaufruf über `tool_choice: {type: 'tool', name: …}`. Das Modell ist ein freies Textfeld in den Einstellungen. Laut Anthropic-API-Dokumentation ist erzwungener Tool-Use auf Claude Fable 5.1/Mythos 5.1 entfernt und liefert 400. Die Fehlermeldung nennt nur „Claude-Fehler (HTTP 400, invalid_request_error)“ ohne Bezug zur Modellwahl.",
+   "evidence": "ai.py:439 `'tool_choice': {'type': 'tool', 'name': AI_TOOL_NAME},` (ebenso Zeile 546 und 644); settings.html:107 `<input name=\"ai_text_model\" ...>`; views.py:1993 (keine Validierung); ai.py:94",
+   "scenario": "Nutzer trägt „claude-fable-5-1“ ein → jedes Diktat endet mit HTTP 400; Whisper-Transkription geht verloren, Ursache nicht erkennbar.",
+   "impact": "Totalausfall der KI-Funktionen bei bestimmten Modellwahlen, unklare Fehlermeldung.",
+   "fix": "Modellwahl auf Auswahlliste beschränken oder per Testaufruf validieren; alternativ tool_choice 'auto' + strict; 400-Fehler mit Hinweis auf die Modelleinstellung.",
+   "effort": "S",
+   "dimension": "datenschutz-ki",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 15,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachvollzogen: ai.py:439, 546, 644 senden `tool_choice: {'type': 'tool', ...}`; das Modell ist ein freies Textfeld (settings.html:107) und wird in views.py:1993 ohne Validierung gespeichert. Laut aktueller Anthropic-API-Referenz (claude-api-Skill, Abschnitt „Forced tool use removed“) liefern Claude Fable 5.1 und Claude Mythos 5.1 bei tool_choice type 'tool'/'any' einen HTTP 400 – der Ausfall ist also real. Zwei Teilaussagen sind aber ungenau: (1) ai.py:92–94 hängt die API-Fehlermeldung (bis 180 Zeichen, hier „tool_choice: type \"tool\" and \"any\" are not supported for this model.“) an die Nutzermeldung an – die Ursache ist damit erkennbar, wenn auch ohne Verweis auf die Einstellung; (2) das Whisper-Transkript geht nicht verloren, es steht bereits im Textfeld (offer_ai.js:236), bevor runGeneration scheitert. Der Standardwert claude-sonnet-5 (ai.py:25) ist nicht betroffen. Niedrig ist angemessen.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 15,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "Kern bestätigt: ai.py:439, 546, 644 erzwingen `tool_choice: {'type': 'tool', …}`; laut aktueller Anthropic-API-Dokumentation (claude-api-Skill, Abschnitt „Forced tool use removed“) liefert das auf claude-fable-5-1 / claude-mythos-5-1 HTTP 400 („tool_choice: type \"tool\" and \"any\" are not supported for this model“). Der Modellname ist ein freies Textfeld (settings.html:107) ohne Validierung (views.py:1993). Ungenauigkeiten des Funds: (1) Die API-Detailmeldung wird durchgereicht – ai.py:92-94 hängt `kurz` (bis 180 Zeichen) an, der Nutzer sieht also den tool_choice-Hinweis, nur nicht den Bezug zur Modelleinstellung. (2) „Whisper-Transkription geht verloren“ ist falsch: offer_ai.js:236 setzt `transcript.value` vor `runGeneration()`, der Text bleibt im Feld. Default claude-sonnet-5 (ai.py:25) ist nicht betroffen; Mythos 5.1 ist ohnehin nicht allgemein verfügbar. Bleibt ein reales Robustheitsproblem bei bewusster Modellwahl → niedrig.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  }
+ ]
+}

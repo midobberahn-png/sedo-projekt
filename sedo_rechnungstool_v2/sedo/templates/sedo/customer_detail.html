@@ -1,0 +1,47 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<div class="topbar detail-topbar">
+  <div>
+    <div class="eyebrow">Kundenakte</div>
+    <div class="h1">{{ customer.name }}</div>
+    <div class="sub">{{ customer.get_customer_type_display }}{% if customer.customer_no %} · Kunden-Nr. {{ customer.customer_no }}{% endif %}</div>
+  </div>
+  <div class="toolbar"><a class="btn" href="{% url 'sedo:customer_update' customer.pk %}">Bearbeiten</a><a class="btn primary" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk }}">Rechnung</a><a class="btn" href="{% url 'sedo:offer_create' %}?customer={{ customer.pk }}">Angebot</a><a class="btn" href="{% url 'sedo:object_create' %}?customer={{ customer.pk }}">Objekt anlegen</a></div>
+</div>
+
+<div class="detail-hero customer-hero">
+  <div class="hero-main"><span class="badge">{{ customer.get_customer_type_display }}</span><h2>{{ customer.city|default:'Kundenakte' }}</h2><p>{{ customer.street|default:'Keine Straße hinterlegt' }}{% if customer.postcode or customer.city %} · {{ customer.postcode }} {{ customer.city }}{% endif %}</p></div>
+  <div class="hero-facts">
+    <div><span>Rechnungen</span><strong>{{ customer_invoices.count }}</strong></div>
+    <div><span>Angebote</span><strong>{{ customer_offers|length }}</strong></div>
+    <div><span>Objekte</span><strong>{{ customer.customer_objects.count }}</strong></div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="card info-card">
+    <h2>Kundendaten</h2>
+    <div class="address-box">{{ customer.salutation }} {{ customer.name }}{% if customer.name2 %}<br>{{ customer.name2 }}{% endif %}<br>{{ customer.street|default:'—' }}<br>{{ customer.postcode }} {{ customer.city }}</div>
+    <div class="info-list two">
+      <div><span>Ansprechpartner</span><strong>{{ customer.contact_person|default:'—' }}</strong></div>
+      <div><span>Telefon</span><strong>{{ customer.phone|default:'—' }}</strong></div>
+      <div><span>E-Mail</span><strong>{% if customer.email %}<a href="mailto:{{ customer.email }}">{{ customer.email }}</a>{% else %}—{% endif %}</strong></div>
+      <div><span>Zahlungsziel</span><strong>{{ customer.payment_days }} Tage</strong></div>
+      <div><span>Aareon/ARP-ID</span><strong>{{ customer.aareon_receiver_id|default:'—' }}</strong></div>
+      <div><span>Land</span><strong>{{ customer.country }}</strong></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-head"><h2>Objekte</h2><a class="btn small" href="{% url 'sedo:object_create' %}?customer={{ customer.pk }}">Objekt anlegen</a></div>
+    <div class="object-grid">{% for o in customer.customer_objects.all %}<div class="item-box object-card"><strong>{{ o.name }}</strong><span>{{ o.street|default:'—' }}</span><span>{{ o.postcode }} {{ o.city }}</span><div class="table-actions"><a class="btn small" href="{% url 'sedo:object_update' o.pk %}">Bearbeiten</a><a class="btn small danger" href="{% url 'sedo:object_delete' o.pk %}">Löschen</a></div></div>{% empty %}<div class="empty-state compact">Noch keine Objekte.</div>{% endfor %}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><h2>Rechnungen</h2><a class="btn small primary" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk }}">Rechnung erstellen</a></div>
+  <div class="table-wrap"><table class="table table-modern"><tr><th>Nr.</th><th>Datum</th><th>Brutto</th><th>Status</th><th>Aktionen</th></tr>{% for r in customer_invoices %}<tr><td><strong>{{ r.number }}</strong></td><td>{{ r.issue_date }}</td><td>{{ r.gross_total }} €</td><td><span class="badge {% if r.status == 'bezahlt' %}green{% elif r.status == 'storniert' %}red{% elif r.status == 'entwurf' %}yellow{% endif %}">{{ r.get_status_display }}</span></td><td class="table-actions"><a class="btn small primary" href="{% url 'sedo:invoice_detail' r.pk %}">Öffnen</a>{% if r.zugferd_file %}<a class="btn small" href="{{ r.zugferd_file.url }}" target="_blank">ZUGFeRD</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="5"><div class="empty-state compact">Keine Rechnungen.</div></td></tr>{% endfor %}</table></div>
+</div>
+<div class="card">
+  <div class="section-head"><h2>Angebote</h2><a class="btn small" href="{% url 'sedo:offer_create' %}?customer={{ customer.pk }}">Angebot erstellen</a></div>
+  <div class="table-wrap"><table class="table table-modern"><tr><th>Nr.</th><th>Datum</th><th>Brutto</th><th>Status</th><th>Aktionen</th></tr>{% for o in customer_offers %}<tr><td><strong>{{ o.number }}</strong></td><td>{{ o.issue_date }}</td><td>{{ o.gross_total }} €</td><td><span class="badge">{{ o.get_status_display }}</span></td><td class="table-actions"><a class="btn small primary" href="{% url 'sedo:offer_detail' o.pk %}">Öffnen</a>{% if o.pdf_file %}<a class="btn small" href="{{ o.pdf_file.url }}" target="_blank">PDF</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="5"><div class="empty-state compact">Keine Angebote.</div></td></tr>{% endfor %}</table></div>
+</div>
+{% endblock %}

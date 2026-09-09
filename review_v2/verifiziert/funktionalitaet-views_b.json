@@ -1,0 +1,569 @@
+{
+ "modus": "verifizieren",
+ "dimension": "funktionalitaet-views_b",
+ "ergebnis": [
+  {
+   "title": "Nicht-numerische ID-/Monatsparameter führen zu ValueError/TypeError (500) statt 404/Meldung",
+   "file": "sedo/views.py",
+   "line": 798,
+   "severity": "niedrig",
+   "description": "get_object_or_404(…, pk='abc') und `.filter(pk=…)`/`id__in=[…]` werfen bei nicht-numerischen Werten ValueError, den Django nicht in 404 übersetzt. Betroffen: invoice_create GET-Parameter from_offer/correction_of/customer (Z. 798, 816, 832, 960), ai_cover_letter `Invoice.objects.filter(pk=data.get('invoice'))` (Z. 488), aareon_import send_monthly_email `id__in=ids` (Z. 1687), recurring_monthly_generate `id__in=selected_ids` (Z. 1939), bulk_dunning ids (dunning.py 210), cashbook_pdf month mit „/“ (Z. 1481).",
+   "evidence": "views.py 798: `offer = get_object_or_404(Offer.objects.select_related('customer','obj'), pk=pre_offer)`; 488: `invoice = Invoice.objects.filter(pk=data.get('invoice')).first()`",
+   "scenario": "Ein Link mit `?customer=12a` oder ein JS-Fehler, der `invoice: null` sendet → Django-Fehlerseite bzw. 500-JSON.",
+   "impact": "Fehlerseiten statt sauberer Rückmeldung; nur durch fehlerhafte Links/Clients auslösbar.",
+   "fix": "Parameter mit `str(x).isdigit()` prüfen bzw. ValueError/TypeError abfangen und Http404/JsonResponse(400) liefern.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: get_object_or_404(Invoice, pk='12a') wirft ValueError (\"Field 'id' expected a number but got '12a'\"), ebenso filter(id__in=['abc']) – Django übersetzt das nicht in 404, es entsteht eine 500. Betroffen sind views.py 798/816/832/960 (from_offer/correction_of/customer aus GET), 1687 und 1939 (id__in aus POST-Listen) sowie dunning.py 210. Teilweise falsch: `Invoice.objects.filter(pk=None)` (views.py 488, JSON `invoice: null`) liefert eine leere Liste, kein Fehler – dieser Teil des Szenarios trifft nicht zu. cashbook_pdf (1480 ff.) baut mit einem Monat wie „2025/08“ einen Pfad mit Unterordner, den es nicht gibt → Fehler beim Schreiben. Nur über fehlerhafte Links/Clients auslösbar, keine Datenwirkung. Schwere niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 0,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Belegt: views.py 798/816/832 nutzen get_object_or_404(..., pk=request.GET-Wert) und 960 Customer.objects.get(pk=pre_customer) ohne Prüfung; Django übersetzt den ValueError des Feld-Casts ('abc') nicht in Http404. views.py 1687 und 1939 filtern id__in=POST-Listen ungeprüft, dunning.py 210 filter(pk=pk). cashbook_pdf (views.py 1480 → pdf.py 237: out_dir / f'Kassenbuch_{month}.pdf') bricht bei '/' im Monat mit FileNotFoundError. Nur die URL-Pfad-pks sind per <int:pk> (urls.py) abgesichert – die GET/POST-Parameter nicht. Kein Test in sedo/tests/ deckt nicht-numerische Parameter ab. Der ai_cover_letter-Fall mit null ist allerdings harmlos (filter(pk=None).first() → None → 404-JSON); nur String-Werte wie 'abc' werfen. Schwere niedrig bleibt.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "Offener Redirect über POST-Parameter „next“ bei Zahlungserfassung",
+   "file": "sedo/views.py",
+   "line": 1259,
+   "severity": "niedrig",
+   "description": "invoice_add_payment und invoice_mark_paid leiten auf request.POST['next'] weiter, ohne Host/Schema zu prüfen. payment_manual.html befüllt next mit HTTP_REFERER.",
+   "evidence": "views.py 1259-1260: `next_url = request.POST.get('next') or reverse('sedo:invoice_detail', args=[invoice.pk])\\n            return redirect(next_url)`; 1291-1292 identisch",
+   "scenario": "Nutzer kommt über einen externen Link auf „Zahlung erfassen“ → nach dem Speichern Redirect auf die fremde Seite.",
+   "impact": "Geringer Angriffspfad (CSRF-geschützter POST nötig), aber verwirrende Weiterleitung.",
+   "fix": "`url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()})` prüfen.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1259-1260 und 1291-1292: `next_url = request.POST.get('next') or reverse(...)`; `redirect(next_url)` ohne url_has_allowed_host_and_scheme (grep über sedo/ ergibt keine Verwendung). payment_manual.html Z. 10 befüllt next mit HTTP_REFERER, open_items.html Z. 86 mit get_full_path. Ein fremder Host im Referer wird 1:1 als Redirect-Ziel übernommen. Angriffspfad ist schwach (Login + CSRF-Token nötig, 2 Nutzer), daher niedrig korrekt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 1,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1259-1260 und 1291-1292: redirect(request.POST.get('next') ...) ohne url_has_allowed_host_and_scheme. payment_manual.html:10 befüllt next mit request.META.HTTP_REFERER, open_items.html:86 mit get_full_path. Kein Hinweis in DEPLOYMENT_SECURITY_NOTES.md, kein Test. Angriffspfad ist durch CSRF-geschützten POST und Login stark eingeschränkt – niedrig ist angemessen.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "„Erstellen & versenden“ versendet nie per SMTP, setzt aber Status 'versendet' vor der .eml-Erzeugung – UI verspricht Direktversand",
+   "file": "sedo/views.py",
+   "line": 939,
+   "severity": "mittel",
+   "description": "invoice_create action='send' erzeugt immer nur eine .eml-Datei, obwohl invoice_email bei konfiguriertem SMTP direkt sendet. Das Formular sagt bei konfiguriertem SMTP „sendet direkt“. Der Status wird auf 'versendet' gesetzt, bevor die .eml existiert; schlägt die Erzeugung fehl, bleibt 'versendet' ohne Datei.",
+   "evidence": "views.py 943-944: `inv.status = 'versendet'; inv.save(update_fields=['status','updated_at'])\\n                    eml_path = _create_invoice_email_file(inv)`; invoice_form.html 191: `„Erstellen &amp; versenden“ sendet die Rechnung direkt{% if not smtp_configured %} (SMTP noch nicht konfiguriert – .eml-Download){% endif %}`",
+   "scenario": "SMTP eingerichtet. Nutzer klickt „Erstellen & versenden“, erhält einen .eml-Download (ignoriert ihn), Rechnung steht auf „Versendet“ – der Kunde hat nie eine E-Mail erhalten.",
+   "impact": "Rechnungen gelten als versendet, wurden aber nicht zugestellt.",
+   "fix": "Im send-Zweig denselben Pfad wie invoice_email nutzen und den Status erst nach erfolgreichem Versand setzen; UI-Text angleichen.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 2,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 939-949: Zweig action=='send' setzt in Z. 943 `inv.status = 'versendet'` und ruft danach nur `_create_invoice_email_file(inv)` (Z. 293-302, erzeugt ausschließlich eine .eml per create_email_draft). Kein Aufruf von send_email_smtp, obwohl invoice_email (Z. 1014-1016) bei konfiguriertem SMTP direkt sendet. invoice_form.html Z. 191 verspricht „sendet die Rechnung direkt“ und nennt den .eml-Download nur bei fehlendem SMTP. Status wird vor der Dateierzeugung und außerhalb der Transaktion gesetzt; eine Exception in Z. 944 lässt 'versendet' ohne Datei zurück. Szenario tritt so ein. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 2,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "views.py 939-949: action=='send' setzt Status 'versendet' (943) und erzeugt dann immer nur eine .eml (944, _create_invoice_email_file) – kein SMTP-Pfad, obwohl invoice_email (1014-1022) bei konfiguriertem SMTP direkt sendet. invoice_form.html:191 verspricht 'sendet die Rechnung direkt' bei smtp_configured. Der Befund ist korrekt, aber abgeschwächt: Die Erfolgsmeldung (946) sagt ausdrücklich 'E-Mail-Entwurf wurde erstellt' und der Nutzer erhält den .eml-Download; und der .eml-Pfad in invoice_email (1031-1033) setzt ebenfalls 'versendet' – also ein konsistentes (wenn auch fragwürdiges) Konzept 'Entwurf erzeugt = versendet'. Das Fehlerszenario 'Status versendet ohne Datei' ist unwahrscheinlich, da generate_invoice_files bereits in der Transaktion (901) lief. Bleibt eine UI-/Konzept-Inkonsistenz → niedrig.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "Hartes Löschen von Objekten trennt Rechnungen vom Leistungsort und hebelt die GWG-Dublettenprüfung aus",
+   "file": "sedo/views.py",
+   "line": 741,
+   "severity": "mittel",
+   "description": "object_delete löscht CustomerObject hart; Invoice.obj ist SET_NULL. Bestehende Rechnungen verlieren ihren Leistungsort. Die skip_existing-Prüfung des GWG-Laufs matcht über obj__name und der Unique-Constraint über obj – beides greift nicht mehr, wenn obj NULL ist.",
+   "evidence": "views.py 741: `obj.delete()`; models.py 124: `obj = models.ForeignKey(CustomerObject, on_delete=models.SET_NULL, …)`; views.py 1738: `Invoice.objects.filter(customer=customer, obj__name=unit_name, source='GWG Monatsrechnung', period_start=ps, period_end=pe)`",
+   "scenario": "Nutzer löscht das Objekt „AE 4711“ und startet den August-Lauf erneut → zweite August-Rechnung mit neuer Nummer; die alte zeigt kein Objekt mehr.",
+   "impact": "Doppelte Monatsrechnung, Informationsverlust auf Altbelegen.",
+   "fix": "Objekte mit verknüpften Belegen nicht löschen (PROTECT) oder Soft-Delete.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 741 `obj.delete()` (hart, keine Prüfung auf verknüpfte Belege); models.py 124 `obj = ForeignKey(CustomerObject, on_delete=SET_NULL)`. Der skip_existing-Check in Z. 1738 filtert über `obj__name=unit_name` – nach dem Löschen ist obj NULL, kein Treffer. Der UniqueConstraint invoice_unique_gwg_monthly_run (models.py 147-153) enthält obj; mit NULL greift er in SQLite nicht (NULLs sind unique-verschieden). Z. 1757 legt per get_or_create ein neues Objekt an → zweite Monatsrechnung mit neuer Nummer. Altbeleg verliert Leistungsort (ShipTo im XML bei Neuerzeugung leer, invoices.py 109/140). Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 3,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 741: obj.delete() (hart, CustomerObject ist kein SoftDeleteModel, models.py 89). models.py 124: Invoice.obj on_delete=SET_NULL. views.py 1738: skip_existing-Prüfung über obj__name, 1757: get_or_create legt ein neues Objekt mit neuer ID an; der UniqueConstraint (models.py 147-153) läuft über das FK-Feld obj – Altrechnungen mit obj=NULL kollidieren nicht. Doppelte Monatsrechnung nach Objektlöschung ist damit reproduzierbar. Kein Test, keine dokumentierte Entscheidung in CHANGELOG.md.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Abo-Monatslauf hat keinen DB-seitigen Dublettenschutz – Doppelklick kann doppelte Rechnungen erzeugen",
+   "file": "sedo/views.py",
+   "line": 1947,
+   "severity": "mittel",
+   "description": "Der GWG-Lauf ist über invoice_unique_gwg_monthly_run abgesichert. Der Abo-Lauf prüft nur per exists() (check-then-act). Zwei parallele POSTs können beide die Prüfung passieren.",
+   "evidence": "views.py 1947: `if skip_existing and Invoice.objects.filter(customer=tmpl.customer, obj=tmpl.obj, source='Abo Monatsrechnung', period_start=ps, period_end=pe).exclude(status='storniert').exists():`; models.py 149: `condition=(models.Q(source='GWG Monatsrechnung') …)`",
+   "scenario": "Doppelklick auf „Ausgewählte Monatsrechnungen erzeugen“ → jede aktive Vorlage bekommt zwei Rechnungen.",
+   "impact": "Doppelte Rechnungen an Kunden, verbrauchte Nummern, Stornoaufwand.",
+   "fix": "UniqueConstraint auch für source='Abo Monatsrechnung' und IntegrityError als „übersprungen“ behandeln; Button nach Klick deaktivieren.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 4,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "views.py 1947: reine exists()-Prüfung (check-then-act) für source='Abo Monatsrechnung'; models.py 149 beschränkt den UniqueConstraint auf source='GWG Monatsrechnung'. recurring_monthly.html Z. 21: Submit-Button ohne Deaktivierung nach Klick. Zwei parallele POSTs (runserver ist threaded) können beide die Prüfung passieren, bevor eine Transaktion committet; es gibt keine DB-Schranke, IntegrityError wird hier auch nicht behandelt. Konkret reproduziert habe ich das Rennen nicht (Timing), die Lücke ist aber im Code eindeutig. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 4,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1947: reines exists()-Check-then-act; models.py 149-151: Constraint-Bedingung nur source='GWG Monatsrechnung'. Der Abo-Lauf (source='Abo Monatsrechnung', 1910) hat keine DB-Schranke. Kein Submit-Disable-JS (unsaved_guard.js setzt nur ein Flag, deaktiviert den Button nicht). CHANGELOG 'Monatslauf-Idempotenz' bezieht sich auf den GWG-Lauf. Bei 2 Nutzern und Doppelklick realistisch → mittel bleibt.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Irreführende Rückmeldungen/Vorbelegungen: ZIP-Versand zählt fehlende PDFs mit, Importe ohne Datei bleiben stumm, Zahlungsvorschlag bei bezahlter Rechnung",
+   "file": "sedo/views.py",
+   "line": 1524,
+   "severity": "niedrig",
+   "description": "(a) _monthly_zip_email überspringt Rechnungen ohne zugferd_file still, schreibt aber „Enthaltene Rechnungen: {len(invoices)}“. (b) customer_import und cashbook_import_bank ohne Datei enden ohne Meldung. (c) invoice_add_payment schlägt bei vollständig bezahlter Rechnung den vollen Bruttobetrag vor. (d) payment_list zeigt gekappte Anzahl.",
+   "evidence": "views.py 1512-1513: `if not inv.zugferd_file:\\n                continue`; 1524: `f'Enthaltene Rechnungen: {len(invoices)}\\n\\n'`; 1264: `'amount': invoice.open_amount if invoice.open_amount > Decimal('0.00') else invoice.gross_total,`",
+   "scenario": "Nutzer erfasst zu einer bezahlten Rechnung erneut eine Zahlung: Formular schlägt 1.190,00 € vor → Überzahlung.",
+   "impact": "Fehlbuchungen durch falsche Vorbelegung, verwirrende Zahlen.",
+   "fix": "Vorbelegung 0,00 € bei open_amount ≤ 0; messages.error bei fehlender Datei; gezippte Anzahl im E-Mail-Text.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "(a) views.py 1512-1513 überspringt Rechnungen ohne zugferd_file, Z. 1524 schreibt trotzdem `len(invoices)`. (b) customer_import Z. 629: bei POST ohne Datei wird nur neu gerendert, keine Meldung; customer_import.html Z. 3 hat kein `required` am Datei-Input. cashbook_import_bank Z. 1442/1462 redirectet stumm. (c) Z. 1264: bei open_amount ≤ 0 wird gross_total vorbelegt – bei vollständig bezahlter Rechnung also der volle Bruttobetrag. (d) payment_list.html Z. 24 zeigt `payments|length` der auf 300 gekappten Liste als „importierte Zahlungen“. Alles nachgelesen, Auswirkung gering bis fehlbuchungsanfällig (c). Niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 5,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "(a) views.py 1512-1513 continue bei fehlender ZUGFeRD-Datei, 1524 zählt len(invoices) – belegt. (b) customer_import 629: Bedingung 'and request.FILES.get('file')' – ohne Datei keine Meldung; customer_import.html:3 hat kein required am Datei-Input; cashbook_import_bank 1442 ebenso stumm. (c) views.py 1264: bei open_amount <= 0 wird gross_total vorbelegt – bei vollständig bezahlter Rechnung ist das eine Überzahlungs-Vorbelegung, belegt. (d) 1330 Kappung ohne Hinweis. Sammelfund niedrig ist zutreffend.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "GET auf „Offene Posten“ setzt korrigierte Originale und Entwürfe auf „überfällig“ – Storno der korrigierten Rechnung wird möglich, Mahnung für ersetzte Belege",
+   "file": "sedo/views.py",
+   "line": 1204,
+   "severity": "hoch",
+   "description": "open_items ruft für jede gelistete Rechnung refresh_invoice_payment_status auf. Diese Funktion kennt nur 'storniert' als geschützten Status; 'korrigiert' und 'entwurf' werden bei fehlender Zahlung und überschrittener Fälligkeit stumm auf 'ueberfaellig' umgeschrieben. ensure_storno_allowed prüft nur status=='korrigiert', danach lässt sich die korrigierte Ursprungsrechnung zusätzlich stornieren; außerdem Mahnkandidat. Im Testlauf bestätigt.",
+   "evidence": "views.py:1204-1205: `for inv in invoice_list:\\n    refresh_invoice_payment_status(inv)` · calc.py:45-57 · invoices.py:44: `if original.status == 'korrigiert': … raise WorkflowError` (kein Check auf active_correction) · invoice_detail.html:18",
+   "scenario": "Rechnung RE…0001 wird per Korrekturrechnung ersetzt. Nach der alten Fälligkeit öffnet ein Nutzer „Offene Posten“ → Original 'ueberfaellig', Storno-Button sichtbar; Klick erzeugt Storno – Kunde hat Korrektur UND Storno.",
+   "impact": "Doppelte Gutschrift, Mahnschreiben für ersetzte Rechnungen, falsche OP-Summen.",
+   "fix": "refresh_invoice_payment_status: bei status in ('korrigiert','entwurf','storniert') nichts verändern. ensure_storno_allowed zusätzlich active_correction prüfen. Regressionstest.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert im Test: Original status='korrigiert' mit aktiver Korrektur, Fälligkeit überschritten, ohne Zahlung → refresh_invoice_payment_status (calc.py 45-60, nur 'storniert' geschützt) setzt 'ueberfaellig'; danach passiert ensure_storno_allowed (invoices.py 33-47, prüft active_correction nicht) und die Rechnung erscheint in get_dunning_candidates (dunning.py 182 schließt nur per Status aus). open_items Z. 1204-1205 löst das bei jedem GET aus; Z. 1192/1200 listen korrigierte Rechnungen mit. Entwurf → 'ueberfaellig' ebenfalls reproduziert. Korrektur am Fund: Der Storno-Button bleibt in invoice_detail.html Z. 18 durch `not invoice.active_correction` verborgen – der Storno geht nur per direktem POST; die Mahn-Buttons (Z. 16-17) und der Batch-Mahnlauf (Z. 1235-1236, alle Kandidaten) sind dagegen ohne Weiteres erreichbar. Mahnung für ersetzten Beleg + falsche OP-Summen rechtfertigen hoch.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 6,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "open_items (views.py 1192/1200) schließt nur 'storniert' und 'bezahlt' aus → 'korrigiert' und 'entwurf' sind in der Liste; 1204-1205 ruft refresh_invoice_payment_status auf. calc.py 45: nur 'storniert' geschützt; 56-57 setzt bei due_date < today und ohne Zahlung/Mahnung 'ueberfaellig' – die Bedingung in 58 (Statusliste) greift erst danach und schützt 'korrigiert' nicht. invoices.py 44: ensure_storno_allowed prüft nur status=='korrigiert', nicht active_correction; invoice_detail.html:18 blendet den Storno-Button nur bei status korrigiert aus (active_correction-Check fehlt dort, anders als Zeile 15). Zusätzlich verliert payments.py 55 (Weiterleitung von Zahlungen auf die Korrektur setzt status=='korrigiert' voraus) seine Grundlage. test_workflow_locks.py:58 testet nur den statischen Fall status='korrigiert', nicht den Status-Flip. Kein Widerlegungsgrund – hoch ist gerechtfertigt.",
+     "corrected_severity": "hoch"
+    }
+   ]
+  },
+  {
+   "title": "E-Mail-Versand überschreibt jeden Status außer 'storniert' mit 'versendet' – bezahlte/korrigierte/gemahnte Rechnungen werden wieder „offen“",
+   "file": "sedo/views.py",
+   "line": 1017,
+   "severity": "hoch",
+   "description": "invoice_email (SMTP- und .eml-Pfad) setzt den Status pauschal auf 'versendet', sofern nicht storniert. Wird eine bezahlte, gemahnte oder korrigierte Rechnung erneut per Mail verschickt, verliert sie ihren Status; bei 'korrigiert' erscheint danach der Storno-Button.",
+   "evidence": "views.py:1017-1019: `if invoice.status != 'storniert':\\n    invoice.status = 'versendet'\\n    invoice.save(update_fields=['status', 'updated_at'])` (ebenso 1031-1033) · invoice_detail.html:12 ohne Statusbedingung.",
+   "scenario": "Rechnung 'bezahlt'. Kunde bittet um erneute Zusendung → Klick „E-Mail“ → Status 'versendet'; Dashboard zeigt eine offene Rechnung mehr.",
+   "impact": "Falsche Kennzahlen und Doppel-Storno-Pfad; Status-Historie nicht nachvollziehbar.",
+   "fix": "Status nur von 'erstellt' nach 'versendet' heben; sonst nur Audit-Eintrag. Optional sent_at-Feld.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1017-1019 und 1031-1033: jeder Status außer 'storniert' wird auf 'versendet' gesetzt; invoice_detail.html Z. 12 und Z. 87-94 zeigen den E-Mail-Button ohne Statusbedingung. Bezahlt → versendet tritt ein. Einschränkung: Für 'bezahlt' und 'gemahnt' repariert refresh_invoice_payment_status den Status beim nächsten Aufruf von Offene Posten/Zahlungserfassung wieder (im Test bestätigt: bezahlt nach refresh wieder 'bezahlt'); get_dunning_candidates filtert über open_amount ≤ 0, eine Mahnung entsteht daher nicht. Dauerhaft falsch bleibt nur 'korrigiert' → 'versendet' (kein Rückweg, danach Storno per POST möglich, Mahnkandidat) – ein Fall, der das erneute Mailen einer ersetzten Rechnung voraussetzt. Dashboard-Kennzahlen (Z. 600-602) sind bis zum nächsten Refresh falsch. Insgesamt mittel statt hoch.",
+     "corrected_severity": "mittel"
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 7,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1017-1019 und 1031-1033: jeder Status außer 'storniert' wird auf 'versendet' gesetzt; invoice_detail.html:12 und :87-94 zeigen den E-Mail-Button ohne Statusbedingung. Bei 'bezahlt'/'teilbezahlt' heilt sich der Status beim nächsten refresh_invoice_payment_status (Offene Posten, Zahlungserfassung) selbst; bei 'korrigiert' ist der Verlust dauerhaft und öffnet den Storno-Pfad (invoices.py 44, invoice_detail.html:18). Kein Test (test_magic_tone.py:116 prüft nur den Versand), keine dokumentierte Entscheidung. Weil der bezahlt-Fall selbstheilend ist und der korrigiert-Fall bereits in Fund 6 mit hoch bewertet wird, hier mittel.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "GWG-Monatslauf: leere oder unparsbare Preis-/Mengenfelder werden stillschweigend zu 10,00 € bzw. 1,00 – Massenrechnungen mit Phantasiepreis",
+   "file": "sedo/views.py",
+   "line": 1588,
+   "severity": "hoch",
+   "description": "_selected_monthly_services nimmt Menge und Preis aus dem POST. Ist das Feld leer oder nicht parsbar („12.50 €“, „2x“), greift ohne Meldung der Fallback '10' bzw. '1'. Der Lauf erzeugt für alle Abrechnungseinheiten nummerierte Rechnungen mit 10,00 € netto. Im Testlauf bestätigt.",
+   "evidence": "views.py:1588: `qty = Decimal(str(request.POST.get(f'qty_{sid}') or '1').replace(',', '.'))…except Exception: qty = Decimal('1.00')` · views.py:1592: `price = Decimal(str(request.POST.get(f'price_{sid}') or '10')…except Exception: price = Decimal('10.00')` · aareon_monthly.html:32-34: einfache `<input>` ohne type/required.",
+   "scenario": "Nutzer löscht beim Winterdienst den Preis, lässt den Haken stehen → 120 GWG-Rechnungen mit Winterdienst 10,00 €. Korrektur nur per 120 Stornos.",
+   "impact": "Falsche Rechnungsbeträge in großer Zahl, verbrannte Nummernkreise, falsche E-Rechnungen an Aareon/GWG.",
+   "fix": "Bei leerem/ungültigem Preis oder Menge mit messages.error abbrechen; Felder als type=number required; Vorschau vor dem Lauf.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: POST mit price_Winterdienst='12,50 €' und qty_Winterdienst='' liefert in _selected_monthly_services (views.py 1588-1594) unit_price=10.00 und quantity=1.00 ohne jede Meldung; die Werte gehen in Z. 1776-1786 als Positionen in alle Einheiten-Rechnungen, die sofort nummeriert werden (create_numbered_invoice) und ZUGFeRD-Dateien erhalten. aareon_monthly.html Z. 32-34: reine Text-Inputs ohne type=number/required, Standardwert 10.00. Eine Vorschau vor dem Lauf gibt es nicht (nur „Testlimit“). Massenhaft falsche E-Rechnungen an Aareon/GWG → hoch passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 8,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1588-1594: `request.POST.get(f'price_{sid}') or '10'` → leeres Feld wird zu 10,00; Decimal('12.50 €')/'2x' wirft InvalidOperation (nachgestellt geprüft) → except → 10,00 bzw. 1,00, ohne messages-Hinweis. aareon_monthly.html:32-34: einfache <input> ohne type=number/required. Der Lauf erzeugt anschließend nummerierte Rechnungen mit Dateien (1762-1789). Kein Test für _selected_monthly_services. Testlimit-Feld mildert, verhindert aber nichts. hoch bleibt (falsche Beträge in Serie, Aareon-Empfänger).",
+     "corrected_severity": "hoch"
+    }
+   ]
+  },
+  {
+   "title": "Rechnungen jedes Status können „ausgeblendet“ werden und fehlen danach im Steuerberater-Export und in allen Summen – Nummernlücke ohne Storno",
+   "file": "sedo/views.py",
+   "line": 1068,
+   "severity": "hoch",
+   "description": "invoice_delete hat keinen Status-Guard; der „Löschen“-Button ist für jeden Status sichtbar. Eine versendete oder (teil)bezahlte Rechnung kann soft-gelöscht werden. Monatsabschluss, Listen, OP, Dashboard arbeiten mit Invoice.objects – die Rechnung fehlt im ZIP an den Steuerberater; ihre Nummer bleibt vergeben.",
+   "evidence": "views.py:1068-1076: `invoice = get_object_or_404(Invoice, pk=pk)\\n if request.method == 'POST': … invoice.soft_delete()` (kein Statuscheck) · views.py:2090: `invoices = Invoice.objects.filter(issue_date__year=year, issue_date__month=month)` · invoice_detail.html:19 ohne Bedingung.",
+   "scenario": "RE…0007 ist versendet und zu 50 % bezahlt. Nutzer klickt „Löschen“ statt „Storno“. Monatsabschluss-ZIP enthält …0006 und …0008; die Zahlung bleibt mit Bezug auf eine unsichtbare Rechnung.",
+   "impact": "Unvollständiger Buchhaltungsexport, unerklärbare Nummernlücke, verwaiste Zahlungen.",
+   "fix": "Ausblenden nur für 'entwurf' erlauben, sonst auf Storno verweisen; Button bedingen. Monatsabschluss mit Liste der ausgeblendeten Nummern.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "hoch",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 9,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "views.py 1068-1076: invoice_delete ohne Statusprüfung, invoice.soft_delete(); invoice_detail.html Z. 19 zeigt „Löschen“ für jeden Status. month_close Z. 2090 und alle Listen nutzen Invoice.objects = ActiveManager (models.py 14-25), soft-gelöschte Rechnungen fehlen also im Steuerberater-ZIP; die Nummer bleibt vergeben (unique, Datensatz existiert). Zahlungen behalten die FK auf die ausgeblendete Rechnung (Payment.invoice SET_NULL nur bei hartem Löschen). Szenario tritt ein, setzt aber einen bewussten Klick plus Bestätigungsdialog voraus, und der Datensatz ist per Admin/all_objects wiederherstellbar. Wegen unvollständigem Buchhaltungsexport ohne Hinweis bleibe ich bei hoch, mit mittlerer Sicherheit.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 9,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1068-1076: kein Status-Guard; invoice_detail.html:19 zeigt 'Löschen' immer. Invoice.objects ist der ActiveManager (models.py 14-25), month_close 2090 und alle Listen nutzen ihn → ausgeblendete Rechnungen fehlen im Steuerberater-ZIP; die Nummer bleibt vergeben (test_cleanup_v3_21.py:94 bestätigt sogar, dass die Nummer nicht wiederverwendet wird). Zahlungen behalten den FK (Payment.invoice, models.py 341), sind aber in Listen nicht mehr sichtbar. CHANGELOG dokumentiert Soft-Delete als GoBD-Maßnahme, aber keine Einschränkung auf Entwürfe. hoch bleibt.",
+     "corrected_severity": "hoch"
+    }
+   ]
+  },
+  {
+   "title": "Kundenimport aus Excel: numerische Spalten mit Leerzellen liefern „1234.0“ als Kunden-Nr./PLZ – Dubletten und falsche PLZ auf Rechnung/XML",
+   "file": "sedo/views.py",
+   "line": 150,
+   "severity": "mittel",
+   "description": "_norm wandelt Zellwerte mit str(v) um. pandas liest eine Zahlenspalte mit Leerzelle als float64 – Kundennummer 1234 wird zu '1234.0', PLZ 39104 zu '39104.0'. _clean_excel_value wird im Kundenimport nicht benutzt. update_or_create(customer_no='1234.0') findet den Bestandskunden nicht und legt eine Dublette an. Im Testlauf: _norm(1234.0) → '1234.0'.",
+   "evidence": "views.py:145-150: `def _norm(v): … return str(v).strip()` · views.py:641/654/659 · views.py:1498 zeigt die '.0'-Regel für den Mapping-Import.",
+   "scenario": "Excel mit 200 Kunden, Kunden-Nr. bei 3 Neukunden leer → 197 vorhandene Kunden werden als Dubletten mit '1234.0' angelegt.",
+   "impact": "Doppelte Stammdaten, falsche Käufer-ID/PLZ in E-Rechnungen.",
+   "fix": "_norm um die '.0'-Regel ergänzen bzw. pd.read_excel(file, dtype=str).",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: views._norm(1234.0) → '1234.0', _norm(39104.0) → '39104.0'. pd.read_excel in Z. 637 ohne dtype → Zahlenspalte mit Leerzelle wird float64. _clean_excel_value (Z. 1489-1500, mit '.0'-Regel) wird nur im Mapping-Import verwendet, nicht im Kundenimport (Z. 641-661). update_or_create(customer_no='1234.0') in Z. 659 findet den Bestandskunden mit '1234' nicht → Dublette; PLZ '39104.0' landet über invoices.py 143 im XML. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 10,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachgestellt mit pandas/openpyxl aus der .venv: Spalte 'Kunden-Nr.' mit einer Leerzelle → _pick liefert '1234.0', PLZ '39104.0'. views.py 145-150 (_norm) hat keine '.0'-Regel, _clean_excel_value (1489-1499) wird nur im Mapping-Import benutzt, nicht in customer_import (641-661). update_or_create(customer_no='1234.0') legt Dubletten an. Kein Test für customer_import in sedo/tests/. mittel bleibt.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Kundenimport: Fuzzy-Spaltenwahl setzt die Straße auf die E-Mail-Adresse („Adresse“ trifft „E-Mail-Adresse“)",
+   "file": "sedo/views.py",
+   "line": 160,
+   "severity": "mittel",
+   "description": "_pick prüft nach exakten Treffern jede Spalte per Substring. Für die Straße wird u. a. nach 'Adresse' gesucht; „E-Mail-Adresse“ enthält diesen Substring. Steht die E-Mail-Spalte vor der Straßenspalte, wird die E-Mail als Straße übernommen. Verifiziert: row {'Name','E-Mail-Adresse','Strasse/Nr.'} → street = 'x@example.org'.",
+   "evidence": "views.py:160-163: `for key, val in lowered.items():\\n    for name in names:\\n        if name.lower() in key:\\n            return _norm(val)` · views.py:653: `'street': (_pick(row, 'Straße', 'Strasse', 'Adresse') + …`",
+   "scenario": "Export mit Spalten „Name | E-Mail-Adresse | Strasse/Nr. | PLZ | Ort“ → bei allen Kunden steht die E-Mail im Feld Straße; PDFs und XML tragen sie als Anschrift.",
+   "impact": "Falsche Empfängeradressen; bestehende Adressen werden zerstört.",
+   "fix": "Fuzzy-Suche auf Wortgrenzen beschränken und E-Mail-Spalten ausschließen; Spaltenzuordnung mit Vorschau.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 11,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: _pick({'Name','E-Mail-Adresse','Strasse/Nr.'}, 'Straße','Strasse','Adresse') liefert die E-Mail. Ursache views.py 160-163: die Fuzzy-Schleife iteriert zuerst über die Spalten in Dateireihenfolge und prüft `name.lower() in key` – 'adresse' ⊂ 'e-mail-adresse', die Straßenspalte kommt erst danach. Z. 653 nutzt genau diese Namensliste für 'street'; update_or_create überschreibt bestehende Adressen. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 11,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Nachgestellt: row {'Name','E-Mail-Adresse','Strasse/Nr.'} → _pick(row,'Straße','Strasse','Adresse') liefert die E-Mail. Ursache views.py 160-163: Fuzzy-Substring über alle Spalten in Dict-Reihenfolge, 'adresse' ⊂ 'e-mail-adresse'; exakter Treffer scheitert, weil 'strasse/nr.' != 'strasse'. Straße fließt über invoice_to_core_row (invoices.py 143) in PDF/XML. Kein Test. mittel bleibt.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Kunde und Objekt werden vor der Transaktion angelegt – bei Rollback bleiben verwaiste Stammdaten, Doppel-Submit erzeugt doppelte Kunden",
+   "file": "sedo/views.py",
+   "line": 852,
+   "severity": "mittel",
+   "description": "In invoice_create wird _customer_from_invoice_form/_object_from_invoice_form (Customer.objects.create) aufgerufen, bevor `with transaction.atomic()` beginnt. Schlägt die Beleganlage fehl, bleibt ein neuer Kunde ohne Rechnung stehen. Bei Mehrfach-Submit mit manuellen Kopfdaten entsteht bei jedem Submit ein weiterer gleichnamiger Kunde. offer_create hat dasselbe Muster.",
+   "evidence": "views.py:852-856: `customer = _customer_from_invoice_form(form)` … `obj = _object_from_invoice_form(form, customer)` · views.py:892: `with transaction.atomic():` (erst danach) · views.py:217: `return Customer.objects.create(…)` ohne get_or_create.",
+   "scenario": "Nutzer füllt Kopfdaten für einen Neukunden aus und klickt zweimal → zwei Kunden „Muster GmbH“, einer ohne Belege.",
+   "impact": "Stammdaten-Dubletten, verwaiste Kunden/Objekte.",
+   "fix": "Kunden-/Objektanlage in den atomic-Block ziehen; get_or_create über (customer_no) bzw. (name, postcode).",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 12,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 852-856: _customer_from_invoice_form / _object_from_invoice_form (Z. 217 und 241, jeweils objects.create ohne get_or_create) laufen vor `with transaction.atomic()` in Z. 892. Ein WorkflowError/IntegrityError oder eine Exception in der Beleganlage lässt den neuen Kunden/das Objekt stehen; jeder weitere Submit mit manuellen Kopfdaten erzeugt einen weiteren gleichnamigen Kunden. offer_create Z. 1100-1104 identisch (dort gar keine Transaktion). Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 12,
+     "refuted": false,
+     "confidence": "mittel",
+     "reasoning": "views.py 852-856: Customer/CustomerObject werden vor transaction.atomic() (892) angelegt; 217: Customer.objects.create ohne get_or_create; offer_create 1100-1104 gleiches Muster. unsaved_guard.js deaktiviert den Submit-Button nicht → Doppelklick möglich. Allerdings: der verwaiste Kunde entsteht nur, wenn die Transaktion scheitert (WorkflowError/IntegrityError – seltene Parallelfälle), und beim Doppel-Submit entstehen ohnehin zwei Rechnungen, wovon die Kundendublette der kleinere Schaden ist. Stammdaten-Dubletten sind leicht korrigierbar (Customer ist nicht GoBD-gesperrt). Daher niedrig.",
+     "corrected_severity": "niedrig"
+    }
+   ]
+  },
+  {
+   "title": "Keine Wertebereichs- und Konsistenzprüfung in den Formularen: negative Zahlungen, USt-Satz < 0 / > 100, Leistungszeitraum rückwärts",
+   "file": "sedo/forms.py",
+   "line": 140,
+   "severity": "mittel",
+   "description": "forms.py enthält keine clean()-Methoden; Modelle haben keine Validatoren. ManualPaymentForm akzeptiert amount ≤ 0, CashbookEntryForm amount ≤ 0, vat_rate beliebig, quantity/unit_price negativ, period_start > period_end ungeprüft. Die Werte fließen ungeprüft in Summen, Status und XML.",
+   "evidence": "forms.py:140-147: `class ManualPaymentForm(forms.ModelForm): … fields = ['booking_date', 'amount', 'payer_name', 'purpose']` (kein clean_amount) · forms.py:65: vat_rate NumberInput step 0.01 · models.py:130 ohne validators · grep `def clean`/`min_value` nur payment_days/valid_days.",
+   "scenario": "Zahlung „-50“ → open_amount steigt von 100 auf 150 €. Oder vat_rate „-19“ → negative USt, XML mit negativem TaxTotalAmount.",
+   "impact": "Falsche Beträge/XML, falsche offene Posten und Mahnbeträge.",
+   "fix": "clean_amount (> 0); vat_rate 0–100; quantity ≠ 0, unit_price ≥ 0; period_start ≤ period_end; MinValueValidator an Modellfeldern.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 13,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "Reproduziert: ManualPaymentForm mit amount='-50' ist valid. forms.py enthält keine clean()-Methoden (nur min_value bei payment_days/valid_days, Z. 34/89); models.py 129-132, 222-224, 343 ohne Validatoren. Negative Zahlung erhöht open_amount (models.py 185-186), vat_rate außerhalb 0-100 fließt in _totals (calc.py 22) und ins XML, period_start > period_end wird nirgends geprüft. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 13,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "forms.py 140-150: ManualPaymentForm ohne clean_amount; CashbookEntryForm 152-163 ohne Betragsprüfung; vat_rate-Widgets (65, 115, 175) nur step, kein min/max; models.py 129-133/222-224/343 ohne Validatoren. Einzige Wertebereichsprüfungen sind min_value=0 bei payment_days/valid_days (forms.py 34, 89). Negativer Zahlungsbetrag erhöht open_amount (models.py 186), negativer vat_rate fließt in calc.py 22 und ins XML. Kein Test in sedo/tests/ für Formularvalidierung. mittel bleibt.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Korrektur einer teilbezahlten Rechnung: bereits geleistete Zahlungen bleiben am Original, Korrekturrechnung gilt voll als offen",
+   "file": "sedo/views.py",
+   "line": 876,
+   "severity": "mittel",
+   "description": "ensure_correction_allowed prüft weder Zahlungen noch Offenbetrag; invoice_create kopiert die Positionen und setzt das Original auf 'korrigiert'. Zahlungen bleiben am Original, werden nirgends auf die Korrektur angerechnet. Die Korrekturrechnung erscheint mit vollem Brutto in OP und Mahnkandidaten. Im Testlauf bestätigt.",
+   "evidence": "views.py:876-886 · invoices.py:50-61: ensure_correction_allowed prüft nur invoice_type, status und active_correction · payments.py:55-56.",
+   "scenario": "RE…0010 über 1.000 €, Kunde zahlt 400 €. Korrektur auf 900 € → RE…0011 offen 900 €. Nach 14 Tagen Mahnkandidat über 900 € statt 500 €.",
+   "impact": "Falsche Mahn-/OP-Beträge, Kundenreklamationen; Zahlungshistorie zerreißt.",
+   "fix": "Korrektur bei paid_amount > 0 blockieren (Hinweis auf Storno + Neurechnung) oder Zahlungen in der Transaktion umhängen und im Audit vermerken.",
+   "effort": "M",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 14,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "ensure_correction_allowed (invoices.py 50-61) prüft nur Typ, Status und active_correction – keine Zahlungen. invoice_create Z. 876-886 setzt Typ 384 und reference_invoice, Z. 919 markiert das Original 'korrigiert'; Zahlungen bleiben am Original (Payment.invoice, nirgends umgehängt). Die Korrekturrechnung hat paid_amount 0 → open_amount = voller Brutto (models.py 178-186), sie ist Mahnkandidat mit vollem Betrag (dunning.py 78-79, 193). payments.py 50-60 leitet nur künftige Zahlungen auf die Korrektur um. Szenario tritt ein. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 14,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "invoices.py 50-61: ensure_correction_allowed prüft Typ, Status und active_correction – keine Zahlungen. views.py 876-919: Korrektur kopiert Positionen, Original wird 'korrigiert'; Zahlungen bleiben am Original (Payment.invoice unverändert). payments.py 50-60 ('Mireks Entscheid 14.08.') regelt nur NEUE Zahlungseingänge, nicht bereits gebuchte. Korrekturrechnung erscheint mit vollem gross_total in open_items (1200) und get_dunning_candidates (dunning.py 180-197). Kein Test für Korrektur mit Teilzahlung. mittel bleibt.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Dashboard und Offene Posten zählen korrigierte Originale und Entwürfe als offene Forderung – Summen doppelt",
+   "file": "sedo/views.py",
+   "line": 600,
+   "severity": "mittel",
+   "description": "Die Abfragen schließen nur 'bezahlt' und 'storniert' aus. Eine korrigierte Rechnung und Entwürfe zählen mit vollem Brutto als offen; die Korrekturrechnung zählt ebenfalls. Betrifft auch die OP-Liste.",
+   "evidence": "views.py:600-602: `invoices.exclude(status__in=['bezahlt','storniert']).count()` … · views.py:1192/1200: `.exclude(status='storniert')` … `invoices.exclude(status='bezahlt')`.",
+   "scenario": "Rechnung 1.000 € wird auf 900 € korrigiert. Dashboard „offene Summe“ zeigt 1.900 €, „offene Rechnungen“ 2.",
+   "impact": "Irreführende Steuerungszahlen, Mahnläufe mit falscher Kandidatenmenge.",
+   "fix": "Zentrale Helferfunktion `open_invoices()` mit exclude(status__in=['bezahlt','storniert','korrigiert','entwurf']) und invoice_type != '457'.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "bestaetigt",
+   "severity_final": "mittel",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 15,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 600-602: exclude(status__in=['bezahlt','storniert']) – 'korrigiert' und 'entwurf' zählen mit vollem open_amount in open_invoices/open_amount_total/overdue_invoices; die Korrekturrechnung zählt zusätzlich → 1.900 € bei 1.000 → 900 €. open_items Z. 1192/1200 und payment_list Z. 1331 gleiches Muster. Mahnkandidaten selbst sind durch _UNDUNNABLE_STATUS geschützt (dunning.py 30), die OP-Liste aber nicht. Mittel passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 15,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 600-602: exclude(status__in=['bezahlt','storniert']) – 'korrigiert' und 'entwurf' zählen mit vollem open_amount; 1192/1200 in open_items ebenso; 1331 payment_list gleiches Muster. Kontrast: dunning.py 30 (_UNDUNNABLE_STATUS) schließt korrigiert/entwurf korrekt aus – das zeigt, dass es keine bewusste Entscheidung ist, sondern Inkonsistenz. Zusätzlich zählen Stornorechnungen (Typ 457, negatives Brutto) als 'offen'. Kein Test für Dashboard-Kennzahlen. mittel bleibt.",
+     "corrected_severity": "mittel"
+    }
+   ]
+  },
+  {
+   "title": "Stumme Fallbacks im Monatslauf: ungültiges Rechnungsdatum wird zu „heute“, gewählte pausierte Vorlagen werden ohne Hinweis übergangen",
+   "file": "sedo/views.py",
+   "line": 1465,
+   "severity": "niedrig",
+   "description": "parse_date_for_view fällt bei unparsbarem Datum ohne Meldung auf timezone.localdate() zurück. recurring_monthly_generate filtert die gewählten template_ids zusätzlich auf status='active'; pausierte, aber angehakte Vorlagen fallen weg, ohne im „übersprungen“-Zähler zu erscheinen.",
+   "evidence": "views.py:1465-1475: `def parse_date_for_view(value): … return timezone.localdate()` · views.py:1939: `templates = RecurringInvoiceTemplate.objects.filter(id__in=selected_ids, status='active')` – `skipped` nur bei skip_existing erhöht.",
+   "scenario": "Browser ohne Date-Picker sendet „31.06.2025“ → alle Monatsrechnungen tragen das heutige Datum ohne Warnung. Bei 5 angehakten Vorlagen, davon 2 pausiert, meldet die App „3 erzeugt. 0 übersprungen.“",
+   "impact": "Falsches Rechnungsdatum auf nummerierten Belegen, verwirrende Rückmeldung.",
+   "fix": "Bei Parse-Fehler messages.error und Abbruch; pausierte gewählte Vorlagen zählen und nennen.",
+   "effort": "S",
+   "dimension": "funktionalitaet-views_b",
+   "status": "verworfen",
+   "severity_final": "niedrig",
+   "votes": [
+    {
+     "gutachter": "reproduzieren",
+     "index": 16,
+     "refuted": false,
+     "confidence": "hoch",
+     "reasoning": "views.py 1465-1475: parse_date_for_view gibt bei unparsbarem Wert timezone.localdate() zurück; aareon_import Z. 1706 und recurring_monthly_generate Z. 1935 übernehmen das ohne Meldung als issue_date nummerierter Belege. Z. 1939 filtert `id__in=selected_ids, status='active'`; recurring_monthly.html Z. 20 rendert Checkboxen (vorangehakt) auch für pausierte Vorlagen, `skipped` (Z. 1944-1948) wird nur bei skip_existing erhöht → „0 übersprungen“ trotz weggefallener Vorlagen. Der Hinweis „Nur ausgewählte aktive Vorlagen“ (Z. 21) mildert den zweiten Punkt. Niedrig passt.",
+     "corrected_severity": null
+    },
+    {
+     "gutachter": "skeptiker",
+     "index": 16,
+     "refuted": true,
+     "confidence": "mittel",
+     "reasoning": "Teil 1 (Datum): views.py 1465-1475 fällt zwar stumm auf heute zurück, aber aareon_monthly.html:24 nutzt <input type=date required> (ISO-Format) – ein Wert wie '31.06.2025' kommt nur per manipuliertem Request, nicht über die UI; für '31.06.' (ungültiger Tag) versagt auch die Browser-Validierung nicht erst serverseitig. Teil 2 (pausierte Vorlagen): recurring_monthly.html:21 sagt ausdrücklich 'Nur ausgewählte aktive Vorlagen werden verarbeitet' und zeigt in Spalte 'Status' das Badge – das Verhalten von views.py 1939 ist damit in der UI dokumentiert; lediglich der Zähler nennt sie nicht. Beides zusammen ist Robustheit ohne belegte Auswirkung in realistischen Abläufen; ich werte den Fund als nicht haltbar bzw. reine Stilkritik.",
+     "corrected_severity": null
+    }
+   ],
+   "entscheidung": "Datum kommt per <input type=date> nur ISO-valide an; pausierte Vorlagen sind laut UI-Text erwartungsgemäß ausgeschlossen.",
+   "entschieden_von": "Hauptreviewer"
+  }
+ ]
+}

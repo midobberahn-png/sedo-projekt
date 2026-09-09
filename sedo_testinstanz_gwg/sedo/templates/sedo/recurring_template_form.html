@@ -1,0 +1,37 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<form method="post">{% csrf_token %}
+<div class="work-dialog invoice-flow">
+  <div class="work-dialog-header">
+    <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></div><div><h1>{{ title }}</h1><div class="sub">Monatsrechnung ohne GWG-Mapping anlegen oder bearbeiten.</div></div></div>
+    <a class="work-close" href="{% url 'sedo:recurring_monthly' %}">×</a>
+  </div>
+  <div class="work-body">
+    <div class="form-card"><div class="form-card-title">Kunde, Objekt und Vorlage</div>
+      <div class="work-grid compact-form">
+        <div><label>{{ form.customer.label }}</label>{{ form.customer }}</div>
+        <div><label>{{ form.obj.label }}</label>{{ form.obj }}</div>
+        <div class="field-wide"><label>{{ form.title.label }}</label>{{ form.title }}</div>
+        <div><label>{{ form.status.label }}</label>{{ form.status }}</div>
+        <div><label>{{ form.vat_rate.label }}</label>{{ form.vat_rate }}</div>
+        <div><label>{{ form.payment_days.label }}</label>{{ form.payment_days }}</div>
+        <div class="field-wide"><label>{{ form.note.label }}</label>{{ form.note }}</div>
+      </div>
+    </div>
+    <div class="form-card"><div class="form-card-title">Positionen</div>
+      <div class="section-head"><p class="hint">Eine Position ist vorbereitet. Weitere Positionen kannst du mit dem Plus-Button ergänzen.</p><button type="button" class="btn small" id="add-position">+ Position hinzufügen</button></div>
+      {{ formset.management_form }}
+      <div id="position-list">
+      {% for f in formset %}
+        <div class="item-box position-form"><div class="item-title">Position <span class="pos-no">{{ forloop.counter }}</span></div><div class="form-grid compact-grid">
+          {% for field in f.visible_fields %}<div class="form-row"><label>{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+        </div>{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}</div>
+      {% endfor %}
+      </div>
+      <template id="empty-form-template"><div class="item-box position-form"><div class="item-title">Position <span class="pos-no">__num__</span></div><div class="form-grid compact-grid">{% for field in formset.empty_form.visible_fields %}<div class="form-row"><label>{{ field.label }}</label>{{ field }}</div>{% endfor %}</div>{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}</div></template>
+    </div>
+  </div>
+  <div class="sticky-actions"><a class="btn" href="{% url 'sedo:recurring_monthly' %}">Abbrechen</a><button class="btn primary">Vorlage speichern</button></div>
+</div>
+</form>
+<script>(function(){const addBtn=document.getElementById('add-position');const list=document.getElementById('position-list');const tmpl=document.getElementById('empty-form-template');const total=document.querySelector('#id_items-TOTAL_FORMS');if(addBtn&&list&&tmpl&&total){addBtn.addEventListener('click',function(){const idx=parseInt(total.value,10);const html=tmpl.innerHTML.replaceAll('__prefix__',idx).replaceAll('__num__',idx+1);list.insertAdjacentHTML('beforeend',html);total.value=idx+1;});}})();</script>
+{% endblock %}

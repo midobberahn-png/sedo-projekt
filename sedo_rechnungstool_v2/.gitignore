@@ -1,0 +1,22 @@
+# --- Live-Daten und Geheimnisse: NIEMALS ins Repo ---
+data/
+.env
+*.sqlite3
+*.sqlite3-journal
+
+# --- Zur Laufzeit erzeugte Dateien ---
+media/
+backups/
+logs/
+
+# --- Build-Artefakte und virtuelle Umgebungen ---
+dist/
+build/
+.venv/
+.venv_build/
+.requirements.hash
+__pycache__/
+*.py[cod]
+
+# --- macOS ---
+.DS_Store

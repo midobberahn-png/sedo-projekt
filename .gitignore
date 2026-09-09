@@ -1,0 +1,31 @@
+# Ausgeschlossen sind NUR maschinenspezifische oder fuer GitHub zu grosse Artefakte.
+# Die Live-Datenbank, die Medien und die Sicherungen sind BEWUSST enthalten
+# (ausdrueckliche Entscheidung 09.09.2026) – dieses Repo ist PRIVAT.
+
+# Virtuelle Umgebungen: maschinenspezifisch, aus requirements.txt neu erzeugbar
+.venv/
+.venv_build/
+*/.venv/
+*/.venv_build/
+
+# Build-Artefakte: enthalten DMG-Installer ueber 100 MB, die GitHub hart ablehnt.
+# Neu erzeugbar mit build_mac.command bzw. BUILD_WINDOWS.bat
+dist/
+build/
+*/dist/
+*/build/
+
+# Fremde Projekte im selben Ordner – gehoeren nicht zu SEDO und enthalten
+# ebenfalls Dateien ueber 100 MB (React-Frameworks in ios/Pods)
+NFC-Checkin-App/
+NFC-Checkin-App2/
+
+# Python-Zwischenstaende
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Temporaer waehrend des Uploads – das eigentliche App-Repo
+.git_app_tmp/

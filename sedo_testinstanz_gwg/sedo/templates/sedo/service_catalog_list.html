@@ -1,0 +1,42 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">Stammdaten</div><div class="h1">Leistungskatalog</div>
+    <div class="sub">Wiederverwendbare Leistungen mit Beschreibungstexten. Neue Leistungen lernt der KI-Assistent automatisch aus deinen Angeboten – hier kannst du sie prüfen und anpassen.</div>
+  </div>
+  <a class="btn primary" href="{% url 'sedo:service_catalog_create' %}">Neue Leistung</a>
+</div>
+<div class="card">
+  <form method="get" class="toolbar" style="margin-bottom:12px">
+    <input name="q" value="{{ q }}" placeholder="Suchen …" style="max-width:280px">
+    <button class="btn">Suchen</button>
+    {% if q %}<a class="btn" href="{% url 'sedo:service_catalog_list' %}">Zurücksetzen</a>{% endif %}
+  </form>
+  {% if items %}
+  <table class="table">
+    <thead><tr><th>Leistung</th><th>Einheit</th><th>Beschreibung</th><th>Quelle</th><th></th></tr></thead>
+    <tbody>
+    {% for item in items %}
+      <tr>
+        <td><strong>{{ item.name }}</strong></td>
+        <td>{{ item.default_unit|default:'–' }}</td>
+        <td class="muted" style="max-width:420px">{{ item.long_text|truncatechars:140 }}</td>
+        <td>{% if item.created_by_ai %}<span class="badge amber">KI-gelernt</span>{% else %}<span class="badge green">Geprüft</span>{% endif %}</td>
+        <td style="white-space:nowrap">
+          <a class="btn small" href="{% url 'sedo:service_catalog_update' item.pk %}">Bearbeiten</a>
+          <a class="btn small danger" href="{% url 'sedo:service_catalog_delete' item.pk %}">Löschen</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon"><svg class="ico" aria-hidden="true"><use href="#i-catalog"/></svg></div>
+    <p>Noch keine Leistungen im Katalog.</p>
+    <p class="hint">Der Katalog füllt sich automatisch, sobald der KI-Assistent Angebote erzeugt – oder lege die erste Leistung manuell an.</p>
+    <a class="btn primary" href="{% url 'sedo:service_catalog_create' %}">Neue Leistung</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends 'sedo/base.html' %}{% load l10n %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">Verkauf</div><div class="h1">Monatsrechnung</div>
+    <div class="sub">GWG-Mapping importieren, Leistungen wählen und Monatsrechnungen erzeugen.</div>
+  </div>
+  <div class="page-actions"><a class="btn" href="{% url 'sedo:invoice_list' %}">Rechnungsarchiv</a></div>
+</div>
+<div class="page-help"><strong>Hauptprozess:</strong> Entweder GWG-Abrechnung mit Mapping oder normale Abo-/Monatsrechnungen für andere Kunden erzeugen.</div>
+
+<div class="tabs-bar">
+  <a class="tab-chip active" href="#aareon-block">GWG-Abrechnung</a>
+  <a class="tab-chip" href="#normal-block">Monatsrechnungen</a>
+</div>
+
+<div class="flow-steps" id="aareon-block"><span class="active">1 Mapping</span><span>2 Leistungen</span><span>3 Testlauf</span><span>4 Monatslauf</span><span>5 Versand</span></div>
+
+<div class="grid two-col">
+  <div class="card" id="mapping-upload">
+    <h2>1. Mapping-Datei importieren</h2>
+    <p class="hint">Erwartet wird <strong>Mapping SEDO GWG.xlsx</strong>. Die echte Fachkopfzeile wird automatisch erkannt.</p>
+    <form method="post" enctype="multipart/form-data" class="stacked-form">
+      {% csrf_token %}<input type="hidden" name="action" value="import">
+      <label>Mapping-Datei (.xlsx)</label><input type="file" name="file" accept=".xlsx,.xls" required>
+      <div class="toolbar"><button class="btn primary">Mapping importieren</button></div>
+    </form>
+    <div class="stat-row">
+      <div class="mini-stat"><strong>{{ mapping_count }}</strong><span>Mapping-Zeilen</span></div>
+      <div class="mini-stat"><strong>{{ unit_count }}</strong><span>Abrechnungseinheiten</span></div>
+    </div>
+    {% if stats %}<div class="msg">Import erfolgreich: {{ stats.count }} Zeilen · {{ stats.units }} Abrechnungseinheiten · {{ stats.services }} Leistungsarten.</div>{% endif %}
+  </div>
+
+  <div class="card" id="monthly-run">
+    <h2>2. Monatsrechnungslauf</h2>
+    <form method="post" class="stacked-form compact-form">
+      {% csrf_token %}<input type="hidden" name="action" value="generate">
+      <div class="form-grid compact-grid">
+        <div class="form-row full"><label>Rechnungsempfänger / Kunde</label><select name="customer" required><option value="">Bitte wählen</option>{% for c in customers %}<option value="{{ c.id|unlocalize }}">{{ c.name }}{% if c.customer_no %} · {{ c.customer_no }}{% endif %}</option>{% endfor %}</select><div class="hint">Dieser Kunde erscheint im Rechnungskopf. Die Abrechnungseinheit kommt aus der Mapping-Datei.</div></div>
+        <div class="form-row"><label>Abrechnungsmonat</label><input type="month" name="month" value="{{ default_month }}" required></div>
+        <div class="form-row"><label>Rechnungsdatum</label><input type="date" name="issue_date" value="{{ default_issue_date }}" required></div>
+        <div class="form-row"><label>Zahlungsziel Tage</label><input type="number" name="payment_days" value="14" min="0"></div>
+        <div class="form-row"><label>Testlimit</label><input type="number" name="limit" placeholder="z. B. 3 · leer = alle"></div>
+      </div>
+
+      <h2 class="work-section-title">Leistungen für diesen Lauf</h2>
+      <p class="hint">Eine, mehrere oder alle Leistungen möglich. Pro Abrechnungseinheit wird eine Rechnung erzeugt; ausgewählte Leistungen werden als Positionen zusammengefasst.</p>
+      <div class="monthly-services">
+        <div class="service-row"><label class="service-check"><input type="checkbox" name="use_Reinigung" checked> Reinigung</label><input name="desc_Reinigung" value="Reinigung" placeholder="Positionstext"><input name="qty_Reinigung" value="1" placeholder="Menge"><input name="unit_Reinigung" value="Stk." placeholder="Einheit"><input name="price_Reinigung" value="10.00" placeholder="Einzelpreis netto"></div>
+        <div class="service-row"><label class="service-check"><input type="checkbox" name="use_Winterdienst" checked> Winterdienst</label><input name="desc_Winterdienst" value="Winterdienst" placeholder="Positionstext"><input name="qty_Winterdienst" value="1" placeholder="Menge"><input name="unit_Winterdienst" value="Stk." placeholder="Einheit"><input name="price_Winterdienst" value="10.00" placeholder="Einzelpreis netto"></div>
+        <div class="service-row"><label class="service-check"><input type="checkbox" name="use_Heckenschnitt" checked> Heckenschnitt</label><input name="desc_Heckenschnitt" value="Heckenschnitt" placeholder="Positionstext"><input name="qty_Heckenschnitt" value="1" placeholder="Menge"><input name="unit_Heckenschnitt" value="Stk." placeholder="Einheit"><input name="price_Heckenschnitt" value="10.00" placeholder="Einzelpreis netto"></div>
+      </div>
+      <label class="check-line"><input type="checkbox" name="skip_existing" checked> Bereits erzeugte Rechnungen für denselben Monat/Kunden/Objekt überspringen</label>
+      <div class="toolbar"><button class="btn primary" {% if not mapping_count %}disabled{% endif %}>Monatsrechnungen erzeugen</button></div>{% if not mapping_count %}<div class="hint warn">Bitte zuerst eine Mapping-Datei importieren.</div>{% endif %}
+    </form>
+    {% if run_result %}<div class="msg">Lauf {{ run_result.month }}: {{ run_result.created }} Rechnungen erzeugt, {{ run_result.skipped }} übersprungen, {{ run_result.missing }} fehlende Leistungszuordnungen.</div>{% endif %}
+  </div>
+</div>
+
+{% if generated_invoices %}
+<div class="card">
+  <div class="section-head"><h2>Erzeugte Monatsrechnungen</h2>
+    <form method="post" class="toolbar">{% csrf_token %}<input type="hidden" name="action" value="send_monthly_email"><input type="hidden" name="month" value="{{ run_result.month|default:default_month }}">{% for inv in generated_invoices %}<input type="hidden" name="invoice_ids" value="{{ inv.id|unlocalize }}">{% endfor %}<button class="btn success">Alle als E-Mail-Entwurf versenden</button></form>
+  </div>
+  <div class="table-wrap"><table class="table"><tr><th>Rechnung</th><th>Kunde</th><th>Abrechnungseinheit</th><th>Brutto</th><th>Status</th><th>Aktionen</th></tr>{% for inv in generated_invoices %}<tr><td>{{ inv.number }}</td><td>{{ inv.customer.name }}</td><td>{% if inv.obj %}{{ inv.obj.name }}{% endif %}</td><td>{{ inv.gross_total }} €</td><td><span class="badge">{{ inv.get_status_display }}</span></td><td class="table-actions"><a class="btn small" href="{% url 'sedo:invoice_detail' inv.id %}">Öffnen</a>{% if inv.zugferd_file %}<a class="btn small" href="{{ inv.zugferd_file.url }}" target="_blank">ZUGFeRD</a>{% endif %}</td></tr>{% endfor %}</table></div>
+</div>
+{% endif %}
+
+{% if run_result and run_result.errors %}
+<div class="card warning-card"><h2>Fehlerliste / Hinweise</h2><ul>{% for e in run_result.errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+
+<div class="card" id="normal-block">
+  <div class="section-head"><div><h2>Monatsrechnungen / Abo-Rechnungen</h2><p class="hint">Für Kunden ohne GWG-Mapping. Vorlagen entstehen entweder über „Neue Rechnung“ mit Haken „als Abo-/Monatsrechnungsvorlage speichern“ oder direkt hier über „Vorlage anlegen“.</p></div><a class="btn primary" href="{% url 'sedo:recurring_create' %}">+ Vorlage anlegen</a></div>
+  <form method="post" action="{% url 'sedo:recurring_generate' %}" class="stacked-form compact-form">
+    {% csrf_token %}
+    <div class="form-grid compact-grid">
+      <div class="form-row"><label>Abrechnungsmonat</label><input type="month" name="month" value="{{ default_month }}" required></div>
+      <div class="form-row"><label>Rechnungsdatum</label><input type="date" name="issue_date" value="{{ default_issue_date }}" required></div>
+      <div class="form-row full"><label class="check-line"><input type="checkbox" name="skip_existing" checked> Bereits erzeugte Abo-Rechnungen für denselben Monat/Kunde/Objekt überspringen</label></div>
+    </div>
+    <div class="table-wrap"><table class="table"><tr><th>Auswahl</th><th>Vorlage</th><th>Kunde</th><th>Objekt</th><th>Positionen</th><th>Status</th><th>Aktionen</th></tr>{% for t in recurring_templates %}<tr><td><input type="checkbox" name="template_ids" value="{{ t.id|unlocalize }}" checked></td><td>{{ t.title }}</td><td>{{ t.customer.name }}</td><td>{% if t.obj %}{{ t.obj.name }}{% else %}—{% endif %}</td><td>{{ t.items.count }}</td><td><span class="badge">{{ t.get_status_display }}</span></td><td class="table-actions"><a class="btn small" href="{% url 'sedo:recurring_update' t.id %}">Bearbeiten</a><a class="btn small danger" href="{% url 'sedo:recurring_delete' t.id %}">Löschen</a></td></tr>{% empty %}<tr><td colspan="7"><div class="empty-state">Noch keine Abo-/Monatsrechnungsvorlagen vorhanden.</div></td></tr>{% endfor %}</table></div>
+    <div class="toolbar"><button class="btn success" {% if not recurring_templates %}disabled{% endif %}>Ausgewählte Monatsrechnungen erzeugen</button></div>
+  </form>
+  {% if last_recurring_invoices %}<div class="mt-3"><h2>Zuletzt erzeugte normale Monatsrechnungen</h2><div class="table-wrap"><table class="table"><tr><th>Rechnung</th><th>Kunde</th><th>Objekt</th><th>Brutto</th><th>Aktionen</th></tr>{% for inv in last_recurring_invoices %}<tr><td>{{ inv.number }}</td><td>{{ inv.customer.name }}</td><td>{% if inv.obj %}{{ inv.obj.name }}{% endif %}</td><td>{{ inv.gross_total }} €</td><td class="table-actions"><a class="btn small" href="{% url 'sedo:invoice_detail' inv.id %}">Öffnen</a>{% if inv.zugferd_file %}<a class="btn small" href="{{ inv.zugferd_file.url }}" target="_blank">ZUGFeRD</a>{% endif %}</td></tr>{% endfor %}</table></div></div>{% endif %}
+</div>
+
+<div class="card"><h2>Mapping-Vorschau</h2><div class="table-wrap"><table class="table"><tr><th>Abrechnungseinheit</th><th>Leistungsart-ID</th><th>WE intern</th><th>AE intern</th><th>NkSl intern</th><th>Sachkonto</th></tr>{% for m in mappings %}<tr><td>{{ m.billing_unit_sender }}</td><td>{{ m.service_id }}</td><td>{{ m.we_internal }}</td><td>{{ m.ae_internal }}</td><td>{{ m.nksl_internal }}</td><td>{{ m.account }}</td></tr>{% empty %}<tr><td colspan="6"><div class="empty-state">Noch kein Mapping importiert.</div></td></tr>{% endfor %}</table></div></div>
+{% endblock %}

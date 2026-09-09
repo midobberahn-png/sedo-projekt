@@ -1,0 +1,108 @@
+{
+ "datenmodell-migrationen": [
+  {
+   "index": 5,
+   "entscheidung": "bestaetigt",
+   "severity": "niedrig",
+   "titel": "Migration 0012 löscht Mahndokumente hart und wählt das älteste – versandte Mahns"
+  },
+  {
+   "index": 8,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "Keine Indexe auf den Standardfiltern deleted_at, status, issue_date, source/peri"
+  }
+ ],
+ "datenschutz-ki": [
+  {
+   "index": 2,
+   "entscheidung": "bestaetigt",
+   "severity": "mittel",
+   "titel": "Selbstlernender Katalog persistiert KI-Ausgaben ohne Bestätigung und injiziert s"
+  },
+  {
+   "index": 3,
+   "entscheidung": "bestaetigt",
+   "severity": "niedrig",
+   "titel": "Positionsbezeichnungen und Rechnungsnummer werden als „Leistungsdaten“ übertrage"
+  },
+  {
+   "index": 4,
+   "entscheidung": "bestaetigt",
+   "severity": "niedrig",
+   "titel": "KI-Preise, Mengen und Artikelnummern fließen ohne Sperre in Formularfelder; „gen"
+  },
+  {
+   "index": 5,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "Anthropic-API-Key liegt im Klartext in der SQLite-Datenbank (AppSetting)"
+  },
+  {
+   "index": 9,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "KI-Ausgaben werden vor jeder Nutzerprüfung dauerhaft in den Leistungskatalog ges"
+  },
+  {
+   "index": 10,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "preis_art „genannt“ wird nicht gegen das Diktat verifiziert – Halluzinationen er"
+  },
+  {
+   "index": 12,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "Katalogtexte aus der Datenbank fließen ohne Abgrenzung in den System-Prompt – Pr"
+  },
+  {
+   "index": 13,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "KI-Ausgaben werden vor dem Persistieren nicht auf Personen-/Adressdaten geprüft "
+  },
+  {
+   "index": 14,
+   "entscheidung": "bestaetigt",
+   "severity": "niedrig",
+   "titel": "KI-Begleittext: Rechnungsnummer, Betrag und Fälligkeit werden nicht gegen die Re"
+  }
+ ],
+ "funktionalitaet-views_b": [
+  {
+   "index": 16,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "Stumme Fallbacks im Monatslauf: ungültiges Rechnungsdatum wird zu „heute“, gewäh"
+  }
+ ],
+ "gobd-geschaeftslogik": [
+  {
+   "index": 11,
+   "entscheidung": "bestaetigt",
+   "severity": "niedrig",
+   "titel": "Rechnung aus abgelehntem/abgelaufenem Angebot möglich; Status eines bereits verr"
+  }
+ ],
+ "zugferd-xml-pdf": [
+  {
+   "index": 7,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "D() liest englisches Tausenderformat falsch (\"1,250.00\" → 1.25)"
+  },
+  {
+   "index": 9,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "BusinessProcess-ID (Peppol BIS) kombiniert mit Factur-X-EXTENDED-Guideline; Type"
+  },
+  {
+   "index": 10,
+   "entscheidung": "verworfen",
+   "severity": "niedrig",
+   "titel": "Unbekannte Einheiten werden still auf H87 (Stück) gemappt – PDF-Einheit und XML-"
+  }
+ ]
+}

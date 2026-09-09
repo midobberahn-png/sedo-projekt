@@ -1,0 +1,18 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<div class="topbar"><div><div class="h1">{{ preview.title }}</div><div class="sub">Diese Ansicht speichert nichts. Zurück im Browser bringt dich wieder zur Eingabe.</div></div></div>
+<div class="document-preview card">
+  <div class="doc-head"><div><strong>Sedo Objektdienstleistungen GmbH</strong><br><span>Kirschweg 47 · 39118 Magdeburg</span></div><div class="doc-title">{% if is_offer %}Angebot{% else %}Rechnung{% endif %} · Entwurf</div></div>
+  <hr>
+  <div class="doc-grid">
+    <div><h3>Empfänger</h3>
+      {% if preview.customer %}<strong>{{ preview.customer.name }}</strong><br>{{ preview.customer.name2 }}<br>{{ preview.customer.street }}<br>{{ preview.customer.postcode }} {{ preview.customer.city }}{% else %}<strong>{{ preview.manual_customer.name }}</strong><br>{{ preview.manual_customer.name2 }}<br>{{ preview.manual_customer.street }}<br>{{ preview.manual_customer.postcode }} {{ preview.manual_customer.city }}{% endif %}
+    </div>
+    <div><h3>Daten</h3>Datum: {{ preview.issue_date|date:'d.m.Y' }}<br>{% if preview.period_start or preview.period_end %}Zeitraum: {{ preview.period_start|date:'d.m.Y' }} – {{ preview.period_end|date:'d.m.Y' }}{% endif %}</div>
+  </div>
+  <div class="mt"><h3>Objekt / Leistungsort</h3>{% if preview.obj %}{{ preview.obj.name }}<br>{{ preview.obj.street }}<br>{{ preview.obj.postcode }} {{ preview.obj.city }}{% else %}{{ preview.manual_object.object_name }}<br>{{ preview.manual_object.object_street }}<br>{{ preview.manual_object.object_postcode }} {{ preview.manual_object.object_city }}{% endif %}</div>
+  <table class="table mt"><thead><tr><th>Pos.</th><th>Bezeichnung</th><th>Menge</th><th>Einheit</th><th>Einzelpreis</th><th>Gesamt</th></tr></thead><tbody>{% for item in preview.items %}<tr><td>{{ forloop.counter }}</td><td>{{ item.description }}{% if item.long_text %}<div class="muted" style="font-size:12px;margin-top:3px;white-space:pre-line">{{ item.long_text }}</div>{% endif %}</td><td>{{ item.quantity }}</td><td>{{ item.unit }}</td><td>{{ item.unit_price }} €</td><td>{{ item.line_total }} €</td></tr>{% endfor %}</tbody></table>
+  <div class="sum-box"><div>Netto: <strong>{{ preview.net }} €</strong></div><div>USt {{ preview.vat_rate }} %: <strong>{{ preview.vat }} €</strong></div><div class="gross">Gesamt: <strong>{{ preview.gross }} €</strong></div></div>
+  {% if preview.note %}<p class="mt"><strong>Hinweis:</strong><br>{{ preview.note }}</p>{% endif %}
+</div>
+<div class="toolbar"><button class="btn" onclick="history.back()">Zurück zur Eingabe</button></div>
+{% endblock %}

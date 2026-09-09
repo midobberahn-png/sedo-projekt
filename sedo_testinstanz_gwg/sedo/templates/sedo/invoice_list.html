@@ -1,0 +1,130 @@
+{% extends 'sedo/base.html' %}{% load l10n %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">Verkauf</div>
+    <div class="h1">Rechnungsarchiv</div>
+    <div class="sub">Filter, Download und Direktversand für alle Rechnungen.</div>
+  </div>
+  <a class="btn primary" href="{% url 'sedo:invoice_create' %}">Neue Rechnung</a>
+</div>
+
+<div class="card">
+  <form class="toolbar flex-wrap" method="get" style="gap:8px;align-items:flex-end">
+    <div>
+      <label style="font-size:.75rem;color:var(--text-muted);display:block;margin-bottom:3px">Suche</label>
+      <input style="min-width:240px" name="q" value="{{ q }}" placeholder="Rechnungsnr., Kunde oder Objekt">
+    </div>
+    <div>
+      <label style="font-size:.75rem;color:var(--text-muted);display:block;margin-bottom:3px">Jahr</label>
+      <select name="year" class="form-select form-select-sm">
+        <option value="">Alle Jahre</option>
+        {% for y in available_years %}<option value="{{ y|unlocalize }}" {% if year == y|stringformat:"s" %}selected{% endif %}>{{ y|unlocalize }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:.75rem;color:var(--text-muted);display:block;margin-bottom:3px">Monat</label>
+      <select name="month" class="form-select form-select-sm">
+        <option value="">Alle Monate</option>
+        <option value="1"  {% if month == "1"  %}selected{% endif %}>Januar</option>
+        <option value="2"  {% if month == "2"  %}selected{% endif %}>Februar</option>
+        <option value="3"  {% if month == "3"  %}selected{% endif %}>März</option>
+        <option value="4"  {% if month == "4"  %}selected{% endif %}>April</option>
+        <option value="5"  {% if month == "5"  %}selected{% endif %}>Mai</option>
+        <option value="6"  {% if month == "6"  %}selected{% endif %}>Juni</option>
+        <option value="7"  {% if month == "7"  %}selected{% endif %}>Juli</option>
+        <option value="8"  {% if month == "8"  %}selected{% endif %}>August</option>
+        <option value="9"  {% if month == "9"  %}selected{% endif %}>September</option>
+        <option value="10" {% if month == "10" %}selected{% endif %}>Oktober</option>
+        <option value="11" {% if month == "11" %}selected{% endif %}>November</option>
+        <option value="12" {% if month == "12" %}selected{% endif %}>Dezember</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:.75rem;color:var(--text-muted);display:block;margin-bottom:3px">Status</label>
+      <select name="status" class="form-select form-select-sm">
+        <option value="">Alle Status</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn primary" type="submit">Filtern</button>
+    {% if q or year or month or status %}
+    <a class="btn" href="{% url 'sedo:invoice_list' %}">Filter zurücksetzen</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <div class="section-head">
+    <h2>Rechnungen</h2>
+    <span class="muted">Summe (gefiltert): <strong>{{ gross_total }} €</strong></span>
+  </div>
+  <div class="table-wrap">
+    <table class="table table-modern action-table">
+      <tr>
+        <th>Nr. / Art</th>
+        <th>Kunde</th>
+        <th>Objekt / Leistungsort</th>
+        <th>Datum</th>
+        <th>Zeitraum</th>
+        <th style="text-align:right">Brutto</th>
+        <th>Status</th>
+        <th>Dateien</th>
+        <th>Aktionen</th>
+      </tr>
+      {% for r in invoices %}
+      <tr>
+        <td>
+          <strong><a href="{% url 'sedo:invoice_detail' r.pk %}">{{ r.number }}</a></strong><br>
+          <span class="muted">{{ r.get_invoice_type_display }}</span>
+        </td>
+        <td>{{ r.customer }}</td>
+        <td>{{ r.obj|default:'—' }}</td>
+        <td>{{ r.issue_date|date:"d.m.Y" }}</td>
+        <td>
+          {% if r.period_start and r.period_end %}
+            {{ r.period_start|date:"d.m.Y" }} –<br>{{ r.period_end|date:"d.m.Y" }}
+          {% else %}—{% endif %}
+        </td>
+        <td style="text-align:right"><strong>{{ r.gross_total }} €</strong></td>
+        <td>
+          <span class="badge
+            {% if r.status == 'bezahlt' %}green
+            {% elif r.status == 'storniert' %}red
+            {% elif r.status == 'ueberfaellig' %}red
+            {% elif r.status == 'gemahnt' %}amber
+            {% elif r.status == 'entwurf' %}yellow
+            {% elif r.status == 'versendet' %}blue
+            {% endif %}">{{ r.get_status_display }}</span>
+        </td>
+        <td>
+          <div class="row-actions" style="flex-wrap:nowrap">
+            {% if r.pdf_file %}<a class="btn small" href="{{ r.pdf_file.url }}" target="_blank" title="PDF ansehen">PDF</a>{% endif %}
+            {% if r.zugferd_file %}<a class="btn small accent" href="{{ r.zugferd_file.url }}" target="_blank" title="ZUGFeRD herunterladen">ZUGFeRD</a>{% endif %}
+            {% if r.xml_file %}<a class="btn small" href="{{ r.xml_file.url }}" target="_blank" title="XML herunterladen">XML</a>{% endif %}
+          </div>
+        </td>
+        <td>
+          <div class="table-actions">
+            <a class="btn small primary" href="{% url 'sedo:invoice_detail' r.pk %}">Öffnen</a>
+            <form method="post" action="{% url 'sedo:invoice_email' r.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn small" title="E-Mail senden">E-Mail</button></form>
+            <a class="btn small" href="{% url 'sedo:invoice_correction' r.pk %}">Korrektur</a>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9">
+        <div class="empty-state">
+          <div class="empty-icon"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></div>
+          <p class="empty-title">Keine Rechnungen gefunden</p>
+          <p class="empty-sub">{% if q or year or month or status %}Keine Rechnungen passen zu deinen Filterkriterien.{% else %}Noch keine Rechnungen im Archiv. Erstelle die erste Rechnung.{% endif %}</p>
+          {% if not q and not year and not month and not status %}<a class="btn primary" href="{% url 'sedo:invoice_create' %}">Erste Rechnung erstellen</a>{% endif %}
+        </div>
+      </td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

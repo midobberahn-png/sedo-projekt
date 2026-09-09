@@ -1,0 +1,43 @@
+{% extends 'sedo/base.html' %}
+{% block title %}Audit-Log{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">System · Sicherheit</div>
+    <div class="h1">Audit-Log</div>
+    <div class="sub">Protokoll kritischer Aktionen wie Login, Backup, Import, Zahlung, Mahnung und Löschung.</div>
+  </div>
+  <div class="toolbar"><a class="btn" href="{% url 'sedo:security_status' %}">Sicherheitsstatus</a></div>
+</div>
+
+<div class="card">
+  <form method="get" class="toolbar">
+    <input name="q" value="{{ q }}" placeholder="Suche nach Benutzer, Objekt, Hinweis oder IP">
+    <select name="action">
+      <option value="">Alle Aktionen</option>
+      {% for key,label in actions %}<option value="{{ key }}" {% if action == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <button class="btn primary">Filtern</button>
+    <a class="btn" href="{% url 'sedo:audit_log' %}">Zurücksetzen</a>
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="table table-modern">
+      <tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Objekttyp</th><th>Objekt</th><th>IP</th><th>Hinweis</th></tr>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.created_at|date:'d.m.Y H:i:s' }}</td>
+        <td>{{ log.user|default:'System' }}</td>
+        <td>{{ log.get_action_display }}</td>
+        <td>{{ log.object_type }}</td>
+        <td>{{ log.object_repr }}</td>
+        <td>{{ log.ip_address|default:'—' }}</td>
+        <td>{{ log.message }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="7"><div class="empty-state">Keine Audit-Einträge gefunden.</div></td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}
