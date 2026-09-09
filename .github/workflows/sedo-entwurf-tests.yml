@@ -1,0 +1,74 @@
+name: SEDO Regression und Gegenproben
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sedo-pruefung-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        django: ['5.2', '6.0']
+    env:
+      SEDO_HOME: /tmp/sedo-isoliert
+      DJANGO_SECRET_KEY: ausschliesslich-isolierte-ci-tests-kein-produktionsschluessel
+      DJANGO_ALLOWED_HOSTS: testserver,127.0.0.1,localhost
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /sedo_rechnungstool_v2/sedo/
+            /sedo_rechnungstool_v2/config/
+            /sedo_rechnungstool_v2/tools/
+            /sedo_rechnungstool_v2/manage.py
+            /sedo_rechnungstool_v2/requirements.txt
+      - name: Keine Betriebsdaten im Test-Checkout
+        run: |
+          test ! -e sedo_rechnungstool_v2/data
+          test ! -e sedo_rechnungstool_v2/backups
+          test ! -e sedo_rechnungstool_v2/media
+          test ! -e sedo_rechnungstool_v2/.env
+          mkdir -p "$SEDO_HOME/data" "$RUNNER_TEMP/sedo-pruefung"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Testabhaengigkeiten installieren
+        working-directory: sedo_rechnungstool_v2
+        env:
+          DJANGO_SERIES: ${{ matrix.django }}
+        run: |
+          sed '/^faster-whisper/d' requirements.txt > "$RUNNER_TEMP/sedo-requirements.txt"
+          python -m pip install "Django~=$DJANGO_SERIES.0" -r "$RUNNER_TEMP/sedo-requirements.txt"
+          python -m pip freeze > "$RUNNER_TEMP/sedo-pruefung/abhaengigkeiten.txt"
+      - name: Gesamte Regressionstests
+        working-directory: sedo_rechnungstool_v2
+        run: |
+          set -o pipefail
+          python manage.py test sedo --noinput 2>&1 | tee "$RUNNER_TEMP/sedo-pruefung/tests.log"
+      - name: Gegenproben auf temporaeren Quellkopien
+        working-directory: sedo_rechnungstool_v2
+        run: python tools/gegenproben_entwurf.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben"
+      - name: Keine neue Modellmigration
+        working-directory: sedo_rechnungstool_v2
+        run: |
+          set -o pipefail
+          python manage.py makemigrations --check --dry-run 2>&1 | tee "$RUNNER_TEMP/sedo-pruefung/migrationen.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sedo-pruefung-django-${{ matrix.django }}
+          path: ${{ runner.temp }}/sedo-pruefung/
+          retention-days: 14

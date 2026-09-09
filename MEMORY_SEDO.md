@@ -4,6 +4,24 @@
 
 ---
 
+## Umsetzung 09.09.2026 – Welle 2, Etappe 4 + EN (Etappe 6)
+
+Arbeitsbranch: `review-v2-etappe4-entwurf`, Basis des GitHub-Snapshots `c73050f`.
+**Nicht auf main zusammengeführt, nicht auf den lokalen Produktivrechner ausgerollt.**
+
+- Neue Entwürfe bekommen EN und ausschließlich ein Wasserzeichen-PDF. Finalisieren vergibt RE; historische RE-Entwürfe behalten ihre Nummer.
+- Neue Routen: `invoice_edit` und `invoice_finalize`. Finalisieren hat eine POST-Bestätigungsseite; Vormonatsdatum bleibt ohne ausdrücklich gesetztes Häkchen erhalten. Zahlungsziel (auch 0 Tage) und Leistungszeitraum bleiben bei Datumsverschiebung erhalten.
+- Editieren akzeptiert nur gespeicherte Kunden/zugehörige Objekte und verändert weder Belegart noch Herkunft. Guarded UPDATE und Formularrevision sichern paralleles Bearbeiten/Finalisieren/Verwerfen ab.
+- Korrekturentwurf prüft das Original nochmals; erfolgreicher Abschluss markiert es erst dann als korrigiert. Storno/Korrektur/Finalisieren schreiben verpflichtende Status-Audits.
+- Verwerfen eines Angebotsentwurfs gibt das Angebot transaktional frei. Beide Pflicht-Audits enthalten beide Nummern; ein Auditfehler rollt den ganzen Vorgang zurück.
+- Fehlerkompensation für PDF/XML-Dateien: vorherige Dateien werden bei abgefangenen Fehlern wiederhergestellt; neue sowie alte Entwurfs-XMLs werden ohne Löschen außerhalb von MEDIA_ROOT verwahrt. Pfad: Geschwisterordner `.media_quarantaene` (bei abweichendem Mediennamen entsprechend). **Keine gemeinsame absturzsichere DB-/Dateisystemtransaktion bei Stromausfall.**
+- Isolierte Prüfung Python 3.13 / Django 5.2.17: **440 Tests grün (387 Bestand + 53 neue), 17/17 Mutationsgegenproben rot wie erwartet**, `makemigrations --check --dry-run`: keine Änderungen. Neue Tests: `sedo/tests/test_draft_workflow.py`; reproduzierbare Gegenproben: `tools/gegenproben_entwurf.py` (ändert ausschließlich temporäre Quellkopien).
+- Chromium-Smokechecks: neue Positionszeilen, kundengefilterte Objektauswahl und nicht vorausgewähltes Vormonats-Häkchen. Kein JavaScript-Laufzeitfehler.
+- Live-DB, Betriebsmedien und Sicherungen wurden nicht geöffnet oder verändert. Tests mit In-Memory-DB und temporären Pfaden; kein Versand. `main`, GWG-Testinstanz und Dashboard-Umsatz unverändert.
+- Etappe 5 (Bestandsreparatur), Etappe 7 (optionale Indizes), Feldtrennung und F-18 für bewusstes Neuerzeugen ausgestellter Dateien bleiben offen. Bereits bestehende Entwürfe werden nicht pauschal angefasst; alte XMLs werden erst beim expliziten Bearbeiten/Neuerzeugen des jeweiligen Entwurfs aus den Medien genommen.
+
+---
+
 ## PROJEKTSTATUS
 
 - **Aktuelle Version:** **v2.3.0** – `sedo_rechnungstool_v2/` ist seit 17.08. der EINZIGE

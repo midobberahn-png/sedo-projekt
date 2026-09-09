@@ -28,7 +28,7 @@ from .services import (
     generate_invoice_files, next_number, save_with_unique_number, create_numbered_invoice,
     recalc_invoice, recalc_offer, create_storno,
     WorkflowError, ensure_correction_allowed, ensure_offer_invoicing_allowed,
-    mark_invoice_corrected,
+    mark_invoice_corrected, finalisiere_entwurf, entwurf_sperren,
     ensure_zahlung_erlaubt, ensure_versand_erlaubt, ausblenden_hindernis,
     offene_rechnungen,
     generate_offer_pdf, create_invoice_from_offer, create_email_draft, import_bank_json,
@@ -42,6 +42,7 @@ from .services import (
     polish_service_text, generate_cover_letter_text,
     ai_review_positions, check_positions_local,
 )
+from .services.invoice_files import datei_rueckweg
 from .services.mail import invoice_email_subject_body
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
@@ -917,14 +918,13 @@ def invoice_create(request):
                 try:
                     with transaction.atomic():
                         # Kollisionssichere Rechnungsnummer vergeben und speichern
-                        save_with_unique_number(inv, 'RE')
+                        save_with_unique_number(inv, 'EN' if action == 'draft' else 'RE')
                         formset.instance = inv
                         formset.save()
                         _normalize_item_positions(inv.items.all())
                         recalc_invoice(inv)
                         inv.save()
-                        if action != 'draft':
-                            generate_invoice_files(inv)
+                        generate_invoice_files(inv)
                         if src_offer:
                             # Guarded UPDATE: nur wenn das Angebot noch nicht
                             # verrechnet ist – sonst rollt alles zurück.
@@ -941,8 +941,8 @@ def invoice_create(request):
                         if src_invoice and action != 'draft':
                             # Ursprungsrechnung als korrigiert markieren – blockiert
                             # damit weitere Korrekturen und Stornos des Originals.
-                            # (Bei Entwürfen greift bereits die Folgebeleg-Sperre.)
-                            mark_invoice_corrected(src_invoice)
+                            # Entwürfe ersetzen das Original noch nicht.
+                            mark_invoice_corrected(src_invoice, request=request)
                 except WorkflowError as e:
                     messages.error(request, str(e))
                     target = ('sedo:offer_detail', src_offer.pk) if src_offer \
@@ -1005,6 +1005,113 @@ def invoice_create(request):
         'correction_source': correction_source,
         'smtp_configured': smtp_is_configured(),
     })
+
+
+@login_required
+def invoice_edit(request, pk):
+    """Nur Entwürfe bearbeiten; niemals Stammdaten neu anlegen."""
+    from django.forms import inlineformset_factory
+    from .forms import InvoiceItemForm
+
+    invoice = get_object_or_404(Invoice.objects.select_related('customer', 'obj'), pk=pk)
+    if invoice.status != 'entwurf':
+        messages.error(request, 'Nur ein Entwurf kann bearbeitet werden.')
+        return redirect('sedo:invoice_detail', pk=pk)
+    felder = ('customer', 'obj', 'issue_date', 'period_start', 'period_end', 'vat_rate', 'note')
+    tage = ((invoice.due_date - invoice.issue_date).days if invoice.due_date
+            else invoice.customer.payment_days)
+    form = InvoiceForm(request.POST if request.method == 'POST' else None,
+                       instance=invoice, initial={'payment_days': tage})
+    # Keine manuellen Kopf-/Objektfelder: was nicht gespeichert wird, soll
+    # auch nicht als bearbeitbar erscheinen. Die gespeicherten Stammdaten
+    # werden bewusst weder geändert noch dupliziert.
+    for name in list(form.fields):
+        if name not in (*felder, 'payment_days'):
+            form.fields.pop(name)
+    form.fields['customer'].required = True
+    form.fields['customer'].label = 'Gespeicherter Kunde'
+    try:
+        kunde_id = int(request.POST.get('customer', '')) if request.method == 'POST' else invoice.customer_id
+    except (ValueError, TypeError):
+        kunde_id = None
+    form.fields['obj'].queryset = CustomerObject.objects.filter(customer_id=kunde_id)
+    EditFormSet = inlineformset_factory(Invoice, InvoiceItem, form=InvoiceItemForm,
+                                       extra=1, can_delete=True, min_num=1, validate_min=True)
+    formset = EditFormSet(request.POST if request.method == 'POST' else None, instance=invoice)
+    revision = request.POST.get('revision', '') if request.method == 'POST' else invoice.updated_at.isoformat()
+    if request.method == 'POST':
+        kopf_ok = form.is_valid()
+        positionen_ok = formset.is_valid()
+        if positionen_ok:
+            eigene_ids = set(invoice.items.values_list('pk', flat=True))
+            for positionsform in formset.initial_forms:
+                item = positionsform.cleaned_data.get('id')
+                if item is None or item.pk not in eigene_ids:
+                    positionsform.add_error(None, 'Diese Position gehört nicht zu diesem Entwurf.')
+                    positionen_ok = False
+        if not revision:
+            form.add_error(None, 'Bearbeitungsstand fehlt. Bitte die Seite neu laden.')
+        elif kopf_ok and positionen_ok:
+            werte = {name: form.cleaned_data[name] for name in felder}
+            try:
+                with datei_rueckweg() as merken, transaction.atomic():
+                    entwurf_sperren(invoice, revision=revision)
+                    for name, wert in werte.items():
+                        setattr(invoice, name, wert)
+                    invoice.due_date = invoice.issue_date + timedelta(days=form.cleaned_data['payment_days'])
+                    invoice.save(update_fields=[*felder, 'due_date', 'updated_at'])
+                    formset.instance = invoice
+                    formset.save()
+                    _normalize_item_positions(invoice.items.all())
+                    write_audit(request, 'update', invoice, f'Entwurf {invoice.number} bearbeitet',
+                                pflicht=True, metadata={'von': 'entwurf', 'nach': 'entwurf',
+                                                       'anlass': 'bearbeiten'})
+                    merken(invoice)
+                    generate_invoice_files(invoice)
+                messages.success(request, f'Entwurf {invoice.number} gespeichert.')
+                return redirect('sedo:invoice_detail', pk=pk)
+            except WorkflowError as fehler:
+                messages.error(request, str(fehler))
+            except Exception:
+                logger.exception('Entwurfsbearbeitung zurückgerollt')
+                messages.error(request, 'Der Entwurf wurde nicht geändert. Datei oder Protokoll '
+                                        'konnte nicht gespeichert werden; bitte erneut versuchen.')
+            return redirect('sedo:invoice_detail', pk=pk)
+    return render(request, 'sedo/invoice_edit.html', {
+        'invoice': invoice, 'form': form, 'formset': formset, 'revision': revision,
+        'objekte': list(CustomerObject.objects.values('id', 'customer_id', 'name')),
+    })
+
+
+@login_required
+@require_POST
+def invoice_finalize(request, pk):
+    """Bestätigung und Finalisierung; GET verändert grundsätzlich nichts."""
+    invoice = get_object_or_404(Invoice.objects.select_related('customer', 'obj'), pk=pk)
+    if invoice.status != 'entwurf':
+        messages.error(request, 'Dieser Beleg ist kein Entwurf mehr.')
+        return redirect('sedo:invoice_detail', pk=pk)
+    if request.POST.get('confirm') != '1':
+        heute = timezone.localdate()
+        return render(request, 'sedo/invoice_finalize.html', {
+            'invoice': invoice, 'revision': invoice.updated_at.isoformat(), 'heute': heute,
+            'vormonat': (invoice.issue_date.year, invoice.issue_date.month) < (heute.year, heute.month),
+        })
+    try:
+        revision = request.POST.get('revision')
+        if not revision:
+            raise WorkflowError('Bestätigungsstand fehlt. Bitte die Finalisierung erneut öffnen.')
+        finalisiere_entwurf(invoice, request, datum_heute=request.POST.get('datum_heute') == '1',
+                           datum_bestaetigt=True, revision=revision)
+    except WorkflowError as fehler:
+        messages.error(request, str(fehler))
+    except Exception:
+        logger.exception('Finalisierung zurückgerollt')
+        messages.error(request, 'Der Entwurf wurde nicht finalisiert. Datei oder Protokoll '
+                                'konnte nicht gespeichert werden; bitte erneut versuchen.')
+    else:
+        messages.success(request, f'Rechnung {invoice.number} wurde finalisiert. Sie wurde nicht versendet.')
+    return redirect('sedo:invoice_detail', pk=pk)
 
 
 @login_required
@@ -1119,7 +1226,10 @@ def invoice_correction(request, pk):
 def invoice_storno(request, pk):
     original = get_object_or_404(Invoice, pk=pk)
     try:
-        storno = create_storno(original)
+        storno = create_storno(original, request=request)
+    except AuditWriteError:
+        messages.error(request, 'Es wurde kein Storno erzeugt: Der Vorgang konnte nicht protokolliert werden.')
+        return redirect('sedo:invoice_detail', original.pk)
     except WorkflowError as e:
         messages.error(request, str(e))
         return redirect('sedo:invoice_detail', original.pk)
@@ -1133,29 +1243,57 @@ def invoice_delete(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
     if request.method == 'POST':
         no = invoice.number
-        # Ausblenden nur für Belege, die nachweislich nie das Haus verlassen
-        # haben. Vorher stand der Knopf bedingungslos bei jeder Rechnung – der
-        # Beleg fehlte danach im Steuerberater-Export, die Zahlung hing an
-        # einem unsichtbaren Datensatz (F-14).
-        hindernis = ausblenden_hindernis(invoice)
-        if hindernis:
-            messages.error(request, hindernis)
-            return redirect('sedo:invoice_detail', pk=invoice.pk)
-        # pflicht=True: Ohne Protokolleintrag kein Ausblenden. Der Eintrag ist
-        # der einzige Nachweis dafür, dass der Beleg bewusst ausgeblendet wurde
-        # – fehlt er, sieht es später nach einem stillen Verschwinden aus.
         try:
-            write_audit(request, 'delete', invoice,
-                        f'Rechnung {no} als gelöscht markiert (GoBD-Soft-Delete)', pflicht=True)
+            with transaction.atomic():
+                # Erster Schreibzugriff schützt vor parallelem Finalisieren.
+                bestaetigter_stand = request.POST.get('invoice_revision')
+                if bestaetigter_stand and bestaetigter_stand != invoice.updated_at.isoformat():
+                    raise WorkflowError('Der Beleg wurde nach der Bestätigung geändert. Bitte erneut prüfen.')
+                aktualisiert = Invoice.objects.filter(
+                    pk=pk, status=invoice.status, updated_at=invoice.updated_at,
+                ).update(updated_at=timezone.now())
+                if not aktualisiert:
+                    raise WorkflowError('Der Beleg wurde inzwischen geändert. Bitte die Seite neu laden.')
+                invoice.refresh_from_db()
+                hindernis = ausblenden_hindernis(invoice)
+                if hindernis:
+                    raise WorkflowError(hindernis)
+                angebote = (list(Offer.all_objects.filter(linked_invoice_id=pk))
+                            if invoice.status == 'entwurf' else [])
+                bezug = ', '.join(angebot.number for angebot in angebote)
+                write_audit(request, 'delete', invoice,
+                            f'Rechnung {no} als gelöscht markiert (GoBD-Soft-Delete)'
+                            + (f'; Angebote: {bezug}' if bezug else ''), pflicht=True,
+                            metadata={'anlass': 'entwurf_verwerfen' if invoice.status == 'entwurf'
+                                      else 'ausblenden', 'rechnungsnummer': no, 'angebote': bezug})
+                for angebot in angebote:
+                    vorher = angebot.status
+                    if not Offer.all_objects.filter(pk=angebot.pk, linked_invoice_id=pk).update(
+                            linked_invoice=None, status='angenommen', updated_at=timezone.now()):
+                        raise WorkflowError('Die Angebotsverknüpfung wurde inzwischen geändert.')
+                    angebot.refresh_from_db()
+                    write_audit(request, 'update', angebot,
+                                f'Angebot {angebot.number} nach Verwerfen von Entwurf {no} freigegeben',
+                                pflicht=True, metadata={'von': vorher, 'nach': 'angenommen',
+                                                       'anlass': 'entwurf_verwerfen',
+                                                       'rechnungsnummer': no,
+                                                       'angebotsnummer': angebot.number})
+                invoice.soft_delete()
         except AuditWriteError:
             messages.error(request, f'Rechnung {no} wurde NICHT ausgeblendet: Der Vorgang lässt '
                                     'sich gerade nicht protokollieren. Bitte später erneut versuchen.')
-            return redirect('sedo:invoice_detail', pk=invoice.pk)
-        # GoBD: Rechnungen werden nicht hart entfernt, sondern nur ausgeblendet.
-        invoice.soft_delete()
-        messages.success(request, f'Rechnung {no} wurde ausgeblendet. Der Datensatz bleibt für die Nachvollziehbarkeit erhalten (GoBD).')
+            return redirect('sedo:invoice_detail', pk=pk)
+        except WorkflowError as fehler:
+            messages.error(request, str(fehler))
+            return redirect('sedo:invoice_detail', pk=pk)
+        messages.success(request, f'Rechnung {no} wurde ausgeblendet. Der Datensatz bleibt erhalten.')
         return redirect('sedo:invoice_list')
-    return render(request, 'sedo/confirm_delete.html', {'title': 'Rechnung ausblenden', 'text': f'Rechnung {invoice.number} wirklich ausblenden? Der Datensatz bleibt GoBD-konform erhalten und wird nur nicht mehr angezeigt.', 'cancel_url': reverse('sedo:invoice_detail', args=[pk])})
+    return render(request, 'sedo/confirm_delete.html', {
+        'title': 'Entwurf verwerfen' if invoice.status == 'entwurf' else 'Rechnung ausblenden',
+        'text': f'Beleg {invoice.number} wirklich ausblenden? Der Datensatz bleibt erhalten.',
+        'invoice_revision': invoice.updated_at.isoformat(),
+        'cancel_url': reverse('sedo:invoice_detail', args=[pk]),
+    })
 
 
 @login_required

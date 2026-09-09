@@ -188,7 +188,7 @@
     <section class="wizard-step" id="step-pruefen" data-wizard-step data-step-label="Prüfen">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></div>
-        <div><h2>Alles auf einen Blick <span class="info-tip" tabindex="0" aria-label="Hinweis zu den Aktionen">i<span class="info-tip-text">„Entwurf“ speichert ohne Dateierzeugung. „Rechnung erstellen“ erzeugt PDF + ZUGFeRD-XML. „Erstellen &amp; versenden“ sendet die Rechnung direkt{% if not smtp_configured %} (SMTP noch nicht konfiguriert – .eml-Download){% endif %}.</span></span></h2><div class="sub">Passt alles? Dann Rechnung erstellen – PDF und ZUGFeRD-XML entstehen sofort.</div></div>
+        <div><h2>Alles auf einen Blick <span class="info-tip" tabindex="0" aria-label="Hinweis zu den Aktionen">i<span class="info-tip-text">„Entwurf“ speichert ein Wasserzeichen-PDF ohne E-Rechnungs-XML; du kannst ihn später bearbeiten und finalisieren. „Rechnung erstellen“ erzeugt PDF + ZUGFeRD-XML. „Erstellen &amp; versenden“ sendet die Rechnung direkt{% if not smtp_configured %} (SMTP noch nicht konfiguriert – .eml-Download){% endif %}.</span></span></h2><div class="sub">Passt alles? Dann Rechnung erstellen – PDF und ZUGFeRD-XML entstehen sofort.</div></div>
       </div>
       <div class="form-card">
         <div class="info-list two">
@@ -227,6 +227,7 @@
         <span class="wizard-final" data-wizard-final>
           <button class="btn" type="submit" name="action" value="preview">Vorschau</button>
           <button class="btn" type="submit" name="action" value="draft">Entwurf</button>
+          <span class="hint">Entwürfe erhalten EN…; die Rechnungsnummer entsteht erst beim Finalisieren.</span>
           <button class="btn primary" type="submit" name="action" value="create">Rechnung erstellen</button>
           <button class="btn success" type="submit" name="action" value="send">Erstellen &amp; versenden</button>
         </span>

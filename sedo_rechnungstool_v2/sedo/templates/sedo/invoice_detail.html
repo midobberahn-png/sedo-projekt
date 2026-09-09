@@ -6,9 +6,9 @@
     <div class="sub">{{ invoice.customer }}{% if invoice.obj %} · {{ invoice.obj }}{% endif %} · {{ invoice.issue_date }}</div>
   </div>
   <div class="toolbar detail-actions">
-    {% if invoice.zugferd_file %}<a class="btn primary" href="{{ invoice.zugferd_file.url }}" target="_blank">ZUGFeRD öffnen</a>{% endif %}
+    {% if invoice.status != 'entwurf' and invoice.zugferd_file %}<a class="btn primary" href="{{ invoice.zugferd_file.url }}" target="_blank">ZUGFeRD öffnen</a>{% endif %}
     {% if invoice.pdf_file %}<a class="btn" href="{{ invoice.pdf_file.url }}" target="_blank">PDF</a>{% endif %}
-    {% if invoice.xml_file %}<a class="btn" href="{{ invoice.xml_file.url }}" target="_blank">XML</a>{% endif %}
+    {% if invoice.status != 'entwurf' and invoice.xml_file %}<a class="btn" href="{{ invoice.xml_file.url }}" target="_blank">XML</a>{% endif %}
     {% comment %}
     Die Knöpfe hatten bisher fast keine Bedingungen: Ein Entwurf ließ sich per
     E-Mail verschicken, auf ein ersetztes Original ließ sich zahlen, und der
@@ -25,9 +25,23 @@
     <form method="post" action="{% url 'sedo:invoice_reminder' invoice.pk 'dunning' %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Mahnung</button></form>
     {% endif %}
     {% if invoice.invoice_type != '457' and invoice.status != 'entwurf' and invoice.status != 'storniert' and invoice.status != 'korrigiert' and not invoice.active_storno and not invoice.active_correction %}<form method="post" action="{% url 'sedo:invoice_storno' invoice.pk %}" style="display:inline" onsubmit="return confirm('Stornorechnung zu {{ invoice.number }} erzeugen?');">{% csrf_token %}<button type="submit" class="btn danger">Storno</button></form>{% endif %}
-    {% if ausblenden_hindernis %}<button type="button" class="btn" disabled title="{{ ausblenden_hindernis }}">Löschen nicht möglich</button>{% else %}<a class="btn danger" href="{% url 'sedo:invoice_delete' invoice.pk %}">Löschen</a>{% endif %}
+    {% if ausblenden_hindernis %}<button type="button" class="btn" disabled title="{{ ausblenden_hindernis }}">Löschen nicht möglich</button>{% else %}<a class="btn danger" href="{% url 'sedo:invoice_delete' invoice.pk %}">{% if invoice.status == 'entwurf' %}Entwurf verwerfen{% else %}Löschen{% endif %}</a>{% endif %}
   </div>
 </div>
+
+{% if invoice.status == 'entwurf' %}
+<div class="card warning-card">
+  <h2>Entwurf {{ invoice.number }} – noch nicht ausgestellt</h2>
+  <p>Beim Erzeugen oder Speichern entsteht nur ein Wasserzeichen-PDF, kein E-Rechnungs-XML.
+     Die Rechnungsnummer wird erst beim Finalisieren vergeben; eine bereits vorhandene RE-Nummer bleibt erhalten.</p>
+  <div class="toolbar">
+    <a class="btn primary" href="{% url 'sedo:invoice_edit' invoice.pk %}">Bearbeiten</a>
+    <form method="post" action="{% url 'sedo:invoice_finalize' invoice.pk %}">
+      {% csrf_token %}<button class="btn success" type="submit">Rechnung finalisieren</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div class="detail-hero invoice-hero">
   <div class="hero-main">
