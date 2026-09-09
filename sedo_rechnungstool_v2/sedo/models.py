@@ -173,6 +173,15 @@ class Invoice(SoftDeleteModel):
 
     class Meta:
         ordering = ['-issue_date', '-number']
+        indexes = [
+            # Statusfilter; der linke Präfix deckt auch status allein ab.
+            models.Index(fields=['status', 'due_date'], name='invoice_status_due_idx'),
+            # Mahnauswahl: NOT IN(status) liefert keinen festen Status-Präfix.
+            # Fälligkeit zuerst; Statusprüfung im Index, nur aktive Belege.
+            models.Index(fields=['due_date', 'status'],
+                         condition=models.Q(deleted_at__isnull=True),
+                         name='invoice_active_due_status_idx'),
+        ]
         constraints = [
             # Idempotenz-Schutz für den GWG-Monatslauf: pro Kunde, Objekt und
             # Leistungszeitraum nur EINE aktive Monatsrechnung – auch wenn der
