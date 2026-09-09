@@ -67,6 +67,8 @@ from .invoices import (
     generate_invoice_files,
     invoice_to_core_row,
     mark_invoice_corrected,
+    finalisiere_entwurf,
+    entwurf_sperren,
 )
 from .mail import (
     create_email_draft,
@@ -109,6 +111,7 @@ __all__ = [
     'ensure_zahlung_erlaubt', 'ensure_versand_erlaubt', 'versand_nachweis',
     'ausblenden_hindernis',
     'ensure_offer_invoicing_allowed', 'mark_invoice_corrected',
+    'finalisiere_entwurf', 'entwurf_sperren',
     # pdf
     'generate_offer_pdf', 'generate_cashbook_pdf',
     # dunning

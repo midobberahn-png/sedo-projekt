@@ -13,9 +13,11 @@ from django.utils import timezone
 from ..core.rechnungslauf_core import (
     InvoicePosition, InvoiceRow, build_xml, create_pdf, embed_xml_into_pdf,
 )
+from ..audit import write_audit
 from ..models import AareonMapping, AppSetting, Invoice, InvoiceItem, Offer
 from .calc import recalc_invoice
-from .numbering import create_numbered_invoice
+from .numbering import create_numbered_invoice, save_with_unique_number
+from .invoice_files import datei_rueckweg, quarantiniere_dateien
 
 # Rechnungsart-Code → Titel (XML-TypeCode + PDF-Titel/Texte).
 DOC_TITLES = {'380': 'Rechnung', '384': 'Korrekturrechnung', '457': 'Stornorechnung'}
@@ -200,21 +202,20 @@ def ausblenden_hindernis(invoice: Invoice) -> str:
     return ''
 
 
-def mark_invoice_corrected(original: Invoice) -> None:
-    """Markiert die Ursprungsrechnung nach erfolgreicher Korrektur.
-
-    Guarded UPDATE: Greift nur, wenn das Original noch nicht korrigiert oder
-    storniert ist – zwei parallele Korrektur-Requests können den ensure-Guard
-    beide passieren, aber nur einer gewinnt dieses Update. Der Verlierer
-    bekommt einen WorkflowError und seine Transaktion rollt zurück.
-    """
-    updated = Invoice.objects.filter(pk=original.pk).exclude(
-        status__in=('korrigiert', 'storniert'),
-    ).update(status='korrigiert', updated_at=timezone.now())
-    if not updated:
-        raise WorkflowError(
-            f'Rechnung {original.number} wurde parallel bereits korrigiert oder storniert.')
-    original.refresh_from_db(fields=['status'])
+def mark_invoice_corrected(original: Invoice, request=None) -> None:
+    """Geschützter Belegzustandswechsel mit verpflichtendem Nachweis."""
+    vorher = original.status
+    with transaction.atomic():
+        updated = Invoice.objects.filter(pk=original.pk, status=vorher).exclude(
+            status__in=('entwurf', 'korrigiert', 'storniert'),
+        ).update(status='korrigiert', updated_at=timezone.now())
+        if not updated:
+            raise WorkflowError(
+                f'Rechnung {original.number} wurde parallel geändert oder ist bereits ersetzt.')
+        original.refresh_from_db(fields=['status'])
+        write_audit(request, 'update', original,
+                    f'Rechnung {original.number}: {vorher} → korrigiert', pflicht=True,
+                    metadata={'von': vorher, 'nach': 'korrigiert', 'anlass': 'korrektur'})
 
 
 def _is_ars_source(source: str) -> bool:
@@ -291,19 +292,23 @@ def invoice_to_core_row(invoice: Invoice) -> InvoiceRow:
 
 
 def generate_invoice_files(invoice: Invoice) -> Invoice:
-    """Erzeugt PDF, XML und ZUGFeRD-PDF für eine Rechnung und verknüpft sie.
+    """Entwurf: nur Wasserzeichen-PDF. Ausgestellt: PDF, XML, ZUGFeRD.
 
-    Datei-atomar: Alle drei Dateien entstehen zuerst vollständig in einem
-    Temp-Verzeichnis und werden erst nach Erfolg per ``os.replace`` in den
-    Zielordner übernommen. Scheitert ein Schritt (z. B. die ZUGFeRD-Einbettung),
-    bleiben im ``generated/``-Ordner keine halben Dateien zurück.
+    Erst vollständig im Temp-Ordner erzeugen. Bei Dateischreibfehlern werden
+    alte Dateien wiederhergestellt und neue außerhalb der Medien verwahrt.
+    Die kurze Schreibsperre verhindert das Erzeugen mit einem veralteten
+    In-Memory-Status nach parallelem Finalisieren oder Verwerfen.
     """
-    invoice = recalc_invoice(invoice)
-    # Gezielt nur die neu berechneten Beträge schreiben. Ein blankes save()
-    # schrieb den kompletten In-Memory-Zustand zurück – inklusive `status`.
-    # Das ist ein dritter Überschreib-Pfad neben den beiden aus F-07, und er
-    # läuft im Monatsabschluss über JEDE Rechnung des Monats.
-    invoice.save(update_fields=['net_total', 'vat_amount', 'gross_total', 'updated_at'])
+    with datei_rueckweg() as merken, transaction.atomic():
+        if not Invoice.objects.filter(pk=invoice.pk).update(updated_at=timezone.now()):
+            raise WorkflowError('Die Rechnung ist nicht mehr verfügbar.')
+        invoice.refresh_from_db()
+        merken(invoice)
+        return _generate_invoice_files_inner(invoice)
+
+
+def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
+    recalc_invoice(invoice)
     media_root = Path(settings.MEDIA_ROOT)
     media_root.mkdir(parents=True, exist_ok=True)
     out_dir = media_root / 'generated' / invoice.number
@@ -312,6 +317,7 @@ def generate_invoice_files(invoice: Invoice) -> Invoice:
     zf_path = out_dir / f'{invoice.number}_zugferd.pdf'
     due = invoice.due_date or (invoice.issue_date + timedelta(days=invoice.customer.payment_days))
     row = invoice_to_core_row(invoice)
+    is_draft = invoice.status == 'entwurf'
 
     def _at_midnight(day):
         return timezone.datetime.combine(day, timezone.datetime.min.time()) if day else None
@@ -321,31 +327,125 @@ def generate_invoice_files(invoice: Invoice) -> Invoice:
     ps_dt = _at_midnight(invoice.period_start)
     pe_dt = _at_midnight(invoice.period_end)
 
-    # Temp-Verzeichnis auf demselben Dateisystem wie media/ – nur dann ist
-    # os.replace ein atomares Rename statt einer Kopie.
     with tempfile.TemporaryDirectory(dir=media_root, prefix='.generating_') as tmp:
         tmp_dir = Path(tmp)
         tmp_pdf = tmp_dir / pdf_path.name
-        tmp_xml = tmp_dir / xml_path.name
-        tmp_zf = tmp_dir / zf_path.name
         create_pdf(row, tmp_pdf, issue_dt, ps_dt, pe_dt, due_dt)
-        xml_bytes = build_xml(row, issue_dt, ps_dt, pe_dt, due_dt)
-        tmp_xml.write_bytes(xml_bytes)
-        embed_xml_into_pdf(tmp_pdf, xml_bytes, tmp_zf)
-        # Erst jetzt – alles vollständig erzeugt – in den Zielordner übernehmen.
+        if not is_draft:
+            xml_bytes = build_xml(row, issue_dt, ps_dt, pe_dt, due_dt)
+            tmp_xml = tmp_dir / xml_path.name
+            tmp_zf = tmp_dir / zf_path.name
+            tmp_xml.write_bytes(xml_bytes)
+            embed_xml_into_pdf(tmp_pdf, xml_bytes, tmp_zf)
         out_dir.mkdir(parents=True, exist_ok=True)
         os.replace(tmp_pdf, pdf_path)
-        os.replace(tmp_xml, xml_path)
-        os.replace(tmp_zf, zf_path)
+        if is_draft:
+            # Nur bei diesem ausdrücklich bearbeiteten Entwurf: alte XMLs
+            # nicht bloß aus der UI verstecken, sondern aus MEDIA_ROOT nehmen.
+            alt = [xml_path, zf_path]
+            alt += [Path(f.path) for f in (invoice.xml_file, invoice.zugferd_file) if f]
+            quarantiniere_dateien(alt)
+            invoice.xml_file.name = ''
+            invoice.zugferd_file.name = ''
+        else:
+            os.replace(tmp_xml, xml_path)
+            os.replace(tmp_zf, zf_path)
+            invoice.xml_file.name = str(xml_path.relative_to(settings.MEDIA_ROOT))
+            invoice.zugferd_file.name = str(zf_path.relative_to(settings.MEDIA_ROOT))
     invoice.pdf_file.name = str(pdf_path.relative_to(settings.MEDIA_ROOT))
-    invoice.xml_file.name = str(xml_path.relative_to(settings.MEDIA_ROOT))
-    invoice.zugferd_file.name = str(zf_path.relative_to(settings.MEDIA_ROOT))
     invoice.save(update_fields=['pdf_file', 'xml_file', 'zugferd_file',
                                 'net_total', 'vat_amount', 'gross_total', 'updated_at'])
     return invoice
 
 
-def create_storno(original: Invoice) -> Invoice:
+def entwurf_sperren(invoice: Invoice, *, revision=None, finalisieren=False) -> None:
+    """Erstes SQL-Statement der Transaktion: Entwurf per guarded UPDATE sperren.
+
+    SQLite ignoriert SELECT FOR UPDATE. Dieser Schreibzugriff serialisiert
+    Bearbeiten/Finalisieren/Verwerfen; eine Formularrevision verhindert zudem
+    das Überschreiben von Änderungen aus einem zweiten Browserfenster.
+    """
+    qs = Invoice.objects.filter(pk=invoice.pk, status='entwurf')
+    if revision is not None:
+        from django.utils.dateparse import parse_datetime
+        try:
+            zeitpunkt = parse_datetime(revision)
+        except (ValueError, TypeError):
+            zeitpunkt = None
+        if zeitpunkt is None or timezone.is_naive(zeitpunkt):
+            raise WorkflowError('Ungültiger Bearbeitungsstand. Bitte die Seite neu laden.')
+        qs = qs.filter(updated_at=zeitpunkt)
+    neu = 'erstellt' if finalisieren else 'entwurf'
+    if not qs.update(status=neu, updated_at=timezone.now()):
+        raise WorkflowError('Der Entwurf wurde inzwischen geändert, finalisiert oder verworfen. '
+                            'Bitte die Seite neu laden.')
+    # Nicht nur status: eine ältere Python-Instanz darf keine veralteten
+    # Kopfdaten, Nummern oder Dateiverweise zurückschreiben.
+    invoice.refresh_from_db()
+
+
+def finalisiere_entwurf(invoice: Invoice, request=None, *, datum_heute=False,
+                       datum_bestaetigt=False, revision=None) -> Invoice:
+    """Finalisieren ohne Mailversand; Nummer, Belegkette und Audit atomar."""
+    try:
+        with datei_rueckweg() as merken, transaction.atomic():
+            entwurf_sperren(invoice, revision=revision, finalisieren=True)
+            heute = timezone.localdate()
+            altes_datum = invoice.issue_date
+            alte_nummer = invoice.number
+            if (altes_datum.year, altes_datum.month) < (heute.year, heute.month):
+                if not datum_bestaetigt:
+                    raise WorkflowError('Das Rechnungsdatum liegt in einem Vormonat. '
+                                        'Bitte das Datum vor dem Finalisieren ausdrücklich bestätigen.')
+            if invoice.invoice_type not in ('380', '384'):
+                raise WorkflowError('Dieser Entwurfstyp kann nicht als Rechnung finalisiert werden.')
+            if not invoice.items.exists():
+                raise WorkflowError('Der Entwurf benötigt mindestens eine Position.')
+            if invoice.obj_id and invoice.obj.customer_id != invoice.customer_id:
+                raise WorkflowError('Das gespeicherte Objekt gehört zu einem anderen Kunden.')
+            original = None
+            if invoice.invoice_type == '384':
+                original = Invoice.objects.filter(pk=invoice.reference_invoice_id).first()
+                if original is None:
+                    raise WorkflowError('Die Ursprungsrechnung der Korrektur ist nicht mehr verfügbar.')
+                # ensure_correction_allowed sieht nach dem Statuswechsel die
+                # Korrektur selbst. Deshalb explizit nur FREMDE Folgebelege prüfen.
+                if (original.status in ('entwurf', 'storniert', 'korrigiert')
+                        or original.invoice_type == '457'
+                        or original.followups.filter(deleted_at__isnull=True,
+                                                     invoice_type__in=('384', '457'))
+                        .exclude(pk=invoice.pk).exclude(status='entwurf').exists()):
+                    raise WorkflowError('Die Ursprungsrechnung wurde inzwischen ersetzt oder storniert.')
+            if datum_heute:
+                tage = ((invoice.due_date - altes_datum).days if invoice.due_date
+                        else invoice.customer.payment_days)
+                if tage < 0:
+                    raise WorkflowError('Ungültiges Zahlungsziel. Bitte den Entwurf zuerst bearbeiten.')
+                invoice.issue_date = heute
+                invoice.due_date = heute + timedelta(days=tage)
+                invoice.save(update_fields=['issue_date', 'due_date', 'updated_at'])
+            if invoice.number.startswith('EN'):
+                save_with_unique_number(invoice, 'RE')
+            if original is not None:
+                mark_invoice_corrected(original, request=request)
+            write_audit(request, 'update', invoice,
+                        f'Entwurf {alte_nummer} als Rechnung {invoice.number} finalisiert',
+                        pflicht=True, metadata={
+                            'von': 'entwurf', 'nach': 'erstellt', 'anlass': 'finalisieren',
+                            'alte_nummer': alte_nummer, 'neue_nummer': invoice.number,
+                            'altes_rechnungsdatum': altes_datum.isoformat(),
+                            'neues_rechnungsdatum': invoice.issue_date.isoformat(),
+                        })
+            merken(invoice)
+            generate_invoice_files(invoice)
+        return invoice
+    except Exception:
+        # Django setzt Python-Objektfelder beim Rollback nicht zurück.
+        invoice.refresh_from_db()
+        raise
+
+
+def create_storno(original: Invoice, request=None) -> Invoice:
     """Erzeugt eine Stornorechnung (TypeCode 457) zur Ursprungsrechnung.
 
     Atomar: Schlägt ein Schritt fehl (auch die PDF-/XML-Erzeugung), wird alles
@@ -356,7 +456,7 @@ def create_storno(original: Invoice) -> Invoice:
     ensure_storno_allowed(original)
     try:
         with transaction.atomic():
-            return _create_storno_inner(original)
+            return _create_storno_inner(original, request=request)
     except IntegrityError as exc:
         # Zwei parallele Requests können den ensure-Guard beide passieren –
         # der Unique-Constraint (max. EIN aktives Storno je Original) stoppt
@@ -370,7 +470,7 @@ def create_storno(original: Invoice) -> Invoice:
         raise
 
 
-def _create_storno_inner(original: Invoice) -> Invoice:
+def _create_storno_inner(original: Invoice, request=None) -> Invoice:
     storno = create_numbered_invoice(
         invoice_type='457',
         customer=original.customer,
@@ -396,9 +496,17 @@ def _create_storno_inner(original: Invoice) -> Invoice:
             leistungsart_id=item.leistungsart_id,
             leistungsart_text=item.leistungsart_text,
         )
+    vorher = original.status
+    updated = Invoice.objects.filter(pk=original.pk, status=vorher).exclude(
+        status__in=('entwurf', 'korrigiert', 'storniert'),
+    ).update(status='storniert', updated_at=timezone.now())
+    if not updated:
+        raise WorkflowError('Die Ursprungsrechnung wurde parallel geändert.')
+    original.refresh_from_db(fields=['status'])
+    write_audit(request, 'update', original,
+                f'Rechnung {original.number}: {vorher} → storniert ({storno.number})',
+                pflicht=True, metadata={'von': vorher, 'nach': 'storniert', 'anlass': 'storno'})
     generate_invoice_files(storno)
-    original.status = 'storniert'
-    original.save(update_fields=['status', 'updated_at'])
     return storno
 
 

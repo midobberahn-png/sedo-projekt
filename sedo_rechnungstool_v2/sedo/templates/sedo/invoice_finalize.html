@@ -1,0 +1,48 @@
+{% extends 'sedo/base.html' %}
+{% block content %}
+<style>
+.draft-workflow .draft-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.draft-workflow .field-wide {grid-column:1/-1;}
+.draft-workflow .draft-position {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.draft-workflow .draft-position legend {font-weight:700;padding:0 8px;}
+.draft-workflow .draft-check {display:flex;align-items:center;gap:8px;grid-column:1/-1;}
+.draft-workflow .draft-check input {width:18px;min-height:18px;height:18px;margin:0;}
+.draft-workflow .draft-check label {margin:0;}
+.draft-workflow .btn {white-space:normal;text-align:center;max-width:100%;}
+@media(max-width:760px){
+ body.sidebar-cover .main:has(.draft-workflow) {padding-left:90px!important;padding-right:12px!important;}
+ .draft-workflow .draft-fields,.draft-workflow .draft-position {grid-template-columns:minmax(0,1fr);}
+ .draft-workflow h1 {font-size:26px;overflow-wrap:anywhere;}
+}
+</style>
+<div class="draft-workflow">
+<div class="topbar">
+  <div><div class="eyebrow">Entwurf abschließen</div><h1>Rechnung finalisieren</h1>
+    <p class="sub">{{ invoice.number }} · {{ invoice.customer }} · {{ invoice.gross_total }} €</p></div>
+</div>
+<div class="card">
+  <h2>Aus dem Entwurf wird eine ausgestellte Rechnung</h2>
+  <p>Nach dem Finalisieren ist dieser Beleg nicht mehr direkt bearbeitbar. Änderungen erfolgen dann über Korrektur oder Storno. Es werden PDF, XML und ZUGFeRD erzeugt; es wird keine E-Mail versendet.</p>
+  <p>Aktuelles Rechnungsdatum: <strong>{{ invoice.issue_date|date:'d.m.Y' }}</strong>.
+    Leistungszeitraum: {{ invoice.period_start|date:'d.m.Y'|default:'—' }} – {{ invoice.period_end|date:'d.m.Y'|default:'—' }}.</p>
+  <p>Eine EN-Entwurfsnummer wird jetzt durch eine RE-Rechnungsnummer ersetzt. Eine bereits vorhandene RE-Nummer bleibt unverändert.</p>
+  <form method="post" action="{% url 'sedo:invoice_finalize' invoice.pk %}">
+    {% csrf_token %}
+    <input type="hidden" name="confirm" value="1">
+    <input type="hidden" name="revision" value="{{ revision }}">
+    {% if vormonat %}
+    <div class="note-box" role="note">
+      <strong>Das Rechnungsdatum liegt in einem Vormonat.</strong>
+      <p>Ohne Häkchen bestätigst du das bestehende Datum {{ invoice.issue_date|date:'d.m.Y' }}. Es wird nicht automatisch geändert.</p>
+      <label class="check-line" for="datum-heute"><input type="checkbox" id="datum-heute" name="datum_heute" value="1"> Rechnungsdatum auf heute setzen ({{ heute|date:'d.m.Y' }})</label>
+      <p class="hint">Dabei verschiebt sich die Fälligkeit um denselben Zeitraum. Das vereinbarte Zahlungsziel und der Leistungszeitraum bleiben erhalten.</p>
+    </div>
+    {% endif %}
+    <div class="toolbar mt-3">
+      <a class="btn" href="{% url 'sedo:invoice_detail' invoice.pk %}">Abbrechen</a>
+      <button class="btn primary" type="submit">Datum bestätigen und Rechnung finalisieren</button>
+    </div>
+  </form>
+</div>
+</div>
+{% endblock %}
