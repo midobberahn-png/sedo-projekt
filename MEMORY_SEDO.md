@@ -1,6 +1,24 @@
 # MEMORY.md – SEDO Rechnungstool
 
-> Projektspezifisches Gedächtnis. Zuletzt aktualisiert: 14.08.2026 nachts (v3.23.1 Concurrency-Patch nach Mireks drittem Review)
+> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 09.09.2026, Etappe 5. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+
+---
+
+## Umsetzung 09.09.2026 – Welle 2, Etappe 5 (Belegketten)
+
+Basis: geprüfter Etappe-4/6-Commit `6e0f7ae`; eigener Folgebranch `review-v2-etappe5-belegketten`.
+**Kein Merge, kein Produktiv-Deploy und KEINE Bestandsreparatur auf der Live-DB ausgeführt.**
+
+- `python manage.py belegketten_pruefen` liest nur den Bestand; `--json` liefert Schema 1.
+- `--reparieren` übernimmt belegbare Statuskorrekturen in A/B und falsch bezahlte Stornos (D). Ein Lauf ist vollständig atomar; ein fehlgeschlagener Pflicht-Audit oder Constraint rollt ALLE Änderungen dieses Laufs zurück.
+- Aktiv bedeutet wie in Etappe 4/6: Folgebeleg ist nicht ausgeblendet und nicht Entwurf. Storno hat Vorrang; gleichzeitig vorhandene Korrektur bleibt als manueller Prüfhinweis samt beiden Nummern sichtbar.
+- Gruppe B berechnet den endgültigen Zahlstatus zunächst rein lesend, dann ein guarded UPDATE und ein Audit mit tatsächlichem von/nach/anlass. Kein ungeschütztes Zwischen-save().
+- Gruppe C (XML-/ZUGFeRD-Verweise) und Entwürfe älter als 30 Kalendertage (D, ab created_at) werden ausschließlich gemeldet. Keine Dateien öffnen, löschen oder verschieben, keine Nummern vergeben. EN-/Entwurfswidersprüche werden niemals automatisch ausgestellt.
+- SQLite-Schreibsperre vor Aufnahme der Befunde; Status-/Revisions-Guard vor jeder Änderung. Nicht-SQLite-Reparatur wird ausdrücklich abgewiesen, statt eine ungeprüfte Sperrwirkung zu behaupten.
+- Sicherheitsseite: rein lesende Zeile „Belegketten in Ordnung“ zählt A/B; CLI zeigt zusätzlich C/D. Kein Reparaturknopf und keine neue HTTP-Schreibroute.
+- Neue Tests: `sedo/tests/test_belegketten.py` (60). Gesamtsuite lokal: 500 grün, neue Gegenproben 17/17 sowie bisherige Entwurfsgegenproben 17/17 belegt. Echte zweite SQLite-Verbindung im separaten Prozess, query_only-Trockenlauf, Ganzlauf-Rollback und GWG-Constraint-Konflikt geprüft.
+- Neue Anleitung: `review_v2/welle2/etappe5_umsetzung.md`. CI prüft als gestapelter PR gegen Etappe 4/6 zusätzlich Django 5.2 und 6.0; Ergebnisse in den PR-Checks.
+- Welle 2: Etappen 1–6 im Review-Code umgesetzt. Etappe 7 bleibt optional; Bestandslauf erst nach eigener Sicherung/Freigabe. Die historischen Aufgabenstände weiter unten sind nicht der aktuelle Implementierungsstand.
 
 ---
 

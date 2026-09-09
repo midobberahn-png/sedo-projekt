@@ -2710,6 +2710,18 @@ def security_status(request):
         'value': 'ok' if not audit_fehler else 'letzter Versuch fehlgeschlagen',
         'hint': audit_fehler or 'Storno, Zahlungen und Ausblenden werden nachweisbar protokolliert.',
     })
+    # Etappe 5: dieselbe rein lesende Prüfung wie im Verwaltungsbefehl.
+    # Ein GET repariert nichts und schreibt keine Status-/Audit-Einträge.
+    from .services.belegketten import pruefe_belegketten
+    belegketten = pruefe_belegketten()['zusammenfassung']
+    checks.append({
+        'label': 'Belegketten in Ordnung',
+        'ok': belegketten['kettenfehler'] == 0,
+        'value': belegketten['kettenfehler'],
+        'hint': ('Vorher Trockenlauf und Sicherung; bitte python manage.py '
+                 'belegketten_pruefen --reparieren ausführen lassen. '
+                 'Widersprüchliche Folgebelege zusätzlich manuell prüfen.'),
+    })
     ok_count = len([c for c in checks if c['ok']])
     recent_logs = AuditLog.objects.select_related('user')[:20]
     context = {

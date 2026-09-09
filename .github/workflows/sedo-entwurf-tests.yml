@@ -2,7 +2,7 @@ name: SEDO Regression und Gegenproben
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, review-v2-etappe4-6]
   workflow_dispatch:
 
 permissions:
@@ -60,7 +60,9 @@ jobs:
           python manage.py test sedo --noinput 2>&1 | tee "$RUNNER_TEMP/sedo-pruefung/tests.log"
       - name: Gegenproben auf temporaeren Quellkopien
         working-directory: sedo_rechnungstool_v2
-        run: python tools/gegenproben_entwurf.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben"
+        run: |
+          python tools/gegenproben_entwurf.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_entwurf"
+          python tools/gegenproben_belegketten.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_belegketten"
       - name: Keine neue Modellmigration
         working-directory: sedo_rechnungstool_v2
         run: |
