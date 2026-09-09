@@ -59,6 +59,15 @@
   </div>
 </div>
 
+<div class="card">
+  <h2>Belegketten prüfen</h2>
+  <p>Die Prüfung oben liest nur den Bestand. Sie verändert keine Rechnungen und keine Dateien.</p>
+  <p class="hint">Der Befehl <code>python manage.py belegketten_pruefen</code> zeigt den ausführlichen Trockenlauf.
+    Erst <code>--reparieren</code> übernimmt belegbare Statuskorrekturen mit Pflicht-Protokoll.
+    Vorher die App beenden und eine Sicherung erstellen. Entwurfs-XML-Verweise und Entwürfe älter als
+    30 Tage werden nur gemeldet; widersprüchliche Folgebelege bleiben ein manueller Prüfauftrag.</p>
+</div>
+
 <div class="card warn-card">
   <h2>Bankanbindung: Mindeststandard</h2>
   <p>Vor echter Bankanbindung sollten Rollen/Rechte, Audit-Log, externe verschlüsselte Backups und eine sichere Ablage für Zugangsdaten aktiv sein. Bank-PINs dürfen nicht im Klartext in der Datenbank, in ZIP-Backups oder in Logs landen.</p>
