@@ -1,6 +1,22 @@
 # MEMORY.md – SEDO Rechnungstool
 
-> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 09.09.2026, Etappe 5. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 09.09.2026, Etappe 7. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+
+---
+
+## Aktueller Stand – Etappe 7 (Indizes)
+
+**Betriebsstatus laut Mirek:** Noch kein Echtbetrieb; sämtliche vorhandenen Daten sind Testdaten. Historische Bezeichnungen als Live-/Produktivbestand weiter unten sind überholt.
+
+- PR #1 (Etappen 4/6) und PR #2 (Etappe 5) sind in `main` integriert: `cd42c2d6682cf6b410ce536be67a2a58a869811a`. Kein lokales Desktop-Deployment.
+- Die Bestandsprobe auf Kopien der Haupt- und GWG-Datenbank ist abgeschlossen: 0 bzw. 9 Rechnungen, keine A–D-Befunde, keine Reparatur nötig. Das Reparaturverfahren wurde separat mit markierten synthetischen Fehlerfällen geprüft.
+- Etappe 7 ergänzt **0013_invoice_query_indexes**, genau zwei AddIndex-Operationen. Keine Felder, Constraints, Statuswerte oder Belegdateien ändern; kein Tabellen-Neuaufbau.
+- Bewusste Präzisierung des alten Plans: `invoice_status_due_idx(status, due_date)` bleibt. Der redundante Einzelindex auf status entfällt. Stattdessen `invoice_active_due_status_idx(due_date, status) WHERE deleted_at IS NULL` für die tatsächliche NOT-IN-Mahnabfrage. Abfragen und Geschäftslogik bleiben unverändert.
+- Nachweise: 15 neue Tests, lokaler Gesamtlauf **515 Tests grün**. Vier neue Index-Gegenproben; bestehende Entwurfs-/Belegketten-Gegenproben weiterhin Teil der CI. Keine timingabhängigen Testbehauptungen.
+- Auf beiden vorhandenen Testbestandskopien: 0012 → 0013 → 0012 → 0013 erfolgreich, fachliche Tabellen und Tabellen-Schema unverändert; wiederholtes migrate byteidentisch. Originaldateien nicht überschrieben.
+- Messwerkzeug: `tools/benchmark_invoice_indexes.py` erzeugt ausschließlich eine neue synthetische Temp-DB. SQL-Pläne, Ergebnis-Hashes, Lese-/Schreibzeiten und belegte Seiten werden protokolliert. Laufzeiten sind keine Garantie für die ganze Anwendung; Indizes kosten Platz und Schreibarbeit.
+- Umsetzung und Anwendung: `review_v2/welle2/etappe7_umsetzung.md`. Der nachfolgende PR/CI-Nachweis dokumentiert den Veröffentlichungsstand; diese Etappe ist hier nicht als in main integriert oder auf dem Mac installiert behauptet.
+- Etappen 1–7 sind damit im jeweiligen Implementierungsstand umgesetzt. Welle 3/Feldtrennung und die übrigen Review-Funde bleiben ausdrücklich separat; keine pauschale Freigabe aller offenen Fehler.
 
 ---
 
