@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from sedo.models import Customer, DunningDocument, Invoice
+from .file_fixtures import isolate_files
 from sedo.services import (
     WorkflowError,
     ensure_dunning_allowed,
@@ -36,6 +37,7 @@ def _overdue_invoice(customer, number, days_overdue=30):
 
 class DunningStageTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='Kunde', street='Weg 1',
                                                 postcode='39104', city='Magdeburg')
         self.invoice = _overdue_invoice(self.customer, 'RE2026070001')
@@ -84,6 +86,7 @@ class DunningStageTests(TestCase):
 
 class DunningDuplicateLockTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='Kunde', street='Weg 1',
                                                 postcode='39104', city='Magdeburg')
         self.invoice = _overdue_invoice(self.customer, 'RE2026070002')

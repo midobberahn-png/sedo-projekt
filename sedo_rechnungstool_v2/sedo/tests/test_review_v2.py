@@ -796,6 +796,8 @@ class F11F66BatchMahnungNurMitAuswahlTests(TestCase):
     """
 
     def setUp(self):
+        from .file_fixtures import isolate_files
+        isolate_files(self)
         from datetime import timedelta
 
         self.user = get_user_model().objects.create_user(

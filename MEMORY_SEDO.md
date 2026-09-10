@@ -1,6 +1,18 @@
 # MEMORY.md – SEDO Rechnungstool
 
-> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, F-18 / Belegschutz. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, Mahnwächter nach F-18. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+
+---
+
+## Aktueller Stand – Mahnwächter (10.09.2026)
+
+- F-18 / PR #4 ist in `main` integriert: `50611bcdf653077ef16a89efc246725198817a20`; darauf baut dieser Block auf. Kein Mac-Deployment. Vorhandene Daten laut Mirek ausschließlich Testdaten, kein Echtbetrieb.
+- Alle Mahnwege prüfen ausgestellte, nicht ausgeblendete Storno-/Korrekturfolgen zusätzlich zum Status. Folgeentwürfe blockieren das Original nicht. Keine alte Python-/Prefetch-Instanz darf die Prüfung umgehen.
+- Lesende Kandidatenauswahl mit NOT EXISTS; Detailseite blendet gesperrte Mahnaktionen mit erklärtem Grund aus. Verbindlicher Guard direkt im Generator unter SQLite-Schreibsperre, weitere Graph-/Statusbedingung am UPDATE.
+- Mahn-PDF, Belegzeile, Status und Einzel-Pflichtaudit in einem Vorgang. Exklusive Datei-Veröffentlichung; Fehler am DB-Abschluss nehmen nur eigene neue Dateien in Quarantäne zurück. Bestehende PDFs nicht überschreiben. Keine gemeinsame Dateisystem-/DB-Crashgarantie.
+- `auto` bestimmt Fälligkeit und Stufe erneut innerhalb der Sperre. Manuelle Fälligkeits-/Stufenregeln (F-68) bleiben bestehen. Kein E-Mail-Versand durch diese Services.
+- Lokal 609 Tests (47 neu) und 63 Mutationsgegenproben (14 neu) bestanden; zusätzlich drei koordinierte Datei-SQLite-Gegenläufe. Konkreter PR-/CI-/Integrationsstand folgt im Abschlussvermerk; nicht mit einer lokalen Installation verwechseln.
+- Anleitung/Prüfgrenzen: `review_v2/welle2/mahnwaechter.md`. Keine neue Modellmigration über 0013 hinaus. Abo-Zahlungsziel 0, Feldtrennung und übrige Review-Funde bleiben separat.
 
 ---
 
