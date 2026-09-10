@@ -60,6 +60,8 @@ jobs:
           echo "SEDO_HOME=$RUNNER_TEMP/h2-home" >> "$GITHUB_ENV"
           git rev-parse HEAD > "$RUNNER_TEMP/h2-evidence/commit.txt"
           git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/h2-evidence/tree.txt"
+          git status --porcelain --untracked-files=no | tee "$RUNNER_TEMP/h2-evidence/checkout-status.txt"
+          git diff --stat | tee "$RUNNER_TEMP/h2-evidence/checkout-diff.txt"
           python tools/teststand.py validate
       - name: Buildvertrag und vier Gegenproben
         run: |
@@ -69,6 +71,7 @@ jobs:
       - name: Zwei reproduzierbare Quellpakete
         run: |
           set -euo pipefail
+          git status --porcelain --untracked-files=no | tee "$RUNNER_TEMP/h2-evidence/prepackage-status.txt"
           python tools/teststand.py source --output "$RUNNER_TEMP/h2-source-a"
           python tools/teststand.py source --output "$RUNNER_TEMP/h2-source-b"
           python - <<'PY'
