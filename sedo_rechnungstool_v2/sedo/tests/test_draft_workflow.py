@@ -121,7 +121,9 @@ class DraftWorkflowTests(TestCase):
 
     def test_f13_bestands_xml_wird_erhalten_aber_nicht_mehr_ausgeliefert(self):
         inv = self.draft(prefix='RE', status='erstellt')
-        generate_invoice_files(inv)
+        # Historischer Entwurf: damals gab es noch keinen Archivnachweis.
+        with patch('sedo.services.invoices.versiegele_archiv'):
+            generate_invoice_files(inv, erstmalig=True)
         xml_path = Path(inv.xml_file.path)
         xml_bytes = xml_path.read_bytes()
         Invoice.objects.filter(pk=inv.pk).update(status='entwurf')
@@ -145,7 +147,10 @@ class DraftWorkflowTests(TestCase):
         generate_invoice_files(inv)
         alt = inv.number
         alt_pdf = Path(inv.pdf_file.path)
-        finalisiere_entwurf(inv)
+        try:
+            finalisiere_entwurf(inv)
+        except WorkflowError as exc:
+            self.fail(f'Ein gültiger Entwurf muss finalisiert werden können: {exc}')
         self.assertEqual(inv.status, 'erstellt')
         self.assertTrue(inv.number.startswith('RE'))
         self.assertNotEqual(inv.number, alt)
@@ -481,7 +486,15 @@ class DraftWorkflowTests(TestCase):
         inv = self.draft()
         generate_invoice_files(inv)
         before = self.snapshot(inv), self.generated(), next_number('RE')
-        with patch('sedo.models.AuditLog.objects.create', side_effect=RuntimeError('Audit absichtlich defekt')):
+        real_create = AuditLog.objects.create
+        def fail_finalization_audit(**kwargs):
+            # Nur der Statusnachweis soll scheitern, nicht das unabhängige
+            # neue Archivprotokoll. Sonst könnte dessen Pflicht den fehlenden
+            # Status-Pflichtschutz in der Gegenprobe verdecken.
+            if kwargs.get('metadata', {}).get('anlass') == 'finalisieren':
+                raise RuntimeError('Audit absichtlich defekt')
+            return real_create(**kwargs)
+        with patch('sedo.models.AuditLog.objects.create', side_effect=fail_finalization_audit):
             with self.assertRaises(AuditWriteError):
                 finalisiere_entwurf(inv)
         self.assertEqual((self.snapshot(inv), self.generated(), next_number('RE')), before)
@@ -501,8 +514,8 @@ class DraftWorkflowTests(TestCase):
         generate_invoice_files(inv)
         before = self.snapshot(inv), self.generated(), next_number('RE'), AuditLog.objects.count()
         real = generate_invoice_files
-        def fail_after(invoice):
-            real(invoice)
+        def fail_after(invoice, **kwargs):
+            real(invoice, **kwargs)
             raise RuntimeError('Fehler nach Veröffentlichung')
         with patch('sedo.services.invoices.generate_invoice_files', side_effect=fail_after):
             with self.assertRaises(RuntimeError):
@@ -515,8 +528,8 @@ class DraftWorkflowTests(TestCase):
         generate_invoice_files(inv)
         before = self.generated()
         real = generate_invoice_files
-        def fail_after(invoice):
-            real(invoice)
+        def fail_after(invoice, **kwargs):
+            real(invoice, **kwargs)
             raise RuntimeError('Nach Dateischreiben')
         with patch('sedo.services.invoices.generate_invoice_files', side_effect=fail_after):
             with self.assertRaises(RuntimeError):
@@ -559,7 +572,7 @@ class DraftWorkflowTests(TestCase):
 
     def test_f13_monatsabschluss_schliesst_entwurf_aus(self):
         inv = self.draft(prefix='RE', status='erstellt')
-        generate_invoice_files(inv)
+        generate_invoice_files(inv, erstmalig=True)
         draft = self.draft()
         generate_invoice_files(draft)
         response = self.client.get(reverse('sedo:month_close'), {'month': self.today.strftime('%Y-%m')})
@@ -581,6 +594,21 @@ class DraftWorkflowTests(TestCase):
             self.assertIsNone(Payment.objects.get(external_id=inv.number).invoice_id)
 
 
+    def test_f13_guard_aktualisiert_python_instanz(self):
+        from sedo.services.invoices import entwurf_sperren
+        inv = self.draft()
+        entwurf_sperren(inv, finalisieren=True)
+        self.assertEqual(inv.status, 'erstellt')
+
+    def test_f13_guard_verlangt_gespeicherten_entwurf(self):
+        from sedo.services.invoices import entwurf_sperren
+        inv = self.draft(prefix='RE', status='erstellt')
+        before = self.snapshot(inv)
+        with self.assertRaises(WorkflowError):
+            entwurf_sperren(inv, finalisieren=True)
+        self.assertEqual(self.snapshot(inv), before)
+
+
 class DraftConcurrencyTests(TransactionTestCase):
     """Zwei echte DB-Verbindungen, nicht zwei aufeinanderfolgende Doppelklicks."""
     def test_f13_zwei_parallel_finalisierungen_erzeugen_nur_eine_rechnung(self):
@@ -592,11 +620,11 @@ class DraftConcurrencyTests(TransactionTestCase):
         reached, release = threading.Event(), threading.Event()
         results = []
         real = generate_invoice_files
-        def hold(invoice):
+        def hold(invoice, **kwargs):
             reached.set()
             if not release.wait(10):
                 raise RuntimeError('Paralleltest: Freigabe fehlt')
-            return real(invoice)
+            return real(invoice, **kwargs)
         def worker():
             close_old_connections()
             try:

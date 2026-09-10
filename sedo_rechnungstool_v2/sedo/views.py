@@ -43,6 +43,8 @@ from .services import (
     ai_review_positions, check_positions_local,
 )
 from .services.invoice_files import datei_rueckweg
+from .services.invoice_archive import lese_archivdatei, pruefe_archiv
+from .services.workflow_errors import BelegArchivFehler
 from .services.mail import invoice_email_subject_body
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
@@ -297,14 +299,13 @@ def _preview_from_forms(form, formset, title='Entwurfsansicht'):
 
 def _create_invoice_email_file(invoice: Invoice):
     """Erzeugt eine .eml-Datei zur Rechnung und gibt den Pfad zurück."""
-    generate_invoice_files(invoice)
+    attachment = lese_archivdatei(invoice)
     recipient = invoice.customer.email or ''
     if not recipient:
         return None
     subject, body = invoice_email_subject_body(invoice)
-    attachment = invoice.zugferd_file.path if invoice.zugferd_file else None
     out_dir = Path(settings.MEDIA_ROOT) / 'emails' / invoice.number
-    return create_email_draft(recipient, subject, body, Path(attachment) if attachment else None, out_dir, f'{invoice.number}_email')
+    return create_email_draft(recipient, subject, body, attachment, out_dir, f'{invoice.number}_email')
 
 
 def _normalize_item_positions(items) -> None:
@@ -916,7 +917,7 @@ def invoice_create(request):
                 # WorkflowError/Unique-Constraint decken dabei auch den Fall
                 # ab, dass zwei parallele Requests die ensure-Guards passieren.
                 try:
-                    with transaction.atomic():
+                    with datei_rueckweg() as merken, transaction.atomic():
                         # Kollisionssichere Rechnungsnummer vergeben und speichern
                         save_with_unique_number(inv, 'EN' if action == 'draft' else 'RE')
                         formset.instance = inv
@@ -924,7 +925,8 @@ def invoice_create(request):
                         _normalize_item_positions(inv.items.all())
                         recalc_invoice(inv)
                         inv.save()
-                        generate_invoice_files(inv)
+                        merken(inv)
+                        generate_invoice_files(inv, erstmalig=action != 'draft', request=request)
                         if src_offer:
                             # Guarded UPDATE: nur wenn das Angebot noch nicht
                             # verrechnet ist – sonst rollt alles zurück.
@@ -958,6 +960,11 @@ def invoice_create(request):
                                                 f'bereits eine Korrekturrechnung erzeugt (paralleler Vorgang).')
                         return redirect('sedo:invoice_detail', src_invoice.pk)
                     raise
+                except Exception:
+                    logger.exception('Rechnungserstellung einschließlich Archiv zurückgerollt')
+                    messages.error(request, 'Rechnung nicht erstellt: Dateien oder Pflichtprotokoll '
+                                            'konnten nicht gespeichert werden.')
+                    return redirect('sedo:invoice_list')
                 if request.POST.get('save_as_recurring'):
                     tmpl_title = request.POST.get('recurring_title') or ''
                     tmpl = _create_recurring_template_from_invoice(inv, tmpl_title.strip() or None)
@@ -969,7 +976,11 @@ def invoice_create(request):
                     # Erst die Datei, dann der Status (F-115): vorher stand die
                     # Rechnung auf 'versendet', bevor überhaupt feststand, ob
                     # der Entwurf erzeugt werden konnte.
-                    eml_path = _create_invoice_email_file(inv)
+                    try:
+                        eml_path = _create_invoice_email_file(inv)
+                    except (WorkflowError, OSError) as exc:
+                        messages.error(request, f'Rechnung erstellt, E-Mail-Entwurf abgebrochen: {exc}')
+                        return redirect('sedo:invoice_detail', inv.pk)
                     if eml_path and Path(eml_path).exists() and inv.status == 'erstellt':
                         inv.status = 'versendet'
                         inv.save(update_fields=['status', 'updated_at'])
@@ -1122,6 +1133,7 @@ def invoice_detail(request, pk):
     return render(request, 'sedo/invoice_detail.html', {
         'invoice': invoice,
         'invoice_payments': payments,
+        'archiv_status': pruefe_archiv(invoice) if invoice.status != 'entwurf' else None,
         # Leerer String = Ausblenden erlaubt; sonst der Grund im Klartext für
         # den deaktivierten Knopf (F-14).
         'ausblenden_hindernis': ausblenden_hindernis(invoice),
@@ -1132,9 +1144,20 @@ def invoice_detail(request, pk):
 @require_POST
 def invoice_generate(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
-    generate_invoice_files(invoice)
-    write_audit(request, 'generate', invoice, 'Rechnungsdateien neu erzeugt')
-    messages.success(request, 'Rechnungsdateien wurden neu erzeugt.')
+    try:
+        generate_invoice_files(invoice, request=request)
+    except WorkflowError as exc:
+        messages.error(request, str(exc))
+    except Exception:
+        logger.exception('Dateierzeugung zurückgerollt')
+        messages.error(request, 'Dateien konnten nicht gespeichert werden. Vorhandene Originale bleiben erhalten.')
+    else:
+        if invoice.status == 'entwurf':
+            write_audit(request, 'generate', invoice, 'Entwurfs-PDF neu erzeugt')
+            messages.success(request, 'Entwurfs-PDF wurde neu erzeugt.')
+        else:
+            messages.info(request, 'Ausgestellte Belegdateien bleiben unverändert. '
+                                   'Für Änderungen bitte eine Korrekturrechnung erstellen.')
     return redirect('sedo:invoice_detail', pk)
 
 
@@ -1154,22 +1177,18 @@ def invoice_email(request, pk):
         messages.error(request, str(fehler))
         return redirect('sedo:invoice_detail', pk)
 
-    # Nur erzeugen, was fehlt (F-18). Vorher schrieb JEDER Versand die drei
-    # Dateien neu – eine zwischenzeitlich geänderte Kundenadresse oder ein
-    # geändertes Aareon-Mapping landete damit auf einem längst ausgestellten
-    # Beleg, und der Kunde bekam beim zweiten Zusenden ein anderes Dokument als
-    # beim ersten. Wer bewusst neu erzeugen will, hat dafür einen eigenen Knopf.
-    _archiv_da = bool(invoice.zugferd_file and getattr(invoice.zugferd_file, 'path', None)
-                      and Path(invoice.zugferd_file.path).exists())
-    if not _archiv_da:
-        generate_invoice_files(invoice)
+    # Nur gespeicherte Originalbytes; fehlendes Archiv ist kein Generierungsauftrag.
+    try:
+        attachment = lese_archivdatei(invoice)
+    except WorkflowError as exc:
+        messages.error(request, str(exc))
+        return redirect('sedo:invoice_detail', pk)
     recipient = invoice.customer.email
     subject, body = invoice_email_subject_body(invoice)
     # Optionaler individueller Begleittext (z. B. per Magic-Tone erzeugt und geprüft)
     custom_body = (request.POST.get('body') or '').strip()
     if custom_body:
         body = custom_body
-    attachment = Path(invoice.zugferd_file.path) if invoice.zugferd_file else None
 
     # Wenn SMTP konfiguriert: direkt senden, sonst .eml zum Download
     if smtp_is_configured():
@@ -1195,7 +1214,11 @@ def invoice_email(request, pk):
     else:
         # Fallback: .eml-Datei zum Download
         out_dir = Path(settings.MEDIA_ROOT) / 'emails' / invoice.number
-        eml_path = create_email_draft(recipient, subject, body, attachment, out_dir, f'{invoice.number}_email')
+        try:
+            eml_path = create_email_draft(recipient, subject, body, attachment, out_dir, f'{invoice.number}_email')
+        except OSError as exc:
+            messages.error(request, f'E-Mail-Entwurf konnte nicht gespeichert werden: {exc}')
+            return redirect('sedo:invoice_detail', pk)
         if not eml_path or not Path(eml_path).exists():
             # Erst prüfen, dann Status setzen: vorher stand die Rechnung schon
             # auf 'versendet', obwohl die Datei gar nicht entstanden war (F-115).
@@ -1858,18 +1881,15 @@ def _clean_excel_value(value):
 
 
 def _monthly_zip_email(invoices, customer, month):
-    """Erzeugt einen E-Mail-Entwurf mit einem ZIP aller Monatsrechnungen."""
+    """Erzeugt einen E-Mail-Entwurf nur mit vollständiger Auswahl gespeicherter Originale."""
+    attachments = [lese_archivdatei(inv) for inv in invoices]
     out_dir = Path(settings.MEDIA_ROOT) / 'monthly_emails'
     out_dir.mkdir(parents=True, exist_ok=True)
     safe_month = str(month or timezone.localdate().strftime('%Y-%m')).replace('/', '-').replace(' ', '_')
     zip_path = out_dir / f'Monatsrechnungen_{safe_month}.zip'
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for inv in invoices:
-            if not inv.zugferd_file:
-                continue
-            p = Path(inv.zugferd_file.path)
-            if p.exists():
-                zf.write(p, arcname=p.name)
+        for attachment in attachments:
+            zf.writestr(attachment.name, attachment.data)
     msg = EmailMessage()
     msg['To'] = customer.email or ''
     msg['From'] = 'info@sedo-magdeburg.de'
@@ -2174,7 +2194,7 @@ def aareon_import(request):
                     # (auch die PDF-/XML-Erzeugung) fehl, wird die komplette
                     # Rechnung zurückgerollt – keine Teilrechnungen in der DB.
                     try:
-                        with transaction.atomic():
+                        with datei_rueckweg() as merken, transaction.atomic():
                             obj, _ = CustomerObject.objects.get_or_create(
                                 customer=customer,
                                 name=unit_name,
@@ -2207,7 +2227,8 @@ def aareon_import(request):
                                 )
                             recalc_invoice(inv)
                             inv.save()
-                            generate_invoice_files(inv)
+                            merken(inv)
+                            generate_invoice_files(inv, erstmalig=True, request=request)
                         created += 1
                         created_ids.append(inv.id)
                     except IntegrityError:
@@ -2313,11 +2334,11 @@ def recurring_template_delete(request, pk):
 def _generate_recurring_invoice_from_template(tmpl, issue_date, period_start, period_end, due_date):
     """Erzeugt eine Abo-Monatsrechnung – atomar: Fehler (auch bei PDF/XML)
     rollen die komplette Rechnung zurück, keine Teilrechnungen."""
-    with transaction.atomic():
-        return _generate_recurring_invoice_inner(tmpl, issue_date, period_start, period_end, due_date)
+    with datei_rueckweg() as merken, transaction.atomic():
+        return _generate_recurring_invoice_inner(tmpl, issue_date, period_start, period_end, due_date, merken)
 
 
-def _generate_recurring_invoice_inner(tmpl, issue_date, period_start, period_end, due_date):
+def _generate_recurring_invoice_inner(tmpl, issue_date, period_start, period_end, due_date, merken):
     inv = create_numbered_invoice(
         invoice_type='380',
         customer=tmpl.customer,
@@ -2344,7 +2365,8 @@ def _generate_recurring_invoice_inner(tmpl, issue_date, period_start, period_end
         )
     recalc_invoice(inv)
     inv.save()
-    generate_invoice_files(inv)
+    merken(inv)
+    generate_invoice_files(inv, erstmalig=True)
     return inv
 
 
@@ -2538,29 +2560,21 @@ def month_close(request):
         if tax_email:
             AppSetting.set('tax_advisor_email', tax_email)
         if action == 'export_tax_email':
+            try:
+                original_pdfs = [(inv, lese_archivdatei(inv, 'pdf_file')) for inv in invoices]
+            except WorkflowError as exc:
+                messages.error(request, f'Export abgebrochen, keine unvollständige Auswahl ausgegeben: {exc}')
+                return redirect(f"{reverse('sedo:month_close')}?month={selected_month}")
             out_dir = Path(settings.MEDIA_ROOT) / 'month_close' / selected_month
             out_dir.mkdir(parents=True, exist_ok=True)
             zip_path = out_dir / f'SEDO_Rechnungen_{selected_month}_Steuerberater_PDF.zip'
             pdf_count = 0
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr('README.txt', f'SEDO PDF-Rechnungsexport fuer {selected_month}\nEnthalten sind ausschliesslich die sichtbaren Rechnungs-PDFs.\n')
-                for inv in invoices:
-                    # Nur erzeugen, was fehlt (F-18). Vorher lief der
-                    # Steuerberater-Export über JEDE Rechnung des Monats und
-                    # schrieb archivierte Belege mit tagesaktuellen Stammdaten
-                    # neu – eine geänderte Kundenadresse landete rückwirkend auf
-                    # längst versendeten Rechnungen.
-                    _vorhanden = bool(inv.pdf_file and getattr(inv.pdf_file, 'path', None)
-                                      and Path(inv.pdf_file.path).exists())
-                    if not _vorhanden:
-                        generate_invoice_files(inv)
-                    filefield = inv.pdf_file
-                    if filefield and getattr(filefield, 'path', None):
-                        p = Path(filefield.path)
-                        if p.exists():
-                            safe_name = f'{inv.number}_{p.name}' if not p.name.startswith(str(inv.number)) else p.name
-                            zf.write(p, arcname=safe_name)
-                            pdf_count += 1
+                for inv, attachment in original_pdfs:
+                    safe_name = attachment.name if attachment.name.startswith(inv.number) else f'{inv.number}_{attachment.name}'
+                    zf.writestr(safe_name, attachment.data)
+                    pdf_count += 1
             msg = EmailMessage()
             msg['To'] = tax_email or ''
             msg['From'] = 'info@sedo-magdeburg.de'

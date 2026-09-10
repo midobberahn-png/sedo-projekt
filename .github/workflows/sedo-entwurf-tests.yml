@@ -64,6 +64,7 @@ jobs:
           python tools/gegenproben_entwurf.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_entwurf"
           python tools/gegenproben_belegketten.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_belegketten"
           python tools/gegenproben_indizes.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_indizes"
+          python tools/gegenproben_belegarchiv.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_belegarchiv"
       - name: Synthetischer Indexvergleich ohne Zeit-Grenzwerte
         working-directory: sedo_rechnungstool_v2
         run: python tools/benchmark_invoice_indexes.py --output "$RUNNER_TEMP/sedo-pruefung/benchmark_50000.json"

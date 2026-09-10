@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import smtplib
 import ssl
+from dataclasses import dataclass
 from email.message import EmailMessage
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
@@ -16,6 +17,23 @@ DEFAULT_SMTP_PORT = 587
 DEFAULT_FROM_NAME = 'SEDO Objektdienstleistungen GmbH'
 DEFAULT_FROM_ADDR = 'info@sedo-magdeburg.de'
 SMTP_TIMEOUT_SECONDS = 20
+
+
+@dataclass(frozen=True)
+class EmailAttachment:
+    """Einmal gelesene Originalbytes, auch nach der Archivprüfung unveränderlich."""
+    name: str
+    data: bytes
+
+
+def _attachment(attachment_path):
+    if isinstance(attachment_path, EmailAttachment):
+        return attachment_path
+    if attachment_path is None:
+        return None
+    path = Path(attachment_path)
+    # Eine ausdrücklich verlangte Anlage darf nicht stillschweigend entfallen.
+    return EmailAttachment(path.name, path.read_bytes())
 
 
 def invoice_email_subject_body(invoice) -> tuple[str, str]:
@@ -32,7 +50,7 @@ def invoice_email_subject_body(invoice) -> tuple[str, str]:
 
 
 def create_email_draft(recipient: str, subject: str, body: str,
-                       attachment_path: Path | None, out_dir: Path, prefix: str) -> Path:
+                       attachment_path: Path | EmailAttachment | None, out_dir: Path, prefix: str) -> Path:
     """Schreibt einen E-Mail-Entwurf als .eml-Datei (kein Versand)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     msg = EmailMessage()
@@ -40,9 +58,9 @@ def create_email_draft(recipient: str, subject: str, body: str,
     msg['From'] = DEFAULT_FROM_ADDR
     msg['Subject'] = subject
     msg.set_content(body)
-    if attachment_path and attachment_path.exists():
-        data = attachment_path.read_bytes()
-        msg.add_attachment(data, maintype='application', subtype='pdf', filename=attachment_path.name)
+    attachment = _attachment(attachment_path)
+    if attachment is not None:
+        msg.add_attachment(attachment.data, maintype='application', subtype='pdf', filename=attachment.name)
     eml_path = out_dir / f'{prefix}.eml'
     eml_path.write_bytes(msg.as_bytes())
     return eml_path
@@ -89,7 +107,7 @@ def smtp_is_configured() -> bool:
 
 
 def send_email_smtp(recipient: str, subject: str, body: str,
-                    attachment_path: Path | None = None) -> None:
+                    attachment_path: Path | EmailAttachment | None = None) -> None:
     """Sendet eine E-Mail direkt per SMTP.
 
     Beide Wege – STARTTLS (Port 587) und implizites TLS (Port 465) – prüfen
@@ -111,13 +129,11 @@ def send_email_smtp(recipient: str, subject: str, body: str,
     msg['To'] = recipient
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain', 'utf-8'))
-    if attachment_path:
-        p = Path(attachment_path)
-        if p.exists():
-            with open(p, 'rb') as fh:
-                part = MIMEApplication(fh.read(), Name=p.name)
-            part['Content-Disposition'] = f'attachment; filename="{p.name}"'
-            msg.attach(part)
+    attachment = _attachment(attachment_path)
+    if attachment is not None:
+        part = MIMEApplication(attachment.data, Name=attachment.name)
+        part.add_header('Content-Disposition', 'attachment', filename=attachment.name)
+        msg.attach(part)
     # Ein gemeinsamer, prüfender Kontext für beide Wege – kein Zweig darf
     # ungeprüft senden (F-09).
     context = _tls_context()

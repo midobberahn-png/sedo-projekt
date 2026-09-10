@@ -6,6 +6,8 @@ Korrektur-Workflow (Original wird markiert, zweite Korrektur blockiert).
 """
 from decimal import Decimal
 
+from .file_fixtures import isolate_files
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -35,6 +37,7 @@ def _invoice(customer, number, **kwargs):
 
 class StornoLockTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='GWG', street='Weg 1',
                                                 postcode='39104', city='Magdeburg')
         self.original = _invoice(self.customer, 'RE2026080001')
@@ -82,6 +85,7 @@ class StornoLockTests(TestCase):
 
 class OfferToInvoiceLockTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='Kunde', payment_days=14)
         self.offer = Offer.objects.create(number='AG2026080001', customer=self.customer,
                                           status='angenommen', vat_rate=Decimal('19.00'))
@@ -124,6 +128,7 @@ class OfferToInvoiceLockTests(TestCase):
 
 class CorrectionLockTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.user = get_user_model().objects.create_user('u', password='pw12345')
         self.client.login(username='u', password='pw12345')
         self.customer = Customer.objects.create(name='Kunde', payment_days=14)

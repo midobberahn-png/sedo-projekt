@@ -10,6 +10,8 @@ mit WorkflowError statt Duplikat.
 from decimal import Decimal
 from unittest.mock import patch
 
+from .file_fixtures import isolate_files
+
 from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
@@ -38,6 +40,7 @@ def _invoice(customer, number, **kwargs):
 
 class ParallelStornoTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='Kunde', street='Weg 1',
                                                 postcode='39104', city='Magdeburg')
         self.original = _invoice(self.customer, 'RE2026080401')
@@ -63,6 +66,7 @@ class ParallelStornoTests(TestCase):
 
 class ParallelCorrectionTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='Kunde')
         self.original = _invoice(self.customer, 'RE2026080410')
 
@@ -93,6 +97,7 @@ class ParallelCorrectionTests(TestCase):
 
 class ParallelOfferInvoicingTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='Kunde', payment_days=14)
         self.offer = Offer.objects.create(number='AG2026080401', customer=self.customer,
                                           status='angenommen', vat_rate=Decimal('19.00'))
@@ -116,6 +121,7 @@ class ParallelOfferInvoicingTests(TestCase):
 
 class ParallelDunningTests(TestCase):
     def setUp(self):
+        isolate_files(self)
         self.customer = Customer.objects.create(name='Kunde', street='Weg 1',
                                                 postcode='39104', city='Magdeburg')
         self.invoice = _invoice(self.customer, 'RE2026080420',
