@@ -316,6 +316,15 @@ def _normalize_item_positions(items) -> None:
             item.save(update_fields=['position', 'updated_at'])
 
 
+def _recurring_payment_days(payment_days: int | None, customer_payment_days: int | None) -> int:
+    """Vorlage/Rechnung vor Kundenwert; nur None fehlt, 0 bedeutet sofort fällig (F-63)."""
+    if payment_days is not None:
+        return payment_days
+    if customer_payment_days is not None:
+        return customer_payment_days
+    return DEFAULT_PAYMENT_DAYS
+
+
 def _create_recurring_template_from_invoice(inv: Invoice, title: str | None = None):
     """Speichert eine erzeugte Rechnung als Abo-/Monatsrechnungsvorlage."""
     tmpl = RecurringInvoiceTemplate.objects.create(
@@ -324,7 +333,10 @@ def _create_recurring_template_from_invoice(inv: Invoice, title: str | None = No
         title=title or f'Monatsrechnung {inv.customer.name}' + (f' · {inv.obj.name}' if inv.obj else ''),
         status='active',
         vat_rate=inv.vat_rate,
-        payment_days=(inv.due_date - inv.issue_date).days if inv.due_date else (inv.customer.payment_days or 14),
+        payment_days=_recurring_payment_days(
+            (inv.due_date - inv.issue_date).days if inv.due_date is not None else None,
+            inv.customer.payment_days,
+        ),
         note=inv.note or '',
     )
     for idx, item in enumerate(inv.items.all(), start=1):
@@ -2400,7 +2412,9 @@ def recurring_monthly_generate(request):
         if skip_existing and Invoice.objects.filter(customer=tmpl.customer, obj=tmpl.obj, source='Abo Monatsrechnung', period_start=ps, period_end=pe).exclude(status='storniert').exists():
             skipped += 1
             continue
-        due = issue_date + timedelta(days=tmpl.payment_days or tmpl.customer.payment_days or DEFAULT_PAYMENT_DAYS)
+        due = issue_date + timedelta(days=_recurring_payment_days(
+            tmpl.payment_days, tmpl.customer.payment_days,
+        ))
         try:
             inv = _generate_recurring_invoice_from_template(tmpl, issue_date, ps, pe, due)
             created_ids.append(inv.id)

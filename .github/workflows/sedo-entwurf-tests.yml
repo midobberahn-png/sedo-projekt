@@ -66,6 +66,7 @@ jobs:
           python tools/gegenproben_indizes.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_indizes"
           python tools/gegenproben_belegarchiv.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_belegarchiv"
           python tools/gegenproben_mahnwaechter.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_mahnwaechter"
+          python tools/gegenproben_abo_zahlungsziel.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_abo_zahlungsziel"
       - name: Koordinierte Datei-SQLite-Mahnprobe
         working-directory: sedo_rechnungstool_v2
         run: python tools/probe_mahnwaechter_sqlite.py --output "$RUNNER_TEMP/sedo-pruefung/sqlite_dateiprobe.json"

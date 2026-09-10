@@ -1,6 +1,18 @@
 # MEMORY.md – SEDO Rechnungstool
 
-> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, Mahnwächter nach F-18. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, F-63 / Abo-Zahlungsziel 0. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+
+---
+
+## Aktueller Stand – F-63 / Abo-Zahlungsziel 0 (10.09.2026)
+
+- Mahnwächter / PR #5 ist in `main` integriert: `7a653da452ebf8a33ac2a08b46950b559f0b220d`. Dieser Abo-Restfix baut darauf auf. Vorhandene Daten sind laut Mirek ausschließlich Testdaten; kein Echtbetrieb und kein Mac-Deployment.
+- `_recurring_payment_days` unterscheidet fehlende Werte (`None`) von 0 Tagen: Vorlage bzw. Rechnungsabstand vor Kundenwert vor `DEFAULT_PAYMENT_DAYS`. 0 bedeutet sofort fällig und wird nicht überschrieben.
+- Beide Abo-Wege umgestellt: Monatslauf und Speichern einer Rechnung als Abo-Vorlage (Kundenwert bei fehlender Rechnungsfälligkeit). Keine Änderung bestehender Rechnungen/Archive, Nummernkreise, Auswahl-/Doppelregeln oder des Datenmodells.
+- Beide `payment_days`-Modellfelder bleiben Pflichtfelder mit Standard 14 und erlaubtem Wert 0. `None`-Rückfälle sind defensive Codepfade, keine neue automatische Kundenvererbung leerer Formularfelder.
+- 21 neue Tests, fünf neue Mutationsgegenproben; inklusive der bisherigen Suite 630 Tests und 68 Gegenproben vorgesehen. Tatsächliche Laufresultate stehen im PR-Abschlussvermerk, keine Vorwegnahme eines CI-Ergebnisses.
+- Anleitung: `review_v2/welle2/abo_zahlungsziel_0.md`. Keine neue Migration, keine Versionsnummer/Installer-Erstellung. Dieser Eintrag behauptet keinen Merge oder lokale Installation des Abo-Fixes.
+- Weiter separat: F-68 (manuelle Mahnfälligkeit/Offenbetrag/Stufenwahl), Welle 3/Feldtrennung, übrige Review-Funde einschließlich leerer Abo-Auswahl. Keine pauschale Erledigung aller Monatslauf-Funde.
 
 ---
 
