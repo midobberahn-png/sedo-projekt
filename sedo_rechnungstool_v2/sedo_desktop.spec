@@ -1,34 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller-Spec: SEDO als gebündeltes Desktop-Programm (Mac + Windows).
 
-Build:  pyinstaller sedo_desktop.spec   (im Projektordner, venv mit
-        requirements_desktop.txt). Ergebnis: dist/SEDO Rechnungstool[.app/.exe]
-
-Seit v2.3 MIT faster-whisper (Mireks Vorgabe: „das Diktat sollte drin bleiben“):
-ctranslate2/PyAV & Co. werden mitgebündelt (~+180 MB), das Whisper-Modell lädt
-weiterhin beim ersten Diktat in den SEDO-Datenordner. Die App bringt die
-Mikrofon-Berechtigung mit (NSMicrophoneUsageDescription).
+Build über tools/teststand.py; gesperrte Versionen in requirements-release.lock.
+Das lokale Whisper-Diktat bleibt Bestandteil des Komplettpakets. Das Modell
+wird erst beim ersten Diktat geladen, nicht bei Build oder Selbsttest.
 """
 import sys
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 django_datas, django_binaries, django_hidden = collect_all('django')
 
-# Lokales Whisper-Diktat (faster-whisper + native Abhängigkeiten)
 _whisper_packages = ['faster_whisper', 'ctranslate2', 'av', 'tokenizers', 'huggingface_hub', 'onnxruntime']
 whisper_datas, whisper_binaries, whisper_hidden = [], [], []
 for _pkg in _whisper_packages:
-    try:
-        _d, _b, _h = collect_all(_pkg)
-        whisper_datas += _d; whisper_binaries += _b; whisper_hidden += _h
-    except Exception:
-        pass  # Paket nicht installiert → Diktat fällt im Bundle weg (stt_unavailable)
+    _d, _b, _h = collect_all(_pkg)
+    whisper_datas += _d
+    whisper_binaries += _b
+    whisper_hidden += _h
 
 hiddenimports = (
     django_hidden
-    + collect_submodules('sedo')          # inkl. Migrationen + management.commands
+    + collect_submodules('sedo', filter=lambda name: not name.startswith('sedo.tests'))
     + whisper_hidden
-    + ['config.settings', 'config.urls', 'config.wsgi',
+    + ['desktop', 'config.settings', 'config.urls', 'config.wsgi',
        'whitenoise', 'whitenoise.middleware', 'whitenoise.storage',
        'waitress', 'fints', 'mt940']
 )
@@ -39,8 +33,8 @@ datas = django_datas + whisper_datas + [
 ]
 
 a = Analysis(
-    ['desktop.py'],
-    pathex=[],
+    ['tools/desktop_entry.py'],
+    pathex=[SPECPATH],
     binaries=django_binaries + whisper_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -61,7 +55,7 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=False,
-    console=False,                 # echtes Fensterprogramm, kein Terminal
+    console=False,
     icon='SEDO.app/Contents/Resources/sedo.icns' if sys.platform == 'darwin' else None,
 )
 
