@@ -1,6 +1,6 @@
-# Zusatzpakete für das gebündelte Desktop-Programm (desktop.py + PyInstaller).
-# Basis-Pakete kommen aus requirements.txt – NUR faster-whisper bleibt beim
-# Komplettpaket bewusst außen vor (siehe sedo_desktop.spec).
+# Zusatzpakete für desktop.py und PyInstaller.
+# Das Komplettpaket enthält auch faster-whisper aus requirements.txt.
+# Testbuilds installieren ausschließlich requirements-release.lock.
 pywebview
 waitress
 pyinstaller
