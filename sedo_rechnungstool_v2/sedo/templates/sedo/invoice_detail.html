@@ -18,7 +18,7 @@
     {% endcomment %}
     {% if invoice.status != 'entwurf' %}<form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn success">E-Mail</button></form>{% endif %}
     {% if invoice.status != 'entwurf' and invoice.status != 'korrigiert' and invoice.status != 'storniert' %}<a class="btn primary" href="{% url 'sedo:invoice_add_payment' invoice.pk %}">Zahlung erfassen</a>{% endif %}
-    <form method="post" action="{% url 'sedo:invoice_generate' invoice.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Dateien neu erzeugen</button></form>
+    {% if invoice.status == 'entwurf' %}<form method="post" action="{% url 'sedo:invoice_generate' invoice.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Entwurfs-PDF neu erzeugen</button></form>{% endif %}
     {% if invoice.invoice_type != '457' and invoice.status != 'entwurf' and invoice.status != 'storniert' and invoice.status != 'korrigiert' and not invoice.active_correction and not invoice.active_storno %}<a class="btn" href="{% url 'sedo:invoice_correction' invoice.pk %}">Korrektur laden</a>{% endif %}
     {% if invoice.invoice_type != '457' and invoice.status != 'entwurf' and invoice.status != 'korrigiert' and invoice.status != 'storniert' and invoice.status != 'bezahlt' %}
     <form method="post" action="{% url 'sedo:invoice_reminder' invoice.pk 'reminder' %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Zahlungserinnerung</button></form>
@@ -28,6 +28,19 @@
     {% if ausblenden_hindernis %}<button type="button" class="btn" disabled title="{{ ausblenden_hindernis }}">Löschen nicht möglich</button>{% else %}<a class="btn danger" href="{% url 'sedo:invoice_delete' invoice.pk %}">{% if invoice.status == 'entwurf' %}Entwurf verwerfen{% else %}Löschen{% endif %}</a>{% endif %}
   </div>
 </div>
+
+{% if archiv_status %}
+<div class="card {% if archiv_status.fehler %}warning-card{% endif %}">
+  <h2>{% if archiv_status.fehler %}Belegarchiv prüfen{% else %}Originaldateien geschützt{% endif %}</h2>
+  {% if archiv_status.fehler %}
+    <p role="alert">{{ archiv_status.fehler.0 }}</p>
+    <p>Die Wiederherstellung <code>belegarchiv_wiederherstellen</code> übernimmt ausschließlich fehlende Originale mit passender gespeicherter Prüfsumme.</p>
+  {% else %}
+    <p>Ausgestellte PDFs und XMLs werden unverändert wiederverwendet. Fachliche Änderungen erfolgen über eine Korrekturrechnung.</p>
+  {% endif %}
+  {% if archiv_status.mit_pruefsummen %}<p class="hint">SHA-256-Nachweis der Erstausstellung vorhanden.</p>{% else %}<p class="hint">Altbeleg ohne ursprünglichen Prüfsummennachweis. Vorhandene Dateien werden unverändert verwendet; ihre ursprüngliche Echtheit ist damit nicht nachträglich bestätigt.</p>{% endif %}
+</div>
+{% endif %}
 
 {% if invoice.status == 'entwurf' %}
 <div class="card warning-card">

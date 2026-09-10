@@ -26,6 +26,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from sedo.backup_utils import backup_dir
+from sedo.services.mail import EmailAttachment
 from sedo.models import (
     AareonMapping, AppSetting, AuditLog, CashbookEntry, Customer, DeleteProtectedError,
     DunningDocument, Invoice, Payment, ServiceCatalogItem,
@@ -1481,7 +1482,7 @@ class F07ViewsUndSichtbarkeitTests(TestCase):
                 rechnung = self._rechnung(f'RE202606{i:04d}', status=vorher)
                 with patch('sedo.views.smtp_is_configured', return_value=True), \
                      patch('sedo.views.send_email_smtp'), \
-                     patch('sedo.views.generate_invoice_files'):
+                     patch('sedo.views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'TEST Original')):
                     self.client.post(reverse('sedo:invoice_email', args=[rechnung.pk]))
                 rechnung.refresh_from_db()
                 self.assertEqual(rechnung.status, erwartet)
@@ -1718,6 +1719,6 @@ class Etappe3NacharbeitTests(TestCase):
              patch('sedo.views.send_email_smtp'), \
              patch('sedo.views.generate_invoice_files') as erzeugen:
             self.client.post(reverse('sedo:invoice_email', args=[rechnung.pk]))
-        # Ohne vorhandene Datei wird einmal erzeugt – aber nicht bei jedem Versand
-        # blind. Hier fehlt die Datei, also genau ein Aufruf.
-        self.assertLessEqual(erzeugen.call_count, 1)
+        # F-18: Auch bei fehlender Originaldatei darf kein Ersatz aus aktuellen
+        # Stammdaten erzeugt werden. Dieser Fall ist jetzt ausdrücklich gesperrt.
+        erzeugen.assert_not_called()

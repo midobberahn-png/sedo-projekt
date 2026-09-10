@@ -1,6 +1,20 @@
 # MEMORY.md – SEDO Rechnungstool
 
-> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 09.09.2026, Etappe 7. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, F-18 / Belegschutz. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+
+---
+
+## Aktueller Stand – Restabsicherung F-18 (10.09.2026)
+
+- Basis: `main` `cafb1822834ccdcf4aa03677c8d174250f79da5c`; PR #1–3 integriert, kein Mac-Deployment. Vorhandene Daten laut Mirek ausschließlich Testdaten, kein Echtbetrieb.
+- Beauftragt: F-18 zuerst. Keine Änderung am Mahnwächter, Abo-Zahlungsziel 0 oder an der geplanten Feldtrennung.
+- Ausgestellte Belegdateien werden nicht mehr neu berechnet/überschrieben. Generatorstandard ist lesende Wiederverwendung; Erstausstellung explizit intern. Fehlende Dateien führen zum Fehler, nicht zum Generator-Fallback.
+- Rechnungsmail, .eml-Helfer, GWG-Sammel-ZIP und Steuerberater-PDF-Export verwenden einmal gelesene Originalbytes. Fehlende Anhänge werden nicht still übersprungen. Entwürfe bleiben bearbeitbar.
+- Neue Originale: flache SHA-256-/Größen-/Pfad-Metadaten in einem Pflicht-Audit. Keine neue Migration. Altbelege ohne Siegel bleiben lesbar, werden aber nicht rückwirkend als prüfsummengesichert ausgegeben.
+- Neues explizites Kommando `belegarchiv_wiederherstellen NUMMER --quelle MEDIEN-SICHERUNG`: Trockenlauf; nur mit `--anwenden` fehlende Originalbytes/leere Verweise nach ursprünglichem SHA-256 ergänzen. Kein Überschreiben abweichender vorhandener Dateien. Ohne ursprüngliches Siegel keine automatische Altbeleg-Wiederherstellung.
+- Neue Originaldateien werden exklusiv per Hardlink veröffentlicht; kein überschreibender Fallback. Dateikompensation berücksichtigt eigene Veröffentlichungen und äußere Transaktionsfehler. Kein gemeinsamer DB-/Dateisystem-Crashschutz behauptet.
+- Neue Regressionstests und elf echte Archiv-Gegenproben; inklusive vorhandener Gruppen 49 Gegenproben. Exakte Abschlusszahlen und Veröffentlichungs-/CI-Stand siehe PR und Prüfbericht, nicht mit bereits erfolgter Integration verwechseln.
+- Details/Anwendung/Grenzen: `review_v2/welle2/f18_belegschutz.md`. Kein echter Versand, keine Originaldatenbanken geändert. Offene Review-Funde bleiben separat.
 
 ---
 

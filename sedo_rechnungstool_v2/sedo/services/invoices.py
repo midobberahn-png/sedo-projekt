@@ -8,6 +8,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.utils import timezone
 
 from ..core.rechnungslauf_core import (
@@ -17,19 +18,15 @@ from ..audit import write_audit
 from ..models import AareonMapping, AppSetting, Invoice, InvoiceItem, Offer
 from .calc import recalc_invoice
 from .numbering import create_numbered_invoice, save_with_unique_number
-from .invoice_files import datei_rueckweg, quarantiniere_dateien
+from .invoice_files import (datei_rueckweg, quarantiniere_dateien,
+                            merke_veroeffentlichung, veroeffentliche_neue_datei)
+from .workflow_errors import WorkflowError, BelegArchivFehler
+from .invoice_archive import (ARCHIV_FELDER, archivnachweis, pruefe_archiv,
+                              pruefe_schreibziele, versiegele_archiv, zielpfade)
 
 # Rechnungsart-Code → Titel (XML-TypeCode + PDF-Titel/Texte).
 DOC_TITLES = {'380': 'Rechnung', '384': 'Korrekturrechnung', '457': 'Stornorechnung'}
 _TRUE_VALUES = ('1', 'true', 'True', 'ja', 'JA', 'yes')
-
-
-class WorkflowError(ValueError):
-    """Fachliche Sperre im Rechnungsworkflow.
-
-    Wird von den Views abgefangen und dem Nutzer als verständliche
-    Fehlermeldung angezeigt – es entsteht kein Datensatz.
-    """
 
 
 def ensure_storno_allowed(original: Invoice) -> None:
@@ -291,30 +288,47 @@ def invoice_to_core_row(invoice: Invoice) -> InvoiceRow:
     return row
 
 
-def generate_invoice_files(invoice: Invoice) -> Invoice:
-    """Entwurf: nur Wasserzeichen-PDF. Ausgestellt: PDF, XML, ZUGFeRD.
+def generate_invoice_files(invoice: Invoice, *, erstmalig=False, request=None) -> Invoice:
+    """Entwurf aktualisieren oder unveränderte Originale wiederverwenden.
 
-    Erst vollständig im Temp-Ordner erzeugen. Bei Dateischreibfehlern werden
-    alte Dateien wiederhergestellt und neue außerhalb der Medien verwahrt.
-    Die kurze Schreibsperre verhindert das Erzeugen mit einem veralteten
-    In-Memory-Status nach parallelem Finalisieren oder Verwerfen.
+    `erstmalig` ist ausschließlich für interne Erstellungs-/Finalisierungswege,
+    kein HTTP-Parameter und kein Reparaturmodus. Fehlende Originale sind auch
+    ohne Dateiverweise KEINE Erlaubnis zur Neuerzeugung aus heutigen Stammdaten.
     """
+    invoice.refresh_from_db()
+    if invoice.deleted_at is not None:
+        raise WorkflowError('Die Rechnung ist nicht mehr verfügbar.')
+    if invoice.status != 'entwurf' and not erstmalig:
+        report = pruefe_archiv(invoice)
+        if report['fehler']:
+            raise BelegArchivFehler(report['fehler'][0])
+        return invoice  # F-18: kein Recalc, keine Datei-/DB-Schreiboperation.
     with datei_rueckweg() as merken, transaction.atomic():
-        if not Invoice.objects.filter(pk=invoice.pk).update(updated_at=timezone.now()):
+        # SQLite: Schreibsperre ohne Änderung des Revisionswerts; nach dem
+        # Warten DB-Zustand frisch lesen, nie der alten Python-Instanz vertrauen.
+        if not Invoice.objects.filter(pk=invoice.pk).update(updated_at=F('updated_at')):
             raise WorkflowError('Die Rechnung ist nicht mehr verfügbar.')
         invoice.refresh_from_db()
+        if invoice.status != 'entwurf' and not erstmalig:
+            report = pruefe_archiv(invoice)
+            if report['fehler']:
+                raise BelegArchivFehler(report['fehler'][0])
+            return invoice
+        pruefe_schreibziele(invoice, erstmalig=erstmalig)
         merken(invoice)
-        return _generate_invoice_files_inner(invoice)
+        result = _generate_invoice_files_inner(invoice)
+        if invoice.status != 'entwurf':
+            versiegele_archiv(invoice, request=request)
+        return result
 
 
 def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
     recalc_invoice(invoice)
     media_root = Path(settings.MEDIA_ROOT)
     media_root.mkdir(parents=True, exist_ok=True)
-    out_dir = media_root / 'generated' / invoice.number
-    pdf_path = out_dir / f'{invoice.number}.pdf'
-    xml_path = out_dir / 'factur-x.xml'
-    zf_path = out_dir / f'{invoice.number}_zugferd.pdf'
+    targets = zielpfade(invoice)
+    pdf_path, xml_path, zf_path = (targets[f] for f in ARCHIV_FELDER)
+    out_dir = pdf_path.parent
     due = invoice.due_date or (invoice.issue_date + timedelta(days=invoice.customer.payment_days))
     row = invoice_to_core_row(invoice)
     is_draft = invoice.status == 'entwurf'
@@ -338,8 +352,9 @@ def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
             tmp_xml.write_bytes(xml_bytes)
             embed_xml_into_pdf(tmp_pdf, xml_bytes, tmp_zf)
         out_dir.mkdir(parents=True, exist_ok=True)
-        os.replace(tmp_pdf, pdf_path)
         if is_draft:
+            os.replace(tmp_pdf, pdf_path)
+            merke_veroeffentlichung(pdf_path)
             # Nur bei diesem ausdrücklich bearbeiteten Entwurf: alte XMLs
             # nicht bloß aus der UI verstecken, sondern aus MEDIA_ROOT nehmen.
             alt = [xml_path, zf_path]
@@ -348,8 +363,9 @@ def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
             invoice.xml_file.name = ''
             invoice.zugferd_file.name = ''
         else:
-            os.replace(tmp_xml, xml_path)
-            os.replace(tmp_zf, zf_path)
+            veroeffentliche_neue_datei(tmp_pdf, pdf_path)
+            veroeffentliche_neue_datei(tmp_xml, xml_path)
+            veroeffentliche_neue_datei(tmp_zf, zf_path)
             invoice.xml_file.name = str(xml_path.relative_to(settings.MEDIA_ROOT))
             invoice.zugferd_file.name = str(zf_path.relative_to(settings.MEDIA_ROOT))
     invoice.pdf_file.name = str(pdf_path.relative_to(settings.MEDIA_ROOT))
@@ -390,6 +406,7 @@ def finalisiere_entwurf(invoice: Invoice, request=None, *, datum_heute=False,
     try:
         with datei_rueckweg() as merken, transaction.atomic():
             entwurf_sperren(invoice, revision=revision, finalisieren=True)
+            pruefe_schreibziele(invoice, erstmalig=False)
             heute = timezone.localdate()
             altes_datum = invoice.issue_date
             alte_nummer = invoice.number
@@ -437,7 +454,14 @@ def finalisiere_entwurf(invoice: Invoice, request=None, *, datum_heute=False,
                             'neues_rechnungsdatum': invoice.issue_date.isoformat(),
                         })
             merken(invoice)
-            generate_invoice_files(invoice)
+            # EN-Vorschauen bleiben erhalten. Nur ein historischer RE-Entwurf
+            # verwendet dieselben Zielpfade: seine Vorschau vorab aufbewahren.
+            if not alte_nummer.startswith('EN'):
+                quarantiniere_dateien(zielpfade(invoice).values())
+            for field in ARCHIV_FELDER:
+                getattr(invoice, field).name = ''
+            invoice.save(update_fields=[*ARCHIV_FELDER, 'updated_at'])
+            generate_invoice_files(invoice, erstmalig=True, request=request)
         return invoice
     except Exception:
         # Django setzt Python-Objektfelder beim Rollback nicht zurück.
@@ -455,8 +479,8 @@ def create_storno(original: Invoice, request=None) -> Invoice:
     """
     ensure_storno_allowed(original)
     try:
-        with transaction.atomic():
-            return _create_storno_inner(original, request=request)
+        with datei_rueckweg() as merken, transaction.atomic():
+            return _create_storno_inner(original, request=request, merken=merken)
     except IntegrityError as exc:
         # Zwei parallele Requests können den ensure-Guard beide passieren –
         # der Unique-Constraint (max. EIN aktives Storno je Original) stoppt
@@ -470,7 +494,7 @@ def create_storno(original: Invoice, request=None) -> Invoice:
         raise
 
 
-def _create_storno_inner(original: Invoice, request=None) -> Invoice:
+def _create_storno_inner(original: Invoice, request=None, merken=None) -> Invoice:
     storno = create_numbered_invoice(
         invoice_type='457',
         customer=original.customer,
@@ -506,7 +530,8 @@ def _create_storno_inner(original: Invoice, request=None) -> Invoice:
     write_audit(request, 'update', original,
                 f'Rechnung {original.number}: {vorher} → storniert ({storno.number})',
                 pflicht=True, metadata={'von': vorher, 'nach': 'storniert', 'anlass': 'storno'})
-    generate_invoice_files(storno)
+    merken(storno)
+    generate_invoice_files(storno, erstmalig=True, request=request)
     return storno
 
 
@@ -528,11 +553,11 @@ def ensure_offer_invoicing_allowed(offer: Offer) -> None:
 def create_invoice_from_offer(offer: Offer) -> Invoice:
     """Erzeugt eine Rechnung aus einem angenommenen Angebot (atomar, idempotent)."""
     ensure_offer_invoicing_allowed(offer)
-    with transaction.atomic():
-        return _create_invoice_from_offer_inner(offer)
+    with datei_rueckweg() as merken, transaction.atomic():
+        return _create_invoice_from_offer_inner(offer, merken)
 
 
-def _create_invoice_from_offer_inner(offer: Offer) -> Invoice:
+def _create_invoice_from_offer_inner(offer: Offer, merken) -> Invoice:
     inv = create_numbered_invoice(
         invoice_type='380',
         customer=offer.customer,
@@ -555,7 +580,8 @@ def _create_invoice_from_offer_inner(offer: Offer) -> Invoice:
             unit_price=item.unit_price,
             article_no=item.article_no,
         )
-    generate_invoice_files(inv)
+    merken(inv)
+    generate_invoice_files(inv, erstmalig=True)
     # Guarded UPDATE statt save(): Nur wenn das Angebot noch nicht verrechnet
     # ist, wird verknüpft. Verliert dieser Request das Rennen gegen einen
     # parallelen, rollt die gesamte Transaktion (inkl. Rechnung + Nummer) zurück.

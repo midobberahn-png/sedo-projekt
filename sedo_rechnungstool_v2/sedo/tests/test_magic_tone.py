@@ -14,6 +14,7 @@ from django.urls import reverse
 
 from sedo.models import AppSetting, Customer, CustomerObject, Invoice, InvoiceItem
 from sedo.services import AIError
+from sedo.services.mail import EmailAttachment
 from sedo.views import _invoice_ai_context
 
 
@@ -110,7 +111,7 @@ class EmailBodyOverrideTests(_Base):
         def fake_send(recipient, subject, body, attachment=None):
             captured.update(recipient=recipient, subject=subject, body=body)
 
-        with patch('sedo.views.generate_invoice_files', side_effect=lambda inv: inv), \
+        with patch('sedo.views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'TEST Original')), \
              patch('sedo.views.smtp_is_configured', return_value=True), \
              patch('sedo.views.send_email_smtp', side_effect=fake_send):
             resp = self.client.post(reverse('sedo:invoice_email', args=[invoice.pk]),

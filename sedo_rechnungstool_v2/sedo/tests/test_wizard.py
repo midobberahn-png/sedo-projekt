@@ -12,6 +12,8 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from .file_fixtures import isolate_files
+
 from django.conf import settings as dj_settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -73,6 +75,7 @@ class AngebotsAssistentTests(TestCase):
     """Aufbau der Angebotsmaske als sechsstufiger Assistent."""
 
     def setUp(self):
+        isolate_files(self)
         get_user_model().objects.create_user('tester', password='geheim123')
         self.client.login(username='tester', password='geheim123')
         self.resp = self.client.get(reverse('sedo:offer_create'))
@@ -136,6 +139,7 @@ class RechnungsAssistentTests(TestCase):
     """Aufbau der Rechnungsmaske als fünfstufiger Assistent."""
 
     def setUp(self):
+        isolate_files(self)
         get_user_model().objects.create_user('tester', password='geheim123')
         self.client.login(username='tester', password='geheim123')
         self.resp = self.client.get(reverse('sedo:invoice_create'))
@@ -182,6 +186,7 @@ class FehlerImRichtigenSchrittTests(TestCase):
     """Kernabsicherung: Fehler müssen sichtbar und dem Schritt zuordenbar sein."""
 
     def setUp(self):
+        isolate_files(self)
         get_user_model().objects.create_user('tester', password='geheim123')
         self.client.login(username='tester', password='geheim123')
 
@@ -287,6 +292,7 @@ class KundenAutofillTests(TestCase):
     """Angebotsmaske soll bei Kundenauswahl alle Felder sichtbar befüllen."""
 
     def setUp(self):
+        isolate_files(self)
         get_user_model().objects.create_user('tester', password='geheim123')
         self.client.login(username='tester', password='geheim123')
         self.html = self.client.get(reverse('sedo:offer_create')).content.decode('utf-8')
@@ -318,6 +324,7 @@ class DatumsfeldTests(TestCase):
     """Regression: type=date braucht ISO-Format, sonst bleibt das Feld leer."""
 
     def setUp(self):
+        isolate_files(self)
         get_user_model().objects.create_user('tester', password='geheim123')
         self.client.login(username='tester', password='geheim123')
 
@@ -348,6 +355,7 @@ class RechnungLeistungsbeschreibungTests(TestCase):
     """Leistungsbeschreibung in Rechnungen: Maske, Speichern, PDF, XML (BT-154)."""
 
     def setUp(self):
+        isolate_files(self)
         get_user_model().objects.create_user('tester', password='geheim123')
         self.client.login(username='tester', password='geheim123')
 
@@ -388,7 +396,7 @@ class RechnungLeistungsbeschreibungTests(TestCase):
             long_text='Woechentliche Reinigung aller Treppenhausflaechen inklusive Gelaender und Fenstersimsen.',
             quantity=Decimal('1.00'), unit='pauschal', unit_price=Decimal('250.00'))
         recalc_invoice(inv); inv.save()
-        generate_invoice_files(inv)
+        generate_invoice_files(inv, erstmalig=True)
 
         basis = Path(dj_settings.MEDIA_ROOT) / 'generated' / inv.number
         pdf = basis / ('%s.pdf' % inv.number)
@@ -413,7 +421,7 @@ class RechnungLeistungsbeschreibungTests(TestCase):
                                    quantity=Decimal('1.00'), unit='pauschal',
                                    unit_price=Decimal('100.00'))
         recalc_invoice(inv); inv.save()
-        generate_invoice_files(inv)
+        generate_invoice_files(inv, erstmalig=True)
         inhalt = (Path(dj_settings.MEDIA_ROOT) / 'generated' / inv.number / 'factur-x.xml').read_text(encoding='utf-8')
         self.assertNotIn('<ram:Description>', _produktblock(inhalt))
 

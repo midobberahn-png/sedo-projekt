@@ -9,6 +9,8 @@ from decimal import Decimal
 from unittest.mock import patch
 
 import pandas as pd
+from .file_fixtures import isolate_files
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -23,6 +25,7 @@ class AareonImportRollbackTests(TestCase):
     nicht den alten Bestand kosten."""
 
     def setUp(self):
+        isolate_files(self)
         AareonMapping.objects.create(billing_unit_sender='Ahornweg 2', service_id='Reinigung',
                                      we_internal='WE1', nksl_internal='N1')
         AareonMapping.objects.create(billing_unit_sender='Ahornweg 2', service_id='Winterdienst',
@@ -66,6 +69,9 @@ class AareonImportRollbackTests(TestCase):
 
 class AtomicInvoiceCreationTests(TestCase):
     """Schlägt die Dokumenterzeugung fehl, darf keine Teilrechnung übrig bleiben."""
+
+    def setUp(self):
+        isolate_files(self)
 
     def test_offer_to_invoice_rollt_bei_pdf_fehler_komplett_zurueck(self):
         customer = Customer.objects.create(name='K')

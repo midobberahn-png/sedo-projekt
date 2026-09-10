@@ -44,7 +44,7 @@ class AtomicFileGenerationTests(TestCase):
         with patch('sedo.services.invoices.embed_xml_into_pdf',
                    side_effect=RuntimeError('Simulierter Einbettungsfehler')):
             with self.assertRaises(RuntimeError):
-                generate_invoice_files(self.invoice)
+                generate_invoice_files(self.invoice, erstmalig=True)
         # Zielordner existiert nicht bzw. ist leer – PDF und XML wurden NICHT
         # übernommen, obwohl sie im Temp-Verzeichnis schon fertig waren.
         leftover = list(self.out_dir.glob('*')) if self.out_dir.exists() else []
@@ -53,7 +53,7 @@ class AtomicFileGenerationTests(TestCase):
         self.assertFalse(self.invoice.zugferd_file)
 
     def test_erfolgreiche_erzeugung_legt_alle_drei_dateien_ab(self):
-        generate_invoice_files(self.invoice)
+        generate_invoice_files(self.invoice, erstmalig=True)
         self.assertTrue((self.out_dir / f'{self.invoice.number}.pdf').exists())
         self.assertTrue((self.out_dir / 'factur-x.xml').exists())
         self.assertTrue((self.out_dir / f'{self.invoice.number}_zugferd.pdf').exists())
