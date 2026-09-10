@@ -1,0 +1,24 @@
+name: H3 Graph Gegenprobe korrigieren
+on:
+  push:
+    branches:
+      - hardening-h3-zustandsmodell
+    paths:
+      - .github/workflows/h3-graph-counterprobe-fix.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python .github/h3-graph-counterprobe-fix.py
+      - run: python -m compileall -q sedo_rechnungstool_v2/sedo/tests/test_draft_workflow.py
+      - run: git diff --check
+      - name: Commit
+        run: |
+          git add sedo_rechnungstool_v2/sedo/tests/test_draft_workflow.py
+          git config user.name 'SEDO H3'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'H3: Storno-Graph-Gegenprobe unabhängig vom Lifecycle-Guard machen'
+          git push origin HEAD:hardening-h3-zustandsmodell
