@@ -1,0 +1,24 @@
+name: H3 letzte Testkorrekturen
+on:
+  push:
+    branches:
+      - hardening-h3-zustandsmodell
+    paths:
+      - .github/workflows/h3-final-testfix.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python .github/h3-final-testfix.py
+      - run: python -m compileall -q sedo_rechnungstool_v2/sedo/tests
+      - run: git diff --check
+      - name: Commit
+        run: |
+          git add sedo_rechnungstool_v2/sedo/tests
+          git config user.name 'SEDO H3'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'H3: letzte Alt-Testverträge an getrenntes Zustandsmodell anpassen'
+          git push origin HEAD:hardening-h3-zustandsmodell
