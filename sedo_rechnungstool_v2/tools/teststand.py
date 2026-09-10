@@ -1,0 +1,226 @@
+"""H2: hashgesperrter Testbuild, getrennt von Daten und Produktivinstallation.
+
+source erzeugt ein deterministisches Quellpaket aus einem sauberen Git-Stand.
+install legt eine NEUE Python-Umgebung an; build erzeugt das native Desktop-Paket.
+Kein Rückfall auf ungebundene Pakete, keine automatische Lock-Aktualisierung.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import venv
+import zipfile
+
+APP = Path(__file__).resolve().parents[1]
+PYTHON = (3, 13, 15)
+LABEL = 'h2.1'
+INPUTS = ('requirements.txt', 'requirements_desktop.txt',
+          'requirements-release.in', 'requirements-release-constraints.txt')
+ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'desktop.py',
+              'manage.py', 'sedo_desktop.spec', 'build_mac.command', 'BUILD_WINDOWS.bat',
+              'TESTSTAND.md', '.env.example'}
+SUFFIXES = {'.py', '.html', '.css', '.js', '.svg', '.png', '.jpg', '.jpeg',
+            '.ico', '.icns', '.xsd', '.xsl', '.xslt', '.json', '.md', '.txt'}
+
+
+class BuildError(RuntimeError):
+    pass
+
+
+def sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def allowed(name: str) -> bool:
+    p = Path(name)
+    if p.is_absolute() or '..' in p.parts or '\\' in name:
+        return False
+    if name in ROOT_FILES or name == 'SEDO.app/Contents/Resources/sedo.icns':
+        return True
+    if any(part.startswith('.') or part in {'data', 'media', 'backups', 'logs', '__pycache__'} for part in p.parts):
+        return False
+    return bool(p.parts and p.parts[0] in {'sedo', 'config', 'tools'} and p.suffix in SUFFIXES)
+
+
+def lock_entries(text: str) -> list[str]:
+    """Nur fixierte PyPI-Anforderungen und SHA-256, keine URL/Index-Direktiven."""
+    entries, pending = [], ''
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        pending += line.removesuffix('\\').rstrip() + ' '
+        if line.endswith('\\'):
+            continue
+        entry = pending.strip()
+        if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.-]*==[A-Za-z0-9.!+_-]+(?:\s|$)', entry):
+            raise BuildError('Lock enthält keine exakt fixierte Paketversion.')
+        hashes = re.findall(r'--hash=sha256:[0-9a-f]{64}(?=\s|$)', entry)
+        remainder = re.sub(r'--hash=sha256:[0-9a-f]{64}(?=\s|$)', '', entry)
+        if not hashes or '--' in remainder or '://' in remainder or '@' in remainder:
+            raise BuildError('Lock enthält ungültige Hashes oder Paketquellen.')
+        entries.append(entry)
+        pending = ''
+    if pending or not entries:
+        raise BuildError('Unvollständiger Lock.')
+    return entries
+
+
+def validate_lock(app: Path = APP) -> list[str]:
+    meta = json.loads((app / 'release-lock.json').read_text(encoding='utf-8'))
+    if meta['python'] != '.'.join(map(str, PYTHON)) or set(meta['inputs']) != set(INPUTS):
+        raise BuildError('Lock-Metadaten passen nicht zum Buildvertrag.')
+    for name, digest in meta['inputs'].items():
+        if sha((app / name).read_bytes()) != digest:
+            raise BuildError(f'Lock veraltet: {name} wurde geändert. Explizit neu auflösen.')
+    data = (app / 'requirements-release.lock').read_bytes()
+    if sha(data) != meta['lock_sha256']:
+        raise BuildError('Die Prüfsumme des Release-Locks stimmt nicht.')
+    entries = lock_entries(data.decode('utf-8'))
+    names = {e.split('==')[0].lower().replace('_', '-') for e in entries}
+    if not {'django', 'faster-whisper', 'pywebview', 'pyinstaller', 'waitress', 'pip', 'wheel', 'setuptools', 'packaging'} <= names:
+        raise BuildError('Im Lock fehlen Pflichtfunktionen oder Buildwerkzeuge.')
+    return entries
+
+
+def run(args: list[str], **kwargs) -> None:
+    subprocess.run(args, check=True, **kwargs)
+
+
+def install(target: Path, app: Path = APP) -> Path:
+    if sys.version_info[:3] != PYTHON:
+        raise BuildError('Der Testbuild benötigt genau Python ' + '.'.join(map(str, PYTHON)))
+    entries = validate_lock(app)
+    if target.exists():
+        raise BuildError('Build-Umgebung existiert bereits; wird nicht überschrieben.')
+    venv.EnvBuilder(with_pip=True).create(target)
+    python = target / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+    # Einige Desktop-Abhängigkeiten kommen als sdist. Auch ihr Backend ist
+    # gesperrt: vorher aus Hash-Lock installieren, danach KEINE Build-Isolation.
+    bootstrap = [e for e in entries if e.split('==')[0] in {'pip', 'setuptools', 'wheel', 'packaging'}]
+    with tempfile.TemporaryDirectory(prefix='sedo-bootstrap-') as tmp:
+        path = Path(tmp) / 'bootstrap.lock'
+        path.write_text('\n'.join(bootstrap) + '\n', encoding='utf-8')
+        run([str(python), '-m', 'pip', 'install', '--require-hashes', '--only-binary=:all:', '--no-deps', '-r', str(path)])
+    run([str(python), '-m', 'pip', 'install', '--require-hashes', '--no-build-isolation',
+         '-r', str(app / 'requirements-release.lock')])
+    run([str(python), '-m', 'pip', 'check'])
+    return python
+
+
+def source(output: Path, app: Path = APP) -> Path:
+    validate_lock(app)
+    def git(*args):
+        return subprocess.check_output(['git', *args], cwd=app).decode('utf-8').strip()
+    if git('status', '--porcelain', '--untracked-files=no'):
+        raise BuildError('Quellpaket nur aus sauberem Git-Stand erstellen.')
+    revision, tree = git('rev-parse', 'HEAD'), git('rev-parse', 'HEAD^{tree}')
+    stamp = int(git('show', '-s', '--format=%ct', 'HEAD'))
+    files = {}
+    for name in git('ls-files', '-z', '--', '.').split('\0'):
+        if not allowed(name):
+            continue
+        p = app / name
+        if p.is_symlink() or not p.resolve().is_relative_to(app.resolve()):
+            raise BuildError('Verknüpfung im Quellpaket: ' + name)
+        if not p.is_file():
+            raise BuildError('Unvollständiger Checkout: ' + name)
+        files[name] = p.read_bytes()
+    required = {'manage.py', 'desktop.py', 'sedo_desktop.spec', 'requirements-release.lock',
+                'release-lock.json', 'tools/teststand.py', 'config/settings.py', 'sedo/models.py'}
+    if not required <= files.keys():
+        raise BuildError('Pflichtdateien fehlen im Quellpaket.')
+    manifest = {'schema': 1, 'label': LABEL, 'commit': revision, 'tree': tree,
+                'python': '.'.join(map(str, PYTHON)), 'kind': 'source-teststand',
+                'files': {n: sha(v) for n, v in sorted(files.items())}}
+    files['TESTSTAND_MANIFEST.json'] = (json.dumps(manifest, indent=2, ensure_ascii=False) + '\n').encode()
+    output.mkdir(parents=True, exist_ok=True)
+    dest = output / f'SEDO-{LABEL}-{revision[:12]}-source.zip'
+    timestamp = datetime.fromtimestamp(max(stamp, 315532800), timezone.utc).timetuple()[:6]
+    with zipfile.ZipFile(dest, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for name, data in sorted(files.items()):
+            info = zipfile.ZipInfo(name, timestamp)
+            info.create_system = 3
+            info.external_attr = (0o100755 if name.endswith('.command') else 0o100644) << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
+    return dest
+
+
+def frozen(output: Path, app: Path = APP) -> Path:
+    validate_lock(app)
+    output.mkdir(parents=True, exist_ok=False)
+    source_zip = source(output, app)
+    with zipfile.ZipFile(source_zip) as z:
+        manifest = json.loads(z.read('TESTSTAND_MANIFEST.json'))
+    with tempfile.TemporaryDirectory(prefix='sedo-native-build-') as tmp:
+        envpython = install(Path(tmp) / 'venv', app)
+        # Unvollständiges lokales Diktat wird nicht länger als guter Build gewertet.
+        build_env = {**os.environ, 'SEDO_HOME': str(Path(tmp) / 'home'),
+                     'DJANGO_SECRET_KEY': 'isolierter-buildtest-kein-betriebsschluessel'}
+        (Path(tmp) / 'home/data').mkdir(parents=True)
+        run([str(envpython), '-c', 'from faster_whisper import WhisperModel; import webview, waitress'], env=build_env)
+        run([str(envpython), '-m', 'PyInstaller', str(app / 'sedo_desktop.spec'),
+             '--noconfirm', '--workpath', str(Path(tmp) / 'work'), '--distpath', str(output / 'desktop')], cwd=app, env=build_env)
+        if sys.platform == 'darwin':
+            bundle = output / 'desktop/SEDO Rechnungstool.app'
+            exe = bundle / 'Contents/MacOS/SEDO Rechnungstool'
+        elif os.name == 'nt':
+            bundle = output / 'desktop/SEDO Rechnungstool'
+            exe = bundle / 'SEDO Rechnungstool.exe'
+        else:
+            raise BuildError('Native Desktop-Testpakete werden auf Windows/macOS gebaut.')
+        report = output / 'self-check.json'
+        env = {**os.environ, 'SEDO_CHECK_REPORT': str(report),
+               'DJANGO_SECRET_KEY': 'isolierter-buildtest-kein-betriebsschluessel'}
+        run([str(exe), '--check-strict'], env=env, timeout=120)
+        check = json.loads(report.read_text(encoding='utf-8'))
+        if not (check.get('ok') and check.get('whisper_available') and check.get('frozen')):
+            raise BuildError('Der gebündelte Selbsttest ist nicht vollständig bestanden.')
+        installed = subprocess.check_output([str(envpython), '-m', 'pip', 'freeze', '--all'], text=True)
+        (output / 'installed.txt').write_text(installed, encoding='utf-8')
+    manifest.update(kind='native-teststand', os=platform.system(), machine=platform.machine(),
+                    lock_sha256=sha((app/'requirements-release.lock').read_bytes()),
+                    self_check=check, target_pc_tested=False, signed_release=False)
+    name = f"SEDO-{LABEL}-{manifest['commit'][:12]}-{platform.system()}-{platform.machine()}"
+    if sys.platform == 'darwin':
+        archive = output / (name + '.zip')
+        run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(bundle), str(archive)])
+    else:
+        archive = Path(shutil.make_archive(str(output/name), 'zip', bundle.parent, bundle.name))
+    manifest['archive_sha256'] = sha(archive.read_bytes())
+    (output / 'BUILD_MANIFEST.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    return archive
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['source', 'install', 'build', 'validate'])
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    try:
+        if args.action == 'validate':
+            print(f'Lock OK: {len(validate_lock())} plattformabhängige Pakete.')
+        elif args.output is None:
+            parser.error('--output ist erforderlich.')
+        else:
+            result = {'source': source, 'install': install, 'build': frozen}[args.action](args.output.resolve())
+            print(result)
+    except (BuildError, OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
+        print(f'TESTBUILD ABGEBROCHEN: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
