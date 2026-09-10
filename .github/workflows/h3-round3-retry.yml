@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python .github/h3-round3-fix.py
+      - run: python .github/h3-round3-fix2.py
       - run: python .github/h3-round3.py
       - run: python -m compileall -q sedo_rechnungstool_v2/sedo
       - run: git diff --check
