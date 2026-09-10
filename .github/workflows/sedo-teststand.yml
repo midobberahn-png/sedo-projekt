@@ -63,10 +63,10 @@ jobs:
           git status --porcelain --untracked-files=no | tee "$RUNNER_TEMP/h2-evidence/checkout-status.txt"
           git diff --stat | tee "$RUNNER_TEMP/h2-evidence/checkout-diff.txt"
           python tools/teststand.py validate
-      - name: Buildvertrag und vier Gegenproben
+      - name: Buildvertrag und sechs Gegenproben
         run: |
           set -euo pipefail
-          python -m unittest discover -s sedo/tests -p test_teststand.py -v 2>&1 | tee "$RUNNER_TEMP/h2-evidence/buildtests.log"
+          python -m unittest discover -s sedo/tests -p 'test_teststand*.py' -v 2>&1 | tee "$RUNNER_TEMP/h2-evidence/buildtests.log"
           python tools/gegenproben_teststand.py --output "$RUNNER_TEMP/h2-evidence/gegenproben"
       - name: Zwei reproduzierbare Quellpakete
         run: |
