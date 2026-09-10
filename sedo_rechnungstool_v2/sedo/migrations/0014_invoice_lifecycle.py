@@ -9,9 +9,15 @@ def forward(apps, schema_editor):
 
 
 def backward(apps, schema_editor):
-    # Legacy-Status bleibt während H3 bestehen; Rückmigration darf fachliche
-    # Zahlungs-/Mahninformationen nicht aus lifecycle rekonstruieren/überschreiben.
-    return
+    """Vor dem Entfernen von lifecycle seine nicht rekonstruierbare Wahrheit sichern.
+
+    Zahlungs-/Mahn-/Versandcache bleibt unangetastet, solange lifecycle issued ist.
+    Nur die drei gesetzten Belegzustände werden zurück ins alte Mischfeld gespiegelt.
+    """
+    Invoice = apps.get_model('sedo', 'Invoice')
+    Invoice.objects.filter(lifecycle='draft').update(status='entwurf')
+    Invoice.objects.filter(lifecycle='corrected').update(status='korrigiert')
+    Invoice.objects.filter(lifecycle='cancelled').update(status='storniert')
 
 
 class Migration(migrations.Migration):
