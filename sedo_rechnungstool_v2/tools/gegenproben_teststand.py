@@ -1,4 +1,4 @@
-"""H2: vier Gegenproben an Quellkopien, ohne Paketinstallation/Django-Start."""
+"""H2: sechs Gegenproben an Quellkopien, ohne Paketinstallation/Django-Start."""
 import argparse
 import ast
 import json
@@ -13,6 +13,8 @@ MUTATIONS = [
     ('lock_hash', "    if sha(data) != meta['lock_sha256']:", '    if False:'),
     ('input_hash', '        if sha((app / name).read_bytes()) != digest:', '        if False:'),
     ('clean_source', "    if git('status', '--porcelain', '--untracked-files=no'):", '    if False:'),
+    ('staging_hash', "            if sha(data) != digest:", '            if False:'),
+    ('checkout_bytes', '* -text', '* text=auto eol=lf\n*.bat text eol=crlf'),
     ('package_pin', "        if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.-]*==[A-Za-z0-9.!+_-]+(?:\\s|$)', entry):", '        if False:'),
 ]
 
@@ -26,14 +28,18 @@ def main():
             root=Path(tmp)/name;root.mkdir()
             for item in ('requirements.txt','requirements_desktop.txt','requirements-release.in',
                          'requirements-release-constraints.txt','requirements-release.lock','release-lock.json',
-                         'tools/teststand.py','sedo/tests/test_teststand.py'):
+                         'tools/teststand.py','sedo/tests/test_teststand.py',
+                         'sedo/tests/test_teststand_checkout.py','.gitattributes'):
                 dest=root/item;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(APP/item,dest)
             if name!='basis':
-                source=root/'tools/teststand.py';text=source.read_text(encoding='utf-8')
+                source=root/('.gitattributes' if name=='checkout_bytes' else 'tools/teststand.py')
+                text=source.read_text(encoding='utf-8')
                 if text.count(old)!=1:raise RuntimeError('Uneindeutiger Anker: '+name)
-                text=text.replace(old,new,1);ast.parse(text);source.write_text(text,encoding='utf-8')
+                text=text.replace(old,new,1)
+                if source.suffix=='.py':ast.parse(text)
+                source.write_text(text,encoding='utf-8')
             run=subprocess.run([sys.executable,'-m','unittest','discover','-s',str(root/'sedo/tests'),
-                                '-p','test_teststand.py','-v'],capture_output=True,text=True,timeout=60)
+                                '-p','test_teststand*.py','-v'],capture_output=True,text=True,timeout=60)
             text=run.stdout+run.stderr;(out/(name+'.log')).write_text(text,encoding='utf-8')
             if name=='basis':
                 if run.returncode:raise RuntimeError('Basis ist nicht grün.')
