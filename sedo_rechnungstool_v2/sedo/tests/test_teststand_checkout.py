@@ -30,7 +30,7 @@ class TeststandCheckoutTests(unittest.TestCase):
             (root/'local_injection.py').write_text('NICHT IM BUILD')
             archive=self.archive(root/'source.zip', {'sedo/models.py': b'# geprueft\n'})
             t.stage_source(archive, root/'staged')
-            self.assertEqual([str(p.relative_to(root/'staged')) for p in (root/'staged').rglob('*') if p.is_file()], ['sedo/models.py'])
+            self.assertEqual([p.relative_to(root/'staged').as_posix() for p in (root/'staged').rglob('*') if p.is_file()], ['sedo/models.py'])
 
     def test_zusaetzliche_archivdatei_wird_abgewiesen(self):
         with tempfile.TemporaryDirectory() as tmp:
