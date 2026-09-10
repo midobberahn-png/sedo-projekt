@@ -157,21 +157,49 @@ def source(output: Path, app: Path = APP) -> Path:
     return dest
 
 
+def stage_source(archive: Path, target: Path) -> dict:
+    """Nur manifestierte Quellen in ein neues Build-Verzeichnis schreiben.
+
+    PyInstaller sieht so keine unversionierten lokalen Module oder alte Artefakte.
+    Das Manifest ist ein Integritätsnachweis, keine externe digitale Signatur.
+    """
+    with zipfile.ZipFile(archive) as z:
+        names = z.namelist()
+        manifest = json.loads(z.read('TESTSTAND_MANIFEST.json'))
+        files = manifest['files']
+        if len(names) != len(set(names)) or set(names) != set(files) | {'TESTSTAND_MANIFEST.json'}:
+            raise BuildError('Dateiauswahl des Quellpakets stimmt nicht mit dem Manifest überein.')
+        content = {}
+        for name, digest in files.items():
+            if not allowed(name):
+                raise BuildError('Nicht freigegebener Paketpfad: ' + name)
+            data = z.read(name)
+            if sha(data) != digest:
+                raise BuildError('Quellpaket-Prüfsumme falsch: ' + name)
+            content[name] = data
+    target.mkdir(parents=True, exist_ok=False)
+    for name, data in content.items():
+        path = target / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    return manifest
+
+
 def frozen(output: Path, app: Path = APP) -> Path:
     validate_lock(app)
     output.mkdir(parents=True, exist_ok=False)
     source_zip = source(output, app)
-    with zipfile.ZipFile(source_zip) as z:
-        manifest = json.loads(z.read('TESTSTAND_MANIFEST.json'))
     with tempfile.TemporaryDirectory(prefix='sedo-native-build-') as tmp:
-        envpython = install(Path(tmp) / 'venv', app)
+        staged = Path(tmp) / 'source'
+        manifest = stage_source(source_zip, staged)
+        envpython = install(Path(tmp) / 'venv', staged)
         # Unvollständiges lokales Diktat wird nicht länger als guter Build gewertet.
         build_env = {**os.environ, 'SEDO_HOME': str(Path(tmp) / 'home'),
                      'DJANGO_SECRET_KEY': 'isolierter-buildtest-kein-betriebsschluessel'}
         (Path(tmp) / 'home/data').mkdir(parents=True)
         run([str(envpython), '-c', 'from faster_whisper import WhisperModel; import webview, waitress'], env=build_env)
-        run([str(envpython), '-m', 'PyInstaller', str(app / 'sedo_desktop.spec'),
-             '--noconfirm', '--workpath', str(Path(tmp) / 'work'), '--distpath', str(output / 'desktop')], cwd=app, env=build_env)
+        run([str(envpython), '-m', 'PyInstaller', str(staged / 'sedo_desktop.spec'),
+             '--noconfirm', '--workpath', str(Path(tmp) / 'work'), '--distpath', str(output / 'desktop')], cwd=staged, env=build_env)
         if sys.platform == 'darwin':
             bundle = output / 'desktop/SEDO Rechnungstool.app'
             exe = bundle / 'Contents/MacOS/SEDO Rechnungstool'
