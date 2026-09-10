@@ -32,11 +32,13 @@ jobs:
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
+            /sedo_rechnungstool_v2/.gitattributes
             /sedo_rechnungstool_v2/sedo/
             /sedo_rechnungstool_v2/config/
             /sedo_rechnungstool_v2/tools/
             /sedo_rechnungstool_v2/manage.py
-            /sedo_rechnungstool_v2/requirements.txt
+            /sedo_rechnungstool_v2/requirements*
+            /sedo_rechnungstool_v2/release-lock.json
       - name: Keine Betriebsdaten im Test-Checkout
         run: |
           test ! -e sedo_rechnungstool_v2/data
@@ -73,6 +75,7 @@ jobs:
           python tools/gegenproben_mahnwaechter.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_mahnwaechter"
           python tools/gegenproben_abo_zahlungsziel.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_abo_zahlungsziel"
           python tools/gegenproben_bedienrisiken.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_bedienrisiken"
+          python tools/gegenproben_teststand.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_teststand"
       - name: Koordinierte Datei-SQLite-Mahnprobe
         working-directory: sedo_rechnungstool_v2
         run: python tools/probe_mahnwaechter_sqlite.py --output "$RUNNER_TEMP/sedo-pruefung/sqlite_dateiprobe.json"
