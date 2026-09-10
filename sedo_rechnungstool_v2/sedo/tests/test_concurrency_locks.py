@@ -7,6 +7,7 @@ gleichzeitig passiert) und es wird geprüft, dass die DB-Schranken
 (Unique-Constraints, Guarded Updates) den zweiten Vorgang sauber stoppen –
 mit WorkflowError statt Duplikat.
 """
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -126,7 +127,8 @@ class ParallelDunningTests(TestCase):
                                                 postcode='39104', city='Magdeburg')
         self.invoice = _invoice(self.customer, 'RE2026080420',
                                 status='versendet',
-                                due_date=timezone.localdate())
+                                # F-68: Parallelität an einer tatsächlich überfälligen Rechnung prüfen.
+                                due_date=timezone.localdate() - timedelta(days=1))
 
     def test_doppelte_erinnerung_scheitert_auch_ohne_guard(self):
         generate_dunning_document(self.invoice, 'reminder')

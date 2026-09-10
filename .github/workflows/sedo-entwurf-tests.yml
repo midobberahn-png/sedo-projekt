@@ -2,7 +2,9 @@ name: SEDO Regression und Gegenproben
 
 on:
   pull_request:
-    branches: [main, review-v2-etappe4-6]
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -53,6 +55,9 @@ jobs:
           sed '/^faster-whisper/d' requirements.txt > "$RUNNER_TEMP/sedo-requirements.txt"
           python -m pip install "Django~=$DJANGO_SERIES.0" -r "$RUNNER_TEMP/sedo-requirements.txt"
           python -m pip freeze > "$RUNNER_TEMP/sedo-pruefung/abhaengigkeiten.txt"
+          python --version > "$RUNNER_TEMP/sedo-pruefung/python.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/sedo-pruefung/commit.txt"
+          git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/sedo-pruefung/tree.txt"
       - name: Gesamte Regressionstests
         working-directory: sedo_rechnungstool_v2
         run: |
@@ -67,6 +72,7 @@ jobs:
           python tools/gegenproben_belegarchiv.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_belegarchiv"
           python tools/gegenproben_mahnwaechter.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_mahnwaechter"
           python tools/gegenproben_abo_zahlungsziel.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_abo_zahlungsziel"
+          python tools/gegenproben_bedienrisiken.py --output "$RUNNER_TEMP/sedo-pruefung/gegenproben_bedienrisiken"
       - name: Koordinierte Datei-SQLite-Mahnprobe
         working-directory: sedo_rechnungstool_v2
         run: python tools/probe_mahnwaechter_sqlite.py --output "$RUNNER_TEMP/sedo-pruefung/sqlite_dateiprobe.json"

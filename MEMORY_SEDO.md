@@ -1,6 +1,19 @@
 # MEMORY.md – SEDO Rechnungstool
 
-> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, F-63 / Abo-Zahlungsziel 0. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+> Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, freigegebener Härtungs- und Abnahmeplan. Historische Abschnitte darunter bleiben als Verlauf erhalten.
+
+---
+
+## Aktueller Plan – Härtung, Zustandsmodell, danach UI/UX (10.09.2026)
+
+- Mirek hat die neue Reihenfolge vollständig freigegeben. Maßstab: verständliches Zustandsmodell und vollständiger funktionierender Arbeitsablauf; nicht nur Testzahlen.
+- Papas Einsatzrechner ist erst in neun Tagen verfügbar: frühestens **19.09.2026**. Bis dahin hier weiterarbeiten; Rechnerabnahme separat offen halten, nicht durch CI ersetzen.
+- Aktuelle Übersicht: **`review_v2/AKTUELLER_PLAN.md`**. Härtung vor UI/UX; die bestehende Oberfläche danach gezielt prüfen/aufwerten, nicht ungefragt komplett ersetzen.
+- PR #1–6 integriert, Basis `c6cfbe08d22ad406b8c3a46bb1f3b8abd0fd6321`. Vorhandene Daten sind Testdaten; kein Echtbetrieb.
+- H1: explizite Abo-Auswahl, keine vorausgewählten Vorlagen, „Alle auswählen“ erzeugt selbst nichts; ungültige/pausierte Auswahl vor der ersten Rechnung abweisen.
+- H1/F-68: alle Mahn-Erstellungswege verlangen einen positiven offenen Forderungsbetrag und Fälligkeitsdatum vor heute. Keine Frist bei fehlendem Datum erfinden. Manuelle Stufenwahl bleibt bestehen; automatische 14-Tage-Schwelle unverändert.
+- Gemeinsame CI für PR und main statt neuer Spezialworkflows je Merge; tatsächlicher Prüf-/Integrationsstand im Abschlussvermerk. Keine neue Modellmigration in diesem Block.
+- Danach: reproduzierbarer Testbuild und Abhängigkeitsbindung, H3/Welle 3, risikobasierte Restfundprüfung, Gesamtprozessabnahme, UI/UX. Kein Mac-/Windows-/Einsatzrechnertest hier behauptet.
 
 ---
 

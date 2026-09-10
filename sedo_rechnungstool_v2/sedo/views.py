@@ -2400,10 +2400,27 @@ def recurring_monthly_generate(request):
         return redirect('sedo:recurring_monthly')
     skip_existing = bool(request.POST.get('skip_existing'))
     selected_ids = request.POST.getlist('template_ids')
-    if selected_ids:
-        templates = RecurringInvoiceTemplate.objects.filter(id__in=selected_ids, status='active').select_related('customer','obj')
-    else:
-        templates = RecurringInvoiceTemplate.objects.filter(status='active').select_related('customer','obj')
+    # Keine implizite Gesamtauswahl: auch ohne JavaScript oder bei manipuliertem
+    # POST darf eine leere Auswahl niemals alle aktiven Vorlagen abrechnen.
+    if not selected_ids:
+        messages.error(request, 'Bitte mindestens eine aktive Abo-Vorlage auswählen. Es wurde keine Rechnung erzeugt.')
+        return redirect('sedo:recurring_monthly')
+    try:
+        selected_ids = {int(value) for value in selected_ids}
+        if any(pk <= 0 or pk > 9223372036854775807 for pk in selected_ids):
+            raise ValueError('Ungültige Vorlagen-ID')
+    except (TypeError, ValueError):
+        messages.error(request, 'Die Abo-Auswahl ist ungültig. Bitte die Vorlagen erneut auswählen.')
+        return redirect('sedo:recurring_monthly')
+    templates = list(RecurringInvoiceTemplate.objects.filter(
+        id__in=selected_ids, status='active',
+    ).select_related('customer', 'obj'))
+    # Auch eine gemischte, inzwischen veraltete Auswahl wird VOR der ersten
+    # Rechnung abgewiesen; kein unbemerkt verkleinerter oder erweiterter Lauf.
+    if {tmpl.pk for tmpl in templates} != selected_ids:
+        messages.error(request, 'Die Abo-Auswahl enthält nicht mehr verfügbare oder pausierte Vorlagen. '
+                       'Es wurde keine Rechnung erzeugt. Bitte die Auswahl prüfen.')
+        return redirect('sedo:recurring_monthly')
     ps, pe = _month_bounds(month)
     created_ids = []
     skipped = 0
