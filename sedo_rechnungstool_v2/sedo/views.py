@@ -796,7 +796,9 @@ def invoice_list(request):
     if month_s.isdigit():
         invoices = invoices.filter(issue_date__month=int(month_s))
     if status_f:
-        invoices = invoices.filter(status=status_f)
+        lifecycle_filter = {'entwurf': 'draft', 'korrigiert': 'corrected', 'storniert': 'cancelled'}.get(status_f)
+        invoices = (invoices.filter(lifecycle=lifecycle_filter) if lifecycle_filter
+                    else invoices.filter(status=status_f, lifecycle='issued'))
 
     # Verfügbare Jahre für das Filter-Dropdown
     available_years = (
@@ -900,6 +902,7 @@ def invoice_create(request):
                 inv.due_date = inv.issue_date + timedelta(days=_zahlungsziel)
                 inv.invoice_type = '380'
                 inv.status = 'entwurf' if action == 'draft' else 'erstellt'
+                inv.lifecycle = 'draft' if action == 'draft' else 'issued'
                 src_offer = None
                 src_invoice = None
                 if request.POST.get('source_offer'):
@@ -1037,7 +1040,7 @@ def invoice_edit(request, pk):
     from .forms import InvoiceItemForm
 
     invoice = get_object_or_404(Invoice.objects.select_related('customer', 'obj'), pk=pk)
-    if invoice.status != 'entwurf':
+    if invoice.lifecycle != 'draft':
         messages.error(request, 'Nur ein Entwurf kann bearbeitet werden.')
         return redirect('sedo:invoice_detail', pk=pk)
     felder = ('customer', 'obj', 'issue_date', 'period_start', 'period_end', 'vat_rate', 'note')
@@ -1111,7 +1114,7 @@ def invoice_edit(request, pk):
 def invoice_finalize(request, pk):
     """Bestätigung und Finalisierung; GET verändert grundsätzlich nichts."""
     invoice = get_object_or_404(Invoice.objects.select_related('customer', 'obj'), pk=pk)
-    if invoice.status != 'entwurf':
+    if invoice.lifecycle != 'draft':
         messages.error(request, 'Dieser Beleg ist kein Entwurf mehr.')
         return redirect('sedo:invoice_detail', pk=pk)
     if request.POST.get('confirm') != '1':
@@ -1145,7 +1148,7 @@ def invoice_detail(request, pk):
     return render(request, 'sedo/invoice_detail.html', {
         'invoice': invoice,
         'invoice_payments': payments,
-        'archiv_status': pruefe_archiv(invoice) if invoice.status != 'entwurf' else None,
+        'archiv_status': pruefe_archiv(invoice) if invoice.lifecycle != 'draft' else None,
         # Leerer String = Ausblenden erlaubt; sonst der Grund im Klartext für
         # den deaktivierten Knopf (F-14).
         'ausblenden_hindernis': ausblenden_hindernis(invoice),
@@ -1165,7 +1168,7 @@ def invoice_generate(request, pk):
         logger.exception('Dateierzeugung zurückgerollt')
         messages.error(request, 'Dateien konnten nicht gespeichert werden. Vorhandene Originale bleiben erhalten.')
     else:
-        if invoice.status == 'entwurf':
+        if invoice.lifecycle == 'draft':
             write_audit(request, 'generate', invoice, 'Entwurfs-PDF neu erzeugt')
             messages.success(request, 'Entwurfs-PDF wurde neu erzeugt.')
         else:
@@ -1295,12 +1298,12 @@ def invoice_delete(request, pk):
                 if hindernis:
                     raise WorkflowError(hindernis)
                 angebote = (list(Offer.all_objects.filter(linked_invoice_id=pk))
-                            if invoice.status == 'entwurf' else [])
+                            if invoice.lifecycle == 'draft' else [])
                 bezug = ', '.join(angebot.number for angebot in angebote)
                 write_audit(request, 'delete', invoice,
                             f'Rechnung {no} als gelöscht markiert (GoBD-Soft-Delete)'
                             + (f'; Angebote: {bezug}' if bezug else ''), pflicht=True,
-                            metadata={'anlass': 'entwurf_verwerfen' if invoice.status == 'entwurf'
+                            metadata={'anlass': 'entwurf_verwerfen' if invoice.lifecycle == 'draft'
                                       else 'ausblenden', 'rechnungsnummer': no, 'angebote': bezug})
                 for angebot in angebote:
                     vorher = angebot.status
@@ -1325,7 +1328,7 @@ def invoice_delete(request, pk):
         messages.success(request, f'Rechnung {no} wurde ausgeblendet. Der Datensatz bleibt erhalten.')
         return redirect('sedo:invoice_list')
     return render(request, 'sedo/confirm_delete.html', {
-        'title': 'Entwurf verwerfen' if invoice.status == 'entwurf' else 'Rechnung ausblenden',
+        'title': 'Entwurf verwerfen' if invoice.lifecycle == 'draft' else 'Rechnung ausblenden',
         'text': f'Beleg {invoice.number} wirklich ausblenden? Der Datensatz bleibt erhalten.',
         'invoice_revision': invoice.updated_at.isoformat(),
         'cancel_url': reverse('sedo:invoice_detail', args=[pk]),
@@ -1460,15 +1463,15 @@ def open_items(request):
     # Funktion 'bezahlt' ausschließt.
     invoices = (Invoice.objects.select_related('customer', 'obj')
                 .prefetch_related('payments', 'dunning_documents')
-                .exclude(status='storniert').exclude(invoice_type='457'))
+                .exclude(lifecycle='cancelled').exclude(invoice_type='457'))
     if status == 'overdue':
         invoices = offene_rechnungen(invoices).filter(due_date__lt=today)
     elif status == 'paid':
-        invoices = invoices.filter(status='bezahlt')
+        invoices = invoices.filter(lifecycle='issued', status='bezahlt')
     elif status == 'all':
         # „Alle ohne Storno" zeigt weiterhin auch Bezahltes – nur Entwürfe
         # gehören nicht in eine Liste offener Posten.
-        invoices = invoices.exclude(status='entwurf')
+        invoices = invoices.exclude(lifecycle='draft')
     else:
         invoices = offene_rechnungen(invoices)
     if q:
@@ -1479,7 +1482,7 @@ def open_items(request):
     # Auf dem Reiter „Alle" stehen auch ersetzte Originale und Entwürfe – die
     # gehören nicht in die Summe der offenen Forderungen.
     open_total = sum((i.open_amount for i in invoice_list
-                      if i.status not in Invoice.NICHT_OFFENE_STATUS and i.invoice_type != '457'),
+                      if i.lifecycle == 'issued' and i.invoice_type != '457'),
                      Decimal('0.00'))
     overdue_total = sum((i.open_amount for i in invoice_list if i.is_overdue), Decimal('0.00'))
     dunning_candidates = get_dunning_candidates()
@@ -2190,7 +2193,7 @@ def aareon_import(request):
                     for m in AareonMapping.objects.all()
                 }
                 for unit_name in units:
-                    if skip_existing and Invoice.objects.filter(customer=customer, obj__name=unit_name, source='GWG Monatsrechnung', period_start=ps, period_end=pe).exclude(status='storniert').exists():
+                    if skip_existing and Invoice.objects.filter(customer=customer, obj__name=unit_name, source='GWG Monatsrechnung', period_start=ps, period_end=pe).exclude(lifecycle='cancelled').exists():
                         skipped += 1
                         continue
                     # Erst prüfen, welche Leistungen gemappt sind – erst dann eine Nummer
@@ -2426,7 +2429,7 @@ def recurring_monthly_generate(request):
     skipped = 0
     failed = []
     for tmpl in templates:
-        if skip_existing and Invoice.objects.filter(customer=tmpl.customer, obj=tmpl.obj, source='Abo Monatsrechnung', period_start=ps, period_end=pe).exclude(status='storniert').exists():
+        if skip_existing and Invoice.objects.filter(customer=tmpl.customer, obj=tmpl.obj, source='Abo Monatsrechnung', period_start=ps, period_end=pe).exclude(lifecycle='cancelled').exists():
             skipped += 1
             continue
         due = issue_date + timedelta(days=_recurring_payment_days(
@@ -2579,7 +2582,7 @@ def month_close(request):
     # addierten sich in der Bruttosumme. Beim Storno stimmt die Summe dagegen
     # von selbst, weil der Stornobeleg negative Mengen trägt; er bleibt drin.
     invoices = (Invoice.objects.filter(issue_date__year=year, issue_date__month=month)
-                .exclude(status__in=('entwurf', 'korrigiert'))
+                .exclude(lifecycle__in=('draft', 'corrected'))
                 .select_related('customer', 'obj').prefetch_related('items').order_by('number'))
     # Ausgeblendete Nummern des Monats mit ausweisen – eine dokumentierte
     # Nummernlücke ist GoBD-tragbar, eine unerklärte nicht (F-14).

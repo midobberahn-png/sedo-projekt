@@ -110,7 +110,7 @@ def _datei_lesen(invoice, field, proof):
 def lese_archivdatei(invoice, field='zugferd_file') -> EmailAttachment:
     """Benötigtes Original lesen, niemals erzeugen. Auch korrigierte bleiben lesbar."""
     _frisch(invoice)
-    if invoice.status == 'entwurf' or invoice.number.startswith('EN'):
+    if invoice.lifecycle == 'draft' or invoice.number.startswith('EN'):
         raise _fehler(invoice, 'Ein Entwurf ist kein ausgestelltes Original.')
     return _datei_lesen(invoice, field, archivnachweis(invoice))
 
@@ -182,7 +182,7 @@ def stelle_archiv_wieder_her(invoice, quelle: Path, *, anwenden=False, request=N
     def vorbereiten():
         _frisch(invoice)
         proof = archivnachweis(invoice)
-        if not proof or invoice.status == 'entwurf':
+        if not proof or invoice.lifecycle == 'draft':
             raise _fehler(invoice, 'Für diese Wiederherstellung fehlt ein ausgestellter Prüfsummennachweis.')
         missing, links = {}, []
         for field in ARCHIV_FELDER:

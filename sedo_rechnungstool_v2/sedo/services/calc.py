@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db.models import Sum
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 CENT = Decimal('0.01')
@@ -52,12 +53,10 @@ def abgeleiteter_zahlstatus(invoice):
     # Nur aktive (nicht soft-gelöschte) Zahlungen zählen.
     paid = invoice.payments.filter(deleted_at__isnull=True).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
     today = timezone.localdate()
-    # `gross_total > 0` statt `!= 0`: Bei einem Stornobeleg ist der Bruttowert
-    # negativ (z. B. -119,00 €). Mit der alten Bedingung war
-    # `0 >= -119 and -119 != 0` wahr, und der Stornobeleg wurde beim ersten
-    # Blick auf „Offene Posten" als „bezahlt" markiert – ohne jede Zahlung
-    # (Review-Fund F-89).
-    if paid >= invoice.gross_total and invoice.gross_total > Decimal('0.00'):
+    if invoice.lifecycle != 'issued' or invoice.invoice_type == '457':
+        return None
+    gross = Decimal(str(invoice.gross_total))
+    if paid >= gross and gross > Decimal('0.00'):
         neu = 'bezahlt'
     elif paid > Decimal('0.00'):
         neu = 'teilbezahlt'
@@ -65,10 +64,8 @@ def abgeleiteter_zahlstatus(invoice):
         neu = 'gemahnt'
     elif invoice.due_date and invoice.due_date < today:
         neu = 'ueberfaellig'
-    elif invoice.status in ['bezahlt', 'teilbezahlt', 'ueberfaellig', 'gemahnt']:
-        neu = 'erstellt'
     else:
-        return None
+        neu = 'versendet' if invoice.status == 'versendet' else 'erstellt'
     return neu if neu != invoice.status else None
 
 
@@ -86,7 +83,7 @@ def refresh_invoice_payment_status(invoice):
     Seitenaufruf.
     """
     from ..models import Invoice as _Invoice
-    if invoice.status in _Invoice.GESCHUETZTE_STATUS or invoice.invoice_type == '457':
+    if invoice.lifecycle != 'issued' or invoice.invoice_type == '457':
         return invoice
     neu = abgeleiteter_zahlstatus(invoice)
     if neu:
@@ -109,7 +106,14 @@ def offene_rechnungen(basis=None):
     """
     from ..models import Invoice as _Invoice
     basis = _Invoice.objects if basis is None else basis
-    return basis.exclude(status__in=_Invoice.NICHT_OFFENE_STATUS).exclude(invoice_type='457')
+    from .invoice_state import issued_claims
+    basis = issued_claims(basis)
+    paid = Coalesce(
+        Sum('payments__amount', filter=Q(payments__deleted_at__isnull=True)),
+        Value(Decimal('0.00')),
+        output_field=DecimalField(max_digits=14, decimal_places=2),
+    )
+    return basis.annotate(_active_paid=paid).filter(gross_total__gt=F('_active_paid'))
 
 
 def zuordenbare_rechnungen(basis=None):
@@ -122,4 +126,5 @@ def zuordenbare_rechnungen(basis=None):
     """
     from ..models import Invoice as _Invoice
     basis = _Invoice.objects if basis is None else basis
-    return basis.exclude(status__in=_Invoice.GESCHUETZTE_STATUS)
+    from .invoice_state import payment_assignable
+    return payment_assignable(basis)

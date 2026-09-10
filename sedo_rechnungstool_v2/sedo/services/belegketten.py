@@ -33,19 +33,24 @@ def _zahlstatus_nach_ruecksetzen(invoice: Invoice) -> str:
     """
     probe = copy(invoice)
     probe.status = 'erstellt'
+    probe.lifecycle = 'issued'
     if probe.invoice_type == '457':
         return 'erstellt'
     return abgeleiteter_zahlstatus(probe) or 'erstellt'
 
 
-def _befund(invoice, gruppe, code, nach, hinweis, *, storno=(), korrektur=(),
+def _befund(invoice, gruppe, code, nach, hinweis, *, nach_lifecycle=None, storno=(), korrektur=(),
             bitte_pruefen=False, reparieren=True):
     """Nur skalare Belegangaben, keine Kunden-/Bankdaten oder Datei-Inhalte."""
     return {
         'gruppe': gruppe, 'code': code, 'invoice_id': invoice.pk,
         'nummer': invoice.number, 'von': invoice.status, 'nach': nach,
+        'von_lifecycle': invoice.lifecycle, 'nach_lifecycle': nach_lifecycle,
         'revision': invoice.updated_at.isoformat(),
-        'reparierbar': reparieren and nach is not None and nach != invoice.status,
+        'reparierbar': reparieren and (
+            (nach is not None and nach != invoice.status)
+            or (nach_lifecycle is not None and nach_lifecycle != invoice.lifecycle)
+        ),
         'bitte_pruefen': bitte_pruefen, 'hinweis': hinweis,
         'storno_nummern': [i.number for i in storno],
         'korrektur_nummern': [i.number for i in korrektur],
@@ -58,7 +63,7 @@ def _bericht(pruefzeit):
     invoices = list(Invoice.objects.order_by('pk'))
     folgen = defaultdict(list)
     for folge in invoices:
-        if folge.reference_invoice_id and folge.status != 'entwurf':
+        if folge.reference_invoice_id and folge.lifecycle != 'draft':
             folgen[folge.reference_invoice_id].append(folge)
     heute = timezone.localdate(pruefzeit)
     funde = []
@@ -67,31 +72,32 @@ def _bericht(pruefzeit):
         storno = tuple(i for i in kinder if i.invoice_type == '457')
         korrektur = tuple(i for i in kinder if i.invoice_type == '384')
         graph = {'storno': storno, 'korrektur': korrektur}
-        nicht_ausgestellt = invoice.status == 'entwurf' or invoice.number.startswith('EN')
+        nicht_ausgestellt = invoice.lifecycle == 'draft' or invoice.number.startswith('EN')
         if (storno or korrektur) and nicht_ausgestellt:
             funde.append(_befund(invoice, 'A', 'entwurf_mit_folgebeleg', None,
                 'Entwurf/EN-Nummer mit ausgestelltem Folgebeleg: bitte manuell prüfen; '
                 'die Reparatur darf keinen Entwurf ausstellen.', bitte_pruefen=True, **graph))
         elif storno:
             beide = bool(korrektur)
-            if invoice.status != 'storniert' or beide:
+            if invoice.lifecycle != 'cancelled' or beide:
                 funde.append(_befund(invoice, 'A', 'beide_folgebelege' if beide else 'storno_status_verloren',
                     'storniert', 'Storno hat Vorrang. Beide Folgebelege bitte prüfen.' if beide else
-                    'Ausgestelltes, nicht ausgeblendetes Storno vorhanden.', bitte_pruefen=beide, **graph))
+                    'Ausgestelltes, nicht ausgeblendetes Storno vorhanden.', nach_lifecycle='cancelled', bitte_pruefen=beide, **graph))
         elif korrektur:
-            if invoice.status == 'storniert':
+            if invoice.lifecycle == 'cancelled':
                 # Der Etappenplan erlaubt hier KEIN automatisches Entstornieren.
                 funde.append(_befund(invoice, 'A', 'storniert_nur_mit_korrektur', None,
                     'Status storniert, aber nur eine Korrektur vorhanden: bitte manuell prüfen.',
                     bitte_pruefen=True, **graph))
-            elif invoice.status != 'korrigiert':
+            elif invoice.lifecycle != 'corrected':
                 funde.append(_befund(invoice, 'A', 'korrektur_status_verloren', 'korrigiert',
-                    'Ausgestellte, nicht ausgeblendete Korrektur vorhanden.', **graph))
-        elif invoice.status in ('storniert', 'korrigiert'):
+                    'Ausgestellte, nicht ausgeblendete Korrektur vorhanden.', nach_lifecycle='corrected', **graph))
+        elif invoice.lifecycle in ('cancelled', 'corrected'):
             funde.append(_befund(invoice, 'B', 'belegzustand_ohne_folgebeleg',
                 None if nicht_ausgestellt else _zahlstatus_nach_ruecksetzen(invoice),
                 'EN-Nummer mit widersprüchlichem Status: bitte manuell prüfen.' if nicht_ausgestellt else
                 'Kein ausgestelltes Storno und keine ausgestellte Korrektur: Zahlstatus neu ableiten.',
+                nach_lifecycle=None if nicht_ausgestellt else 'issued',
                 bitte_pruefen=nicht_ausgestellt))
         elif invoice.invoice_type == '457' and invoice.status == 'bezahlt':
             funde.append(_befund(invoice, 'D', 'storno_faelschlich_bezahlt',
@@ -100,7 +106,7 @@ def _bericht(pruefzeit):
                 'Ein Stornobeleg erhält keinen Zahlstatus. Zahlungen selbst bleiben unverändert.',
                 bitte_pruefen=nicht_ausgestellt))
 
-        if invoice.status == 'entwurf':
+        if invoice.lifecycle == 'draft':
             if invoice.xml_file.name or invoice.zugferd_file.name:
                 funde.append(_befund(invoice, 'C', 'entwurf_mit_xml_verweis', None,
                     'XML-/ZUGFeRD-Dateiverweise vorhanden; physischer Inhalt nicht geprüft. '
@@ -145,21 +151,28 @@ def _repariere_befund(fund, lauf_id):
         raise BelegkettenKonflikt('Eine Reparatur benötigt eine umgebende Transaktion.')
     if not fund['reparierbar'] or fund['gruppe'] not in ('A', 'B', 'D'):
         raise BelegkettenKonflikt('Dieser Befund ist nicht automatisch reparierbar.')
+    values = {'updated_at': timezone.now()}
+    if fund['nach'] is not None:
+        values['status'] = fund['nach']
+    if fund['nach_lifecycle'] is not None:
+        values['lifecycle'] = fund['nach_lifecycle']
     updated = Invoice.objects.filter(
-        pk=fund['invoice_id'], status=fund['von'], updated_at=fund['revision'],
-    ).update(status=fund['nach'], updated_at=timezone.now())
+        pk=fund['invoice_id'], status=fund['von'], lifecycle=fund['von_lifecycle'],
+        updated_at=fund['revision'],
+    ).update(**values)
     if updated != 1:
         raise BelegkettenKonflikt(f"Beleg {fund['nummer']} wurde inzwischen geändert. Bitte neu prüfen.")
     write_audit(None, 'update', object_type='Invoice', object_id=str(fund['invoice_id']),
         object_repr=fund['nummer'], message=f"Belegketten-Reparatur {fund['nummer']}: "
         f"{fund['von']} → {fund['nach']} ({fund['code']}).",
         pflicht=True, metadata={
-            'von': fund['von'], 'nach': fund['nach'], 'anlass': 'reparatur',
+            'von': fund['von'], 'nach': fund['nach'], 'von_lifecycle': fund['von_lifecycle'],
+            'nach_lifecycle': fund['nach_lifecycle'], 'anlass': 'reparatur',
             'gruppe': fund['gruppe'], 'befund': fund['code'], 'lauf_id': lauf_id,
             'storno_nummern': ', '.join(fund['storno_nummern']),
             'korrektur_nummern': ', '.join(fund['korrektur_nummern']),
         })
-    return {k: fund[k] for k in ('invoice_id', 'nummer', 'gruppe', 'code', 'von', 'nach')}
+    return {k: fund[k] for k in ('invoice_id', 'nummer', 'gruppe', 'code', 'von', 'nach', 'von_lifecycle', 'nach_lifecycle')}
 
 
 def pruefe_belegketten(*, reparieren=False):

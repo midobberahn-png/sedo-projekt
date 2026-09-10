@@ -91,13 +91,13 @@
         <td style="text-align:right"><strong>{{ r.gross_total }} €</strong></td>
         <td>
           <span class="badge
-            {% if r.status == 'bezahlt' %}green
-            {% elif r.status == 'storniert' %}red
-            {% elif r.status == 'ueberfaellig' %}red
-            {% elif r.status == 'gemahnt' %}amber
-            {% elif r.status == 'entwurf' %}yellow
-            {% elif r.status == 'versendet' %}blue
-            {% endif %}">{{ r.get_status_display }}</span>
+            {% if r.display_state == 'bezahlt' %}green
+            {% elif r.display_state == 'storniert' %}red
+            {% elif r.display_state == 'ueberfaellig' %}red
+            {% elif r.display_state == 'gemahnt' %}amber
+            {% elif r.display_state == 'entwurf' %}yellow
+            {% elif r.display_state == 'versendet' %}blue
+            {% endif %}">{{ r.display_state_label }}</span>
         </td>
         <td>
           <div class="row-actions" style="flex-wrap:nowrap">
