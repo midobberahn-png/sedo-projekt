@@ -126,7 +126,7 @@ class DraftWorkflowTests(TestCase):
             generate_invoice_files(inv, erstmalig=True)
         xml_path = Path(inv.xml_file.path)
         xml_bytes = xml_path.read_bytes()
-        Invoice.objects.filter(pk=inv.pk).update(status='entwurf')
+        Invoice.objects.filter(pk=inv.pk).update(status='entwurf', lifecycle='draft')
         generate_invoice_files(inv)
         self.assertFalse(inv.xml_file or inv.zugferd_file)
         self.assertFalse(xml_path.exists())

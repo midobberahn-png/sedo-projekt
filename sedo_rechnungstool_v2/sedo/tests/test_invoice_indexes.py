@@ -85,6 +85,9 @@ class InvoiceIndexDatenbankTests(TestCase):
                 gross_total='119.00'))
         cls.future = Invoice.objects.create(number='TEST-IDX-FUTURE', customer=cls.customer,
                 due_date=today+timedelta(days=1), gross_total='119.00')
+        paid = next(i for i in cls.invoices if i.status == 'bezahlt')
+        Payment.objects.create(invoice=paid, amount=paid.gross_total, booking_date=today,
+                               external_id='TEST-IDX-PAID')
         cls.null = Invoice.objects.create(number='TEST-IDX-NULL', customer=cls.customer,
                 due_date=None, gross_total='119.00')
         cls.hidden = Invoice.objects.create(number='TEST-IDX-HIDDEN', customer=cls.customer,
@@ -118,7 +121,8 @@ class InvoiceIndexDatenbankTests(TestCase):
             plan = ' '.join(row[3] for row in cursor.execute('EXPLAIN QUERY PLAN ' + sql).fetchall())
         self.assertIn(DUE, plan)
         self.assertNotIn('TEMP B-TREE FOR ORDER BY', plan)
-        expected = {i.pk for i in self.invoices if i.status not in Invoice.GESPERRT_FUER_MAHNUNG}
+        expected = {i.pk for i in self.invoices
+                    if i.lifecycle == 'issued' and i.payment_state != 'paid' and i.invoice_type != '457'}
         self.assertEqual({i.pk for i in candidates}, expected)
         dates = [i.due_date for i in candidates]
         self.assertEqual(dates, sorted(dates))
@@ -133,26 +137,40 @@ class InvoiceIndexDatenbankTests(TestCase):
 
 @skipUnless(connection.vendor == 'sqlite', 'SQLite-Migrationsvertrag')
 class InvoiceIndexMigrationTests(TransactionTestCase):
+    def apps_for(self, target):
+        return MigrationExecutor(connection).loader.project_state([target]).apps
+
     def setUp(self):
         self.migrate(OLD)
-        self.addCleanup(self.migrate, NEW)
-        self.customer = Customer.objects.create(name='TEST-IDX Migration')
-        self.obj = CustomerObject.objects.create(customer=self.customer, name='TEST-IDX Objekt')
-        self.original = Invoice.objects.create(number='TEST-IDX-ORIGINAL', customer=self.customer,
+        self.addCleanup(self.migrate, ('sedo', '0014_invoice_lifecycle'))
+        apps = self.apps_for(OLD)
+        CustomerH = apps.get_model('sedo', 'Customer')
+        ObjectH = apps.get_model('sedo', 'CustomerObject')
+        InvoiceH = apps.get_model('sedo', 'Invoice')
+        ItemH = apps.get_model('sedo', 'InvoiceItem')
+        PaymentH = apps.get_model('sedo', 'Payment')
+        OfferH = apps.get_model('sedo', 'Offer')
+        DunningH = apps.get_model('sedo', 'DunningDocument')
+        RangeH = apps.get_model('sedo', 'NumberRange')
+        AuditH = apps.get_model('sedo', 'AuditLog')
+        self.customer = CustomerH.objects.create(name='TEST-IDX Migration')
+        self.obj = ObjectH.objects.create(customer=self.customer, name='TEST-IDX Objekt')
+        self.original = InvoiceH.objects.create(number='TEST-IDX-ORIGINAL', customer=self.customer,
             obj=self.obj, status='korrigiert', due_date=timezone.localdate(), gross_total='119.00',
             pdf_file='unveraendert/original.pdf', xml_file='unveraendert/factur-x.xml')
-        self.correction = Invoice.objects.create(number='TEST-IDX-KORREKTUR', customer=self.customer,
+        self.correction = InvoiceH.objects.create(number='TEST-IDX-KORREKTUR', customer=self.customer,
             reference_invoice=self.original, invoice_type='384', status='erstellt')
-        Invoice.objects.create(number='TEST-IDX-ENTWURF', customer=self.customer, status='entwurf')
-        Invoice.objects.create(number='TEST-IDX-AUSGEBLENDET', customer=self.customer,
+        InvoiceH.objects.create(number='TEST-IDX-ENTWURF', customer=self.customer, status='entwurf')
+        InvoiceH.objects.create(number='TEST-IDX-AUSGEBLENDET', customer=self.customer,
             deleted_at=timezone.now(), due_date=None)
-        InvoiceItem.objects.create(invoice=self.original, description='TEST-IDX Leistung', unit_price='100')
-        Payment.objects.create(invoice=self.correction, amount='10', booking_date=timezone.localdate(),
+        ItemH.objects.create(invoice=self.original, description='TEST-IDX Leistung', unit_price='100')
+        PaymentH.objects.create(invoice=self.correction, amount='10', booking_date=timezone.localdate(),
             external_id='TEST-IDX-ZAHLUNG')
-        Offer.objects.create(number='TEST-IDX-ANGEBOT', customer=self.customer, linked_invoice=self.original)
-        DunningDocument.objects.create(invoice=self.correction, kind='reminder')
-        NumberRange.objects.create(prefix='EN', year=2099, month=1, next_number=17)
-        AuditLog.objects.create(action='create', object_repr='TEST-IDX alter Nachweis')
+        OfferH.objects.create(number='TEST-IDX-ANGEBOT', customer=self.customer, linked_invoice=self.original)
+        DunningH.objects.create(invoice=self.correction, kind='reminder')
+        RangeH.objects.create(prefix='EN', year=2099, month=1, next_number=17)
+        AuditH.objects.create(action='create', object_repr='TEST-IDX alter Nachweis')
+        self.customer_id, self.original_id = self.customer.pk, self.original.pk
 
     @staticmethod
     def migrate(target):
@@ -162,8 +180,7 @@ class InvoiceIndexMigrationTests(TransactionTestCase):
         before = snapshot()
         with connection.cursor() as c:
             table = c.execute("SELECT rootpage, sql FROM sqlite_master WHERE type='table' AND name='sedo_invoice'").fetchone()
-        self.assertIsNone(index_sql(STATUS))
-        self.assertIsNone(index_sql(DUE))
+        self.assertIsNone(index_sql(STATUS)); self.assertIsNone(index_sql(DUE))
         for target, present in [(NEW, True), (OLD, False), (NEW, True)]:
             with self.subTest(target=target):
                 self.migrate(target)
@@ -177,39 +194,33 @@ class InvoiceIndexMigrationTests(TransactionTestCase):
 
     def test_sql_besteht_nur_aus_indexoperationen(self):
         for backwards, verb in [(False, 'CREATE INDEX'), (True, 'DROP INDEX')]:
-            out = StringIO()
-            call_command('sqlmigrate', 'sedo', NEW[1], backwards=backwards, stdout=out)
-            statements = [s.strip() for s in re.sub(r'--[^\n]*', '', out.getvalue()).split(';') if s.strip()]
-            self.assertEqual(len([s for s in statements if s.startswith(verb)]), 2)
-            self.assertTrue(all(s in ('BEGIN', 'COMMIT') or s.startswith(verb) for s in statements))
+            out = StringIO(); call_command('sqlmigrate', 'sedo', NEW[1], backwards=backwards, stdout=out)
+            statements = [x.strip() for x in re.sub(r'--[^\n]*', '', out.getvalue()).split(';') if x.strip()]
+            self.assertEqual(len([x for x in statements if x.startswith(verb)]), 2)
+            self.assertTrue(all(x in ('BEGIN','COMMIT') or x.startswith(verb) for x in statements))
 
     def test_echte_migration_baut_keine_tabelle_neu(self):
-        with CaptureQueriesContext(connection) as captured:
-            self.migrate(NEW)
-        sql = '\n'.join(q['sql'] for q in captured)
+        with CaptureQueriesContext(connection) as captured: self.migrate(NEW)
+        sql='\n'.join(q['sql'] for q in captured)
         self.assertEqual(len(re.findall(r'CREATE INDEX', sql, re.I)), 2)
         self.assertNotRegex(sql.upper(), r'(?:CREATE|ALTER|DROP) TABLE|(?:INSERT INTO|UPDATE|DELETE FROM) "SEDO_')
 
-    def test_mahn_und_statusauswahl_vor_nach_gleich(self):
-        def selection():
-            return ({s: list(Invoice.objects.filter(status=s).values_list('pk', flat=True))
-                     for s, _ in Invoice.STATUS},
-                    sorted((i.pk, i.next_kind, i.open_amount) for i in get_dunning_candidates(14)))
-        before = selection()
-        self.migrate(NEW)
-        self.assertEqual(selection(), before)
-        self.migrate(OLD)
-        self.assertEqual(selection(), before)
+    def test_statusauswahl_vor_nach_gleich(self):
+        def selection(target):
+            InvoiceH=self.apps_for(target).get_model('sedo','Invoice')
+            return {status:list(InvoiceH.objects.filter(status=status).values_list('pk',flat=True))
+                    for status,_ in InvoiceH._meta.get_field('status').choices}
+        before=selection(OLD); self.migrate(NEW); self.assertEqual(selection(NEW),before)
+        self.migrate(OLD); self.assertEqual(selection(OLD),before)
 
     def test_eindeutigkeitssperren_bleiben_erhalten(self):
         for target in (NEW, OLD):
-            self.migrate(target)
+            self.migrate(target); InvoiceH=self.apps_for(target).get_model('sedo','Invoice')
             with self.assertRaises(IntegrityError), transaction.atomic():
-                Invoice.objects.create(number='TEST-IDX-ORIGINAL', customer=self.customer)
+                InvoiceH.objects.create(number='TEST-IDX-ORIGINAL', customer_id=self.customer_id)
             with self.assertRaises(IntegrityError), transaction.atomic():
-                Invoice.objects.create(number='TEST-IDX-KORREKTUR-2', customer=self.customer,
-                    reference_invoice=self.original, invoice_type='384')
-            with connection.cursor() as c:
-                constraints = connection.introspection.get_constraints(c, 'sedo_invoice')
-            for name in ('invoice_unique_active_storno', 'invoice_unique_active_correction', 'invoice_unique_gwg_monthly_run'):
+                InvoiceH.objects.create(number='TEST-IDX-KORREKTUR-2', customer_id=self.customer_id,
+                    reference_invoice_id=self.original_id, invoice_type='384')
+            with connection.cursor() as c: constraints=connection.introspection.get_constraints(c,'sedo_invoice')
+            for name in ('invoice_unique_active_storno','invoice_unique_active_correction','invoice_unique_gwg_monthly_run'):
                 self.assertTrue(constraints[name]['unique'])

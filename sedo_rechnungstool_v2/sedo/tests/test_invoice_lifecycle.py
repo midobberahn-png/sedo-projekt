@@ -32,7 +32,7 @@ class InvoiceLifecycleTests(TestCase):
 
     def test_spaetere_statuskorruption_aendert_kanonischen_belegzustand_nicht(self):
         inv = self.inv('TEST-H3-CACHE')
-        Invoice.objects.filter(pk=inv.pk).update(status='storniert')
+        Invoice.objects.filter(pk=inv.pk).update(status='ueberfaellig')
         inv.refresh_from_db()
         self.assertEqual(inv.lifecycle, 'issued')
         self.assertFalse(inv.is_cancelled)

@@ -132,7 +132,8 @@ class BelegkettenTests(TestCase):
                 self.assertIsNone(getattr(inv, attr))
                 self.assertFalse(any(f['invoice_id'] == inv.pk for f in pruefe_belegketten()['funde']))
                 folge.status = 'erstellt'
-                folge.save(update_fields=['status'])
+                folge.lifecycle = 'issued'
+                folge.save(update_fields=['status', 'lifecycle'])
                 self.assertEqual(getattr(inv, attr).pk, folge.pk)
                 self.assertTrue(self.fund(inv)['reparierbar'])
 
@@ -419,6 +420,7 @@ class BelegkettenTests(TestCase):
         nachher = self.snapshot()
         for zeile in vorher['Invoice'] + nachher['Invoice']:
             zeile.pop('status')
+            zeile.pop('lifecycle')
             zeile.pop('updated_at')
         vorher.pop('AuditLog')
         nachher.pop('AuditLog')
@@ -639,8 +641,8 @@ class BelegkettenParallelTests(TransactionTestCase):
                 try:
                     self.assertEqual(proc.stdout.readline().strip(), 'bereit')
                     schreiber.execute('BEGIN IMMEDIATE')
-                    schreiber.execute('UPDATE sedo_invoice SET status=? WHERE id=?', ('bezahlt', inv.pk))
-                    schreiber.execute('UPDATE sedo_invoice SET status=? WHERE id=?', ('erstellt', folge.pk))
+                    schreiber.execute('UPDATE sedo_invoice SET status=?, lifecycle=? WHERE id=?', ('bezahlt', 'issued', inv.pk))
+                    schreiber.execute('UPDATE sedo_invoice SET status=?, lifecycle=? WHERE id=?', ('erstellt', 'issued', folge.pk))
                     proc.stdin.write('start\n')
                     proc.stdin.flush()
                     time.sleep(0.25)
@@ -652,8 +654,8 @@ class BelegkettenParallelTests(TransactionTestCase):
                     self.assertEqual(len(bericht['aenderungen']), 1)
                     self.assertEqual(bericht['aenderungen'][0]['von'], 'bezahlt')
                     self.assertEqual(bericht['aenderungen'][0]['nach'], 'storniert')
-                    self.assertEqual(schreiber.execute('SELECT status FROM sedo_invoice WHERE id=?',
-                                                       (inv.pk,)).fetchone()[0], 'storniert')
+                    self.assertEqual(schreiber.execute('SELECT status, lifecycle FROM sedo_invoice WHERE id=?',
+                                                       (inv.pk,)).fetchone(), ('storniert', 'cancelled'))
                     self.assertEqual(schreiber.execute("SELECT count(*) FROM sedo_auditlog").fetchone()[0], 1)
                 finally:
                     if proc.poll() is None:

@@ -47,12 +47,12 @@ def ensure_storno_allowed(original: Invoice) -> None:
         raise WorkflowError(
             f'{original.number} ist ein Entwurf und wurde nie ausgestellt. '
             'Bitte zuerst finalisieren oder verwerfen.')
-    if original.lifecycle == 'cancelled':
-        raise WorkflowError(f'Rechnung {original.number} ist bereits storniert.')
     existing = original.active_storno
     if existing:
         raise WorkflowError(
             f'Zu Rechnung {original.number} existiert bereits die Stornorechnung {existing.number}.')
+    if original.lifecycle == 'cancelled':
+        raise WorkflowError(f'Rechnung {original.number} ist bereits storniert.')
     # Kreuzprüfung am Belegobjekt statt am Statusfeld.
     correction = original.active_correction
     if correction:
@@ -75,18 +75,18 @@ def ensure_correction_allowed(original: Invoice) -> None:
         raise WorkflowError(
             f'{original.number} ist ein Entwurf und wurde nie ausgestellt. '
             'Bitte zuerst finalisieren oder direkt bearbeiten.')
+    # Der konkrete Folgebeleg ist informativer als nur der lifecycle-Cache.
+    storno = original.active_storno
+    if storno:
+        raise WorkflowError(
+            f'Zu Rechnung {original.number} existiert bereits die Stornorechnung '
+            f'{storno.number}. Eine stornierte Rechnung wird nicht mehr korrigiert.')
     if original.lifecycle == 'cancelled':
         raise WorkflowError(f'Rechnung {original.number} ist storniert und kann nicht mehr korrigiert werden.')
     existing = original.active_correction
     if existing:
         raise WorkflowError(
             f'Zu Rechnung {original.number} existiert bereits die Korrekturrechnung {existing.number}.')
-    # Kreuzprüfung am Belegobjekt statt am Statusfeld.
-    storno = original.active_storno
-    if storno:
-        raise WorkflowError(
-            f'Zu Rechnung {original.number} existiert bereits die Stornorechnung '
-            f'{storno.number}. Eine stornierte Rechnung wird nicht mehr korrigiert.')
     if original.lifecycle == 'corrected':
         raise WorkflowError(f'Rechnung {original.number} ist bereits als korrigiert markiert.')
 
@@ -522,12 +522,15 @@ def _create_storno_inner(original: Invoice, request=None, merken=None) -> Invoic
             leistungsart_id=item.leistungsart_id,
             leistungsart_text=item.leistungsart_text,
         )
-    vorher = original.lifecycle
+    vorher_lifecycle = original.lifecycle
+    vorher_status = original.status
     guarded_lifecycle_update(original, expected='issued', target='cancelled',
                              legacy_status='storniert')
     write_audit(request, 'update', original,
                 f'Rechnung {original.number}: ausgestellt → storniert ({storno.number})',
-                pflicht=True, metadata={'von': vorher, 'nach': 'cancelled', 'anlass': 'storno'})
+                pflicht=True, metadata={'von': vorher_status, 'nach': 'storniert',
+                                        'von_lifecycle': vorher_lifecycle,
+                                        'nach_lifecycle': 'cancelled', 'anlass': 'storno'})
     merken(storno)
     generate_invoice_files(storno, erstmalig=True, request=request)
     return storno

@@ -93,10 +93,14 @@ class DunningGuardTests(TestCase):
                     self.followup(typ, reference_invoice=inv)
                     self.assert_guarded(inv)
 
-    def test_geschuetzte_status_bleiben_auch_ohne_folgebeleg_gesperrt(self):
-        for status in Invoice.GESPERRT_FUER_MAHNUNG:
+    def test_geschuetzte_belegzustaende_und_echte_vollzahlung_sind_gesperrt(self):
+        for status, lifecycle in (('entwurf','draft'), ('korrigiert','corrected'), ('storniert','cancelled')):
             with self.subTest(status=status):
-                self.assert_guarded(self.new_invoice(status=status))
+                self.assert_guarded(self.new_invoice(status=status, lifecycle=lifecycle))
+        paid = self.new_invoice(status='bezahlt', lifecycle='issued')
+        Payment.objects.create(invoice=paid, amount=paid.gross_total,
+                               booking_date=timezone.localdate(), external_id='TEST-H3-PAID-GUARD')
+        self.assert_guarded(paid)
 
     def test_stornobeleg_mit_falsch_positivem_betrag_ist_gesperrt(self):
         inv = self.new_invoice(invoice_type='457', gross_total='119.00')
@@ -148,7 +152,7 @@ class DunningGuardTests(TestCase):
     def test_alter_status_auf_pythonobjekt_wird_nicht_vertraut(self):
         # Echter ORM-Snapshot mit Decimal-Werten, bevor der DB-Status abweicht.
         self.invoice.refresh_from_db()
-        Invoice.objects.filter(pk=self.invoice.pk).update(status='entwurf')
+        Invoice.objects.filter(pk=self.invoice.pk).update(status='entwurf', lifecycle='draft')
         self.assertEqual(self.invoice.status, 'ueberfaellig')
         self.assert_guarded()
 
