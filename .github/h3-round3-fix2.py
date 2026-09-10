@@ -1,0 +1,7 @@
+from pathlib import Path
+p = Path('.github/h3-round3.py')
+s = p.read_text()
+start = s.index("# 2) Storno-Audit")
+end = s.index("# 3) Belegketten", start)
+replacement = '''# 2) Storno-Audit alte Felder bewahren, lifecycle zusätzlich protokollieren.\np = Path('sedo_rechnungstool_v2/sedo/services/invoices.py')\ns = p.read_text()\nold = """    vorher = original.lifecycle\n    guarded_lifecycle_update(original, expected='issued', target='cancelled',\n                             legacy_status='storniert')\n    write_audit(request, 'update', original,\n                f'Rechnung {original.number}: ausgestellt → storniert ({storno.number})',\n                pflicht=True, metadata={'von': vorher, 'nach': 'cancelled', 'anlass': 'storno'})\n"""\nnew = """    vorher_lifecycle = original.lifecycle\n    vorher_status = original.status\n    guarded_lifecycle_update(original, expected='issued', target='cancelled',\n                             legacy_status='storniert')\n    write_audit(request, 'update', original,\n                f'Rechnung {original.number}: ausgestellt → storniert ({storno.number})',\n                pflicht=True, metadata={'von': vorher_status, 'nach': 'storniert',\n                                        'von_lifecycle': vorher_lifecycle,\n                                        'nach_lifecycle': 'cancelled', 'anlass': 'storno'})\n"""\nif s.count(old) != 1: raise SystemExit(f'storno audit anchor: {s.count(old)}')\np.write_text(s.replace(old,new,1))\n\n'''
+p.write_text(s[:start] + replacement + s[end:])
