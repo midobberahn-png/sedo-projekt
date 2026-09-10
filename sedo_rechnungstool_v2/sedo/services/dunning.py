@@ -73,15 +73,34 @@ def _beleg_hindernis(invoice: Invoice | None) -> str:
     return ''
 
 
+def _forderungs_hindernis(invoice: Invoice, today=None) -> str:
+    """F-68: Fälligkeit und echte Restforderung, auch bei manueller Stufenwahl.
+
+    Der Fälligkeitstag ist noch Zahlungstag. Ohne Datum wird keine Frist
+    erfunden; 0/negative Restbeträge sind unabhängig vom Status nicht mahnbar.
+    """
+    today = today if today is not None else timezone.localdate()
+    if invoice.due_date is None:
+        return f'Rechnung {invoice.number} hat kein Fälligkeitsdatum und kann nicht gemahnt werden.'
+    if invoice.due_date >= today:
+        return (f'Rechnung {invoice.number} ist noch nicht überfällig '
+                'und kann nicht gemahnt werden.')
+    if invoice.open_amount <= Decimal('0.00'):
+        return (f'Rechnung {invoice.number} hat keinen positiven offenen Betrag '
+                'und kann nicht gemahnt werden.')
+    return ''
+
+
 def mahn_hindernis(invoice: Invoice) -> str:
-    """Lesender, aktueller Sperrgrund für die Oberfläche; leer bedeutet keine Belegsperre."""
-    return _beleg_hindernis(_aktuelle_rechnung(invoice))
+    """Aktueller Beleg-/Forderungssperrgrund; derselbe Vertrag wie im Generator."""
+    current = _aktuelle_rechnung(invoice)
+    return _beleg_hindernis(current) or _forderungs_hindernis(current)
 
 
 def next_dunning_kind(invoice: Invoice, today=None) -> str | None:
     """Nächste Mahnstufe nach erneuter Belegprüfung, auch bei veralteter Python-Instanz."""
     current = _aktuelle_rechnung(invoice)
-    if _beleg_hindernis(current):
+    if _beleg_hindernis(current) or _forderungs_hindernis(current, today):
         return None
     return _next_dunning_kind(current, today)
 
@@ -106,11 +125,11 @@ def _next_dunning_kind(invoice: Invoice, today=None) -> str | None:
 
 
 def ensure_dunning_allowed(invoice: Invoice, kind: str) -> None:
-    """Beleggraph und Stufenduplikate frisch prüfen; allein noch keine Schreibsperre."""
+    """Beleggraph, Restforderung, Fälligkeit und Duplikate frisch prüfen; noch keine Sperre."""
     if kind not in _KIND_LABELS:
         raise WorkflowError('Unbekannte Mahnstufe. Bitte Erinnerung oder Mahnung wählen.')
     invoice = _aktuelle_rechnung(invoice)
-    hindernis = _beleg_hindernis(invoice)
+    hindernis = _beleg_hindernis(invoice) or _forderungs_hindernis(invoice)
     if hindernis:
         raise WorkflowError(hindernis)
     docs = list(invoice.dunning_documents.all())
@@ -215,8 +234,9 @@ def generate_dunning_document(invoice: Invoice, kind: str = 'reminder', *, reque
 
     Das erste SQL innerhalb von atomic ist ein UPDATE ohne Wertänderung. So wird
     auf SQLite vor dem Lesen serialisiert (SELECT FOR UPDATE wäre wirkungslos).
-    Die manuelle Stufenwahl bleibt erhalten; 'auto' prüft Frist und Restbetrag
-    ebenfalls innerhalb der Sperre. Ein vorheriger UI-/Service-Check reicht nicht.
+    Alle Stufen prüfen Fälligkeit und Restbetrag innerhalb der Sperre. Die
+    manuelle Stufenwahl bleibt erhalten; 'auto' beachtet zusätzlich Schwelle und
+    Erinnerungsfrist. Ein vorheriger UI-/Service-Check reicht nicht.
     """
     if kind not in (*_KIND_LABELS, 'auto'):
         raise WorkflowError('Unbekannte Mahnstufe. Es wurde kein Mahndokument erzeugt.')
@@ -305,7 +325,7 @@ def get_dunning_candidates(days_overdue_threshold: int = DEFAULT_DUNNING_THRESHO
         .exclude(status__in=_UNDUNNABLE_STATUS)
         .exclude(invoice_type='457')
         .filter(~Exists(_aktive_folgebelege().filter(reference_invoice_id=OuterRef('pk'))))
-        .filter(due_date__lte=cutoff)
+        .filter(due_date__lte=cutoff, due_date__lt=today)
         .select_related('customer', 'obj')
         .prefetch_related('dunning_documents', 'payments')
         .order_by('due_date')

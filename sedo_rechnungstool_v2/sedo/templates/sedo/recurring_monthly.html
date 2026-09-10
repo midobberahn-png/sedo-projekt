@@ -1,4 +1,4 @@
-{% extends 'sedo/base.html' %}{% load l10n %}
+{% extends 'sedo/base.html' %}{% load l10n static %}
 {% block content %}
 <div class="topbar">
   <div>
@@ -10,18 +10,23 @@
 <div class="process-strip"><div class="process-step active"><b>1</b><span>Vorlagen prüfen</span></div><div class="process-step"><b>2</b><span>Monat wählen</span></div><div class="process-step"><b>3</b><span>Rechnungen erzeugen</span></div><div class="process-step"><b>4</b><span>Archiv prüfen</span></div></div>
 <div class="card monthly-card" id="normal-block">
   <div class="section-head"><div><h2>Monatsrechnungen / Abo-Rechnungen <span class="info-tip" tabindex="0" aria-label="Hinweis zu Vorlagen">i<span class="info-tip-text">Für Kunden ohne GWG-Mapping. Vorlagen entstehen entweder über „Neue Rechnung“ mit Haken „als Abo-/Monatsrechnungsvorlage speichern“ oder direkt hier über „Vorlage anlegen“.</span></span></h2></div><a class="btn primary" href="{% url 'sedo:recurring_create' %}">Vorlage anlegen</a></div>
-  <form method="post" action="{% url 'sedo:recurring_generate' %}" class="stacked-form compact-form">
+  <form method="post" action="{% url 'sedo:recurring_generate' %}" class="stacked-form compact-form" data-recurring-selection>
     {% csrf_token %}
     <div class="form-grid compact-grid">
       <div class="form-row"><label>Abrechnungsmonat</label><input type="month" name="month" value="{{ default_month }}" required></div>
       <div class="form-row"><label>Rechnungsdatum</label><input type="date" name="issue_date" value="{{ default_issue_date }}" required></div>
       <div class="form-row full"><label class="check-line"><input type="checkbox" name="skip_existing" checked> Bereits erzeugte Abo-Rechnungen für denselben Monat/Kunde/Objekt überspringen</label></div>
     </div>
-    <div class="table-wrap"><table class="table table-modern action-table"><tr><th>Auswahl</th><th>Vorlage</th><th>Kunde</th><th>Objekt</th><th>Positionen</th><th>Status</th><th>Aktionen</th></tr>{% for t in recurring_templates %}<tr><td><input class="row-check" type="checkbox" name="template_ids" value="{{ t.id|unlocalize }}" checked></td><td><strong>{{ t.title }}</strong></td><td>{{ t.customer.name }}</td><td>{% if t.obj %}{{ t.obj.name }}{% else %}—{% endif %}</td><td>{{ t.items.count }}</td><td><span class="badge">{{ t.get_status_display }}</span></td><td class="table-actions"><a class="btn small" href="{% url 'sedo:recurring_update' t.id %}">Bearbeiten</a><a class="btn small danger" href="{% url 'sedo:recurring_delete' t.id %}">Löschen</a></td></tr>{% empty %}<tr><td colspan="7"><div class="empty-state">Noch keine Abo-/Monatsrechnungsvorlagen vorhanden.</div></td></tr>{% endfor %}</table></div>
-    <div class="sticky-runbar"><div><strong>Monatslauf starten</strong><span>Nur ausgewählte aktive Vorlagen werden verarbeitet.</span></div><button class="btn success" {% if not recurring_templates %}disabled{% endif %}>Ausgewählte Monatsrechnungen erzeugen</button></div>
+    <div class="page-actions">
+      <button class="btn" type="button" data-recurring-select-all hidden>Alle aktiven Vorlagen auswählen</button>
+      <button class="btn" type="button" data-recurring-select-none hidden>Auswahl aufheben</button>
+      <span data-recurring-selection-count role="status" aria-live="polite">Bitte aktive Vorlagen auswählen.</span>
+    </div>
+    <div class="table-wrap"><table class="table table-modern action-table"><tr><th>Auswahl</th><th>Vorlage</th><th>Kunde</th><th>Objekt</th><th>Positionen</th><th>Status</th><th>Aktionen</th></tr>{% for t in recurring_templates %}<tr><td><input class="row-check" type="checkbox" name="template_ids" value="{{ t.id|unlocalize }}" aria-label="Vorlage {{ t.title }} auswählen" {% if t.status != 'active' %}disabled{% endif %}></td><td><strong>{{ t.title }}</strong></td><td>{{ t.customer.name }}</td><td>{% if t.obj %}{{ t.obj.name }}{% else %}—{% endif %}</td><td>{{ t.items.count }}</td><td><span class="badge">{{ t.get_status_display }}</span></td><td class="table-actions"><a class="btn small" href="{% url 'sedo:recurring_update' t.id %}">Bearbeiten</a><a class="btn small danger" href="{% url 'sedo:recurring_delete' t.id %}">Löschen</a></td></tr>{% empty %}<tr><td colspan="7"><div class="empty-state">Noch keine Abo-/Monatsrechnungsvorlagen vorhanden.</div></td></tr>{% endfor %}</table></div>
+    <div class="sticky-runbar"><div><strong>Monatslauf starten</strong><span>Nur ausgewählte aktive Vorlagen werden verarbeitet.</span></div><button class="btn success" type="submit" data-recurring-generate {% if not recurring_templates %}disabled{% endif %}>Ausgewählte Monatsrechnungen erzeugen</button></div>
   </form>
   {% if last_recurring_invoices %}<div class="mt-3"><h2>Zuletzt erzeugte Monatsrechnungen</h2><div class="table-wrap"><table class="table table-modern action-table"><tr><th>Rechnung</th><th>Kunde</th><th>Objekt</th><th>Brutto</th><th>Aktionen</th></tr>{% for inv in last_recurring_invoices %}<tr><td>{{ inv.number }}</td><td>{{ inv.customer.name }}</td><td>{% if inv.obj %}{{ inv.obj.name }}{% endif %}</td><td>{{ inv.gross_total }} €</td><td class="table-actions"><a class="btn small" href="{% url 'sedo:invoice_detail' inv.id %}">Öffnen</a>{% if inv.zugferd_file %}<a class="btn small" href="{{ inv.zugferd_file.url }}" target="_blank">ZUGFeRD</a>{% endif %}</td></tr>{% endfor %}</table></div></div>{% endif %}
 </div>
 
-
+<script src="{% static 'sedo/recurring_selection.js' %}" defer></script>
 {% endblock %}

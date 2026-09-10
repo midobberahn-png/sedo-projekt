@@ -146,6 +146,8 @@ class DunningGuardTests(TestCase):
         self.assert_guarded(old)
 
     def test_alter_status_auf_pythonobjekt_wird_nicht_vertraut(self):
+        # Echter ORM-Snapshot mit Decimal-Werten, bevor der DB-Status abweicht.
+        self.invoice.refresh_from_db()
         Invoice.objects.filter(pk=self.invoice.pk).update(status='entwurf')
         self.assertEqual(self.invoice.status, 'ueberfaellig')
         self.assert_guarded()
@@ -236,6 +238,10 @@ class DunningGuardTests(TestCase):
 
     def test_auto_prueft_geaenderte_faelligkeit_und_echte_zahlung_neu(self):
         selected = [self.invoice.pk]
+        # Die Auto-Schwelle muss unabhaengig von der allgemeinen F-68-Sperre
+        # greifen: gestern faellig ist manuell, aber noch nicht automatisch mahnbar.
+        Invoice.objects.filter(pk=self.invoice.pk).update(due_date=timezone.localdate()-timedelta(days=1))
+        self.assertEqual(send_bulk_dunning(selected, 'auto'), {'created': 0, 'skipped': 1})
         Invoice.objects.filter(pk=self.invoice.pk).update(due_date=timezone.localdate()+timedelta(days=2))
         self.assertEqual(send_bulk_dunning(selected, 'auto'), {'created': 0, 'skipped': 1})
         Invoice.objects.filter(pk=self.invoice.pk).update(due_date=timezone.localdate()-timedelta(days=40))
