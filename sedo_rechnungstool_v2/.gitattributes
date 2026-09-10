@@ -1,0 +1,11 @@
+# Gleiche Quell-/Lockbytes nach Checkout auf Windows und macOS.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.sqlite3 binary
+*.zip binary
+*.pdf binary
