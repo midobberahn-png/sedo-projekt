@@ -1,13 +1,16 @@
 """Mahnwesen: Zahlungserinnerungen/Mahnungen erzeugen und Kandidaten finden."""
 from __future__ import annotations
 
+import logging
+import os
+import tempfile
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db import IntegrityError, OperationalError, transaction
+from django.db.models import Exists, F, OuterRef, Sum
 from django.utils import timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -15,9 +18,11 @@ from reportlab.lib.utils import simpleSplit
 from reportlab.pdfgen import canvas
 
 from ..core.rechnungslauf_core import SELLER
+from ..audit import AuditWriteError, write_audit
 from ..models import DunningDocument, Invoice
 from .formatting import euro
-from .invoices import WorkflowError
+from .workflow_errors import WorkflowError
+from .invoice_files import quarantiniere_dateien
 from . import pdf_chrome as chrome
 from .pdf_chrome import HEADER_H, INK, MARGIN
 
@@ -33,18 +38,60 @@ DEFAULT_DUNNING_THRESHOLD_DAYS = 14
 _UNDUNNABLE_STATUS = Invoice.GESPERRT_FUER_MAHNUNG
 
 _KIND_LABELS = {'reminder': 'Zahlungserinnerung', 'dunning': 'Mahnung'}
+logger = logging.getLogger('sedo')
+
+
+def _aktive_folgebelege():
+    """Derselbe Belegbegriff wie active_storno/active_correction, nicht der Zahlstatus."""
+    return Invoice.all_objects.filter(
+        deleted_at__isnull=True, invoice_type__in=('384', '457'),
+    ).exclude(status='entwurf')
+
+
+def _aktuelle_rechnung(invoice: Invoice) -> Invoice | None:
+    # Kein Vertrauen in ein altes Python-Objekt oder dessen Prefetch-Cache.
+    if invoice.pk is None:
+        return None
+    return Invoice.all_objects.filter(pk=invoice.pk).first()
+
+
+def _beleg_hindernis(invoice: Invoice | None) -> str:
+    if invoice is None or invoice.deleted_at is not None:
+        return 'Die Rechnung ist nicht mehr verfügbar und kann nicht gemahnt werden.'
+    if invoice.invoice_type == '457':
+        return f'{invoice.number} ist eine Stornorechnung und kann nicht gemahnt werden.'
+    if invoice.status in _UNDUNNABLE_STATUS:
+        return (f'Rechnung {invoice.number} ({invoice.get_status_display()}) '
+                'kann nicht gemahnt werden.')
+    # Nicht die Rückwärtsrelation verwenden: deren Prefetch kann veraltet sein.
+    folge = (_aktive_folgebelege().filter(reference_invoice_id=invoice.pk)
+             .order_by('-invoice_type', 'pk').first())
+    if folge is not None:
+        art = 'Stornorechnung' if folge.invoice_type == '457' else 'Korrekturrechnung'
+        return (f'Rechnung {invoice.number} wurde durch {art} {folge.number} ersetzt '
+                'und kann nicht gemahnt werden.')
+    return ''
+
+
+def mahn_hindernis(invoice: Invoice) -> str:
+    """Lesender, aktueller Sperrgrund für die Oberfläche; leer bedeutet keine Belegsperre."""
+    return _beleg_hindernis(_aktuelle_rechnung(invoice))
 
 
 def next_dunning_kind(invoice: Invoice, today=None) -> str | None:
-    """Ermittelt die nächste fällige Mahnstufe einer Rechnung.
-
-    Stufenmodell: keine Mahnung → Zahlungserinnerung; Erinnerung vorhanden und
-    deren neue Frist verstrichen → Mahnung; Mahnung vorhanden → keine weitere
-    automatische Stufe. (Vorher fiel eine Rechnung nach der ERSTEN Erinnerung
-    für immer aus der Kandidatenliste – ein Mahnprozess war unmöglich.)
-    """
-    if invoice.status in _UNDUNNABLE_STATUS:
+    """Nächste Mahnstufe nach erneuter Belegprüfung, auch bei veralteter Python-Instanz."""
+    current = _aktuelle_rechnung(invoice)
+    if _beleg_hindernis(current):
         return None
+    return _next_dunning_kind(current, today)
+
+
+def _next_dunning_kind(invoice: Invoice, today=None) -> str | None:
+    """Stufenwahl für einen bereits geprüften Beleg/Snapshot der Kandidatenabfrage.
+
+    Keine Erinnerung -> Erinnerung; deren Frist abgelaufen -> Mahnung.
+    Die Schreibfunktion prüft unabhängig davon unter einer Datenbanksperre.
+    """
     docs = list(invoice.dunning_documents.all())
     if any(d.kind == 'dunning' for d in docs):
         return None
@@ -59,10 +106,13 @@ def next_dunning_kind(invoice: Invoice, today=None) -> str | None:
 
 
 def ensure_dunning_allowed(invoice: Invoice, kind: str) -> None:
-    """Blockiert doppelte Mahnungen derselben Stufe (auch im manuellen Weg)."""
-    if invoice.status in _UNDUNNABLE_STATUS:
-        raise WorkflowError(
-            f'Rechnung {invoice.number} ({invoice.get_status_display()}) kann nicht gemahnt werden.')
+    """Beleggraph und Stufenduplikate frisch prüfen; allein noch keine Schreibsperre."""
+    if kind not in _KIND_LABELS:
+        raise WorkflowError('Unbekannte Mahnstufe. Bitte Erinnerung oder Mahnung wählen.')
+    invoice = _aktuelle_rechnung(invoice)
+    hindernis = _beleg_hindernis(invoice)
+    if hindernis:
+        raise WorkflowError(hindernis)
     docs = list(invoice.dunning_documents.all())
     same = [d for d in docs if d.kind == kind]
     if same:
@@ -76,30 +126,25 @@ def ensure_dunning_allowed(invoice: Invoice, kind: str) -> None:
             f'eine Zahlungserinnerung wäre ein Rückschritt in der Mahnstufe.')
 
 
-def generate_dunning_document(invoice: Invoice, kind: str = 'reminder') -> DunningDocument:
-    """Erzeugt eine Zahlungserinnerung (reminder) oder Mahnung (dunning) als PDF."""
-    paid = invoice.payments.filter(deleted_at__isnull=True).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    open_amount = (invoice.gross_total - paid).quantize(Decimal('0.01'))
-    new_due = timezone.localdate() + timedelta(days=DUNNING_GRACE_DAYS)
-    try:
-        # Eigenes atomic (Savepoint): Schlägt der INSERT am Unique-Constraint
-        # fehl, bleibt eine umgebende Transaktion (z. B. im Test) intakt.
-        with transaction.atomic():
-            doc = DunningDocument.objects.create(
-                invoice=invoice, kind=kind, document_date=timezone.localdate(),
-                due_date_new=new_due, amount_open=open_amount,
-            )
-    except IntegrityError as exc:
-        # Unique-Constraint (invoice, kind): Zwei parallele Requests können
-        # ensure_dunning_allowed beide passieren – der zweite endet hier.
-        raise WorkflowError(
-            f'{_KIND_LABELS.get(kind, kind)} zu {invoice.number} wurde soeben '
-            f'bereits erzeugt (paralleler Vorgang).') from exc
-    out_dir = Path(settings.MEDIA_ROOT) / 'dunning' / invoice.number
-    out_dir.mkdir(parents=True, exist_ok=True)
-    label = 'Zahlungserinnerung' if kind == 'reminder' else 'Mahnung'
-    pdf_path = out_dir / f'{invoice.number}_{kind}.pdf'
+def _mahndatei_ziel(invoice: Invoice, kind: str) -> Path:
+    """Nur den eigenen Medienpfad verwenden, keine Symlinks/Traverse oder Altdatei ersetzen."""
+    number = invoice.number
+    if not number or number in ('.', '..') or any(c in number for c in ('/', '\\', '\x00')):
+        raise WorkflowError('Ungültige Rechnungsnummer für ein Mahndokument.')
+    root = Path(settings.MEDIA_ROOT).resolve()
+    target = root / 'dunning' / number / f'{number}_{kind}.pdf'
+    for part in (root / 'dunning', target.parent, target):
+        if part.is_symlink():
+            raise WorkflowError('Der Mahndateipfad enthält eine symbolische Verknüpfung.')
+    if target.exists():
+        raise WorkflowError('Die Mahndatei existiert bereits. Sie wird nicht überschrieben; '
+                            'bitte den vorhandenen Beleg prüfen.')
+    return target
 
+
+def _render_dunning_pdf(invoice, kind, open_amount, new_due, pdf_path):
+    """Bestehende PDF-Gestaltung; nur der Zielpfad liegt jetzt im Temp-Verzeichnis."""
+    label = _KIND_LABELS[kind]
     c = canvas.Canvas(str(pdf_path), pagesize=A4)
     w, h = A4
     left, right = MARGIN, w - MARGIN
@@ -164,12 +209,87 @@ def generate_dunning_document(invoice: Invoice, kind: str = 'reminder') -> Dunni
     chrome.draw_footer(c)
     c.save()
 
-    doc.pdf_file.name = str(pdf_path.relative_to(settings.MEDIA_ROOT))
-    doc.save(update_fields=['pdf_file', 'updated_at'])
-    if invoice.status not in _UNDUNNABLE_STATUS:
-        invoice.status = 'gemahnt'
-        invoice.save(update_fields=['status', 'updated_at'])
-    return doc
+
+def generate_dunning_document(invoice: Invoice, kind: str = 'reminder', *, request=None) -> DunningDocument:
+    """Verbindlicher Mahnwächter: sperren, frisch prüfen, PDF/Status/Pflichtaudit erzeugen.
+
+    Das erste SQL innerhalb von atomic ist ein UPDATE ohne Wertänderung. So wird
+    auf SQLite vor dem Lesen serialisiert (SELECT FOR UPDATE wäre wirkungslos).
+    Die manuelle Stufenwahl bleibt erhalten; 'auto' prüft Frist und Restbetrag
+    ebenfalls innerhalb der Sperre. Ein vorheriger UI-/Service-Check reicht nicht.
+    """
+    if kind not in (*_KIND_LABELS, 'auto'):
+        raise WorkflowError('Unbekannte Mahnstufe. Es wurde kein Mahndokument erzeugt.')
+    target = identity = None
+    try:
+        try:
+            with transaction.atomic():
+                if not Invoice.objects.filter(pk=invoice.pk).update(updated_at=F('updated_at')):
+                    raise WorkflowError('Die Rechnung ist nicht mehr verfügbar.')
+                current = Invoice.objects.select_related('customer').get(pk=invoice.pk)
+                use_kind = kind
+                if kind == 'auto':
+                    cutoff = timezone.localdate() - timedelta(days=DEFAULT_DUNNING_THRESHOLD_DAYS)
+                    if current.due_date is None or current.due_date > cutoff or current.open_amount <= 0:
+                        raise WorkflowError('Für diese Rechnung ist derzeit kein automatischer Mahnlauf fällig.')
+                    use_kind = _next_dunning_kind(current)
+                    if use_kind is None:
+                        raise WorkflowError('Für diese Rechnung ist keine nächste Mahnstufe fällig.')
+                ensure_dunning_allowed(current, use_kind)
+                target = _mahndatei_ziel(current, use_kind)
+                paid = (current.payments.filter(deleted_at__isnull=True)
+                        .aggregate(s=Sum('amount'))['s'] or Decimal('0.00'))
+                open_amount = (current.gross_total - paid).quantize(Decimal('0.01'))
+                new_due = timezone.localdate() + timedelta(days=DUNNING_GRACE_DAYS)
+                before = current.status
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(dir=Path(settings.MEDIA_ROOT), prefix='.dunning_') as tmp:
+                    temp_pdf = Path(tmp) / target.name
+                    _render_dunning_pdf(current, use_kind, open_amount, new_due, temp_pdf)
+                    doc = DunningDocument.objects.create(
+                        invoice=current, kind=use_kind, document_date=timezone.localdate(),
+                        due_date_new=new_due, amount_open=open_amount,
+                        pdf_file=str(target.relative_to(Path(settings.MEDIA_ROOT).resolve())),
+                    )
+                    # Zusätzliche Schranke direkt am Status-UPDATE; niemals einen
+                    # geschützten Zustand durch 'gemahnt' ersetzen.
+                    changed_at = timezone.now()
+                    updated = (Invoice.objects.filter(pk=current.pk, status=before)
+                               .exclude(status__in=_UNDUNNABLE_STATUS).exclude(invoice_type='457')
+                               .filter(~Exists(_aktive_folgebelege().filter(reference_invoice_id=OuterRef('pk'))))
+                               .update(status='gemahnt', updated_at=changed_at))
+                    if not updated:
+                        raise WorkflowError('Die Rechnung wurde inzwischen ersetzt, storniert oder geändert.')
+                    write_audit(request, 'generate', doc,
+                                f'{doc.get_kind_display()} zu {current.number} erzeugt', pflicht=True,
+                                metadata={'von': before, 'nach': 'gemahnt', 'anlass': 'mahnung',
+                                          'nummer': current.number, 'mahnstufe': use_kind})
+                    # Exklusiv veröffentlichen. Eine zwischenzeitlich belegte Datei
+                    # bleibt auch im Fehler-Rückweg fremd und wird nicht verschoben.
+                    stat = temp_pdf.stat()
+                    os.link(temp_pdf, target)
+                    identity = (stat.st_dev, stat.st_ino)
+            # Erst nach erfolgreichem Abschluss den Zustand des Aufruferobjekts ändern.
+            invoice.status = 'gemahnt'
+            invoice.updated_at = changed_at
+            doc.invoice = invoice
+            return doc
+        except Exception:
+            if identity is not None and target is not None and target.is_file():
+                stat = target.stat()
+                if identity == (stat.st_dev, stat.st_ino):
+                    quarantiniere_dateien([target])
+            raise
+    except IntegrityError as exc:
+        raise WorkflowError('Diese Mahnstufe wurde soeben bereits erzeugt (paralleler Vorgang).') from exc
+    except OperationalError as exc:
+        if 'locked' in str(exc).lower() or 'busy' in str(exc).lower():
+            raise WorkflowError('Die Rechnung wird gerade bearbeitet. Bitte den Mahnvorgang erneut prüfen.') from exc
+        raise
+    except (OSError, AuditWriteError) as exc:
+        logger.exception('Mahndokument wegen Datei-/Protokollfehler zurückgerollt')
+        raise WorkflowError('Das Mahndokument wurde nicht erzeugt: PDF oder Protokoll konnte nicht '
+                            'gespeichert werden. Bitte erneut versuchen.') from exc
 
 
 def get_dunning_candidates(days_overdue_threshold: int = DEFAULT_DUNNING_THRESHOLD_DAYS):
@@ -183,6 +303,8 @@ def get_dunning_candidates(days_overdue_threshold: int = DEFAULT_DUNNING_THRESHO
     queryset = (
         Invoice.objects
         .exclude(status__in=_UNDUNNABLE_STATUS)
+        .exclude(invoice_type='457')
+        .filter(~Exists(_aktive_folgebelege().filter(reference_invoice_id=OuterRef('pk'))))
         .filter(due_date__lte=cutoff)
         .select_related('customer', 'obj')
         .prefetch_related('dunning_documents', 'payments')
@@ -190,7 +312,7 @@ def get_dunning_candidates(days_overdue_threshold: int = DEFAULT_DUNNING_THRESHO
     )
     candidates = []
     for inv in queryset:
-        kind = next_dunning_kind(inv, today)
+        kind = _next_dunning_kind(inv, today)
         if not kind:
             continue
         if inv.open_amount <= Decimal('0.00'):
@@ -201,26 +323,26 @@ def get_dunning_candidates(days_overdue_threshold: int = DEFAULT_DUNNING_THRESHO
     return candidates
 
 
-def send_bulk_dunning(invoice_ids: list, kind: str = 'reminder') -> dict:
-    """Erstellt Mahnungen/Erinnerungen für mehrere Rechnungs-IDs auf einmal.
+def send_bulk_dunning(invoice_ids: list, kind: str = 'reminder', *, request=None) -> dict:
+    """Pro Rechnung neu und gesperrt prüfen, auch bei alten Auswahlen; kein Mailversand.
 
-    ``kind='auto'`` wählt je Rechnung die nächste fällige Stufe. Rechnungen,
-    deren Stufe bereits existiert oder die nicht mahnbar sind, werden
-    übersprungen. Gibt {'created': n, 'skipped': n} zurück.
+    'auto' entscheidet erst im Generator innerhalb der Schreibsperre. Ein
+    gesperrter oder fehlgeschlagener Beleg verhindert nicht die übrigen Belege.
+    Der Rückgabevertrag {'created': n, 'skipped': n} bleibt unverändert.
     """
+    if kind not in (*_KIND_LABELS, 'auto'):
+        raise WorkflowError('Unbekannte Mahnstufe. Der Mahnlauf wurde nicht gestartet.')
     created = skipped = 0
     for pk in invoice_ids:
-        inv = Invoice.objects.filter(pk=pk).first()
-        if not inv:
-            skipped += 1
-            continue
-        use_kind = next_dunning_kind(inv) if kind == 'auto' else kind
-        if not use_kind:
+        try:
+            inv = Invoice.objects.filter(pk=pk).first()
+        except (TypeError, ValueError, OverflowError):
+            inv = None
+        if inv is None:
             skipped += 1
             continue
         try:
-            ensure_dunning_allowed(inv, use_kind)
-            generate_dunning_document(inv, use_kind)
+            generate_dunning_document(inv, kind, request=request)
         except WorkflowError:
             skipped += 1
             continue

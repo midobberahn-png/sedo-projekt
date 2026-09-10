@@ -34,7 +34,7 @@ from .services import (
     generate_offer_pdf, create_invoice_from_offer, create_email_draft, import_bank_json,
     refresh_invoice_payment_status, generate_dunning_document, next_cashbook_no,
     generate_cashbook_pdf, get_smtp_config, smtp_is_configured, send_email_smtp,
-    get_dunning_candidates, send_bulk_dunning, ensure_dunning_allowed,
+    get_dunning_candidates, send_bulk_dunning, ensure_dunning_allowed, mahn_hindernis,
     fetch_bank_transactions, get_banking_config, banking_is_configured, BankingError,
     get_ai_config, ai_is_configured, generate_offer_from_text, AIError,
     AI_DEFAULT_TEXT_MODEL,
@@ -1137,6 +1137,7 @@ def invoice_detail(request, pk):
         # Leerer String = Ausblenden erlaubt; sonst der Grund im Klartext für
         # den deaktivierten Knopf (F-14).
         'ausblenden_hindernis': ausblenden_hindernis(invoice),
+        'mahn_hindernis': mahn_hindernis(invoice),
     })
 
 
@@ -1499,7 +1500,7 @@ def bulk_dunning(request):
 
     selected = request.POST.getlist('invoice_ids')
     if selected:
-        result = send_bulk_dunning(selected, kind)
+        result = send_bulk_dunning(selected, kind, request=request)
     elif kind == 'auto':
         # Nur der Mahnautomat darf ohne Auswahl arbeiten – er wählt je Rechnung
         # die fällige nächste Stufe und überspringt nichts.
@@ -1507,7 +1508,7 @@ def bulk_dunning(request):
         if not candidates:
             messages.success(request, 'Kein Mahnlauf nötig – derzeit gibt es keine Mahnkandidaten.')
             return redirect('sedo:open_items')
-        result = send_bulk_dunning([str(inv.pk) for inv in candidates], kind)
+        result = send_bulk_dunning([str(inv.pk) for inv in candidates], kind, request=request)
     else:
         # Vorher wurde hier auf ALLE Kandidaten zurückgefallen – mit der vom
         # Knopf erzwungenen Stufe. Ein Klick ohne Häkchen erzeugte damit für
@@ -1715,17 +1716,18 @@ def payment_delete(request, pk):
 def invoice_reminder(request, pk, kind):
     invoice = get_object_or_404(Invoice, pk=pk)
     if kind not in ['reminder','dunning']:
-        kind = 'reminder'
+        messages.error(request, 'Unbekannte Mahnstufe. Es wurde kein Mahndokument erzeugt.')
+        return redirect('sedo:invoice_detail', invoice.pk)
     # Sperre gegen Mehrfach-Mahnung derselben Stufe – ensure_* fängt den
     # sequenziellen Fall, der Unique-Constraint (via WorkflowError aus
     # generate_dunning_document) den parallelen.
     try:
         ensure_dunning_allowed(invoice, kind)
-        doc = generate_dunning_document(invoice, kind)
+        doc = generate_dunning_document(invoice, kind, request=request)
     except WorkflowError as e:
         messages.error(request, str(e))
         return redirect('sedo:invoice_detail', invoice.pk)
-    write_audit(request, 'generate', doc, f'{doc.get_kind_display()} zu {invoice.number} erzeugt')
+    # Der verpflichtende Einzelbeleg-Audit wurde bereits atomar im Service geschrieben.
     messages.success(request, f'{doc.get_kind_display()} wurde erzeugt.')
     return redirect('sedo:invoice_detail', invoice.pk)
 

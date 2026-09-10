@@ -46,6 +46,7 @@ from .calc import (
     zuordenbare_rechnungen,
 )
 from .dunning import (
+    mahn_hindernis,
     ensure_dunning_allowed,
     generate_dunning_document,
     get_dunning_candidates,
@@ -116,7 +117,7 @@ __all__ = [
     'generate_offer_pdf', 'generate_cashbook_pdf',
     # dunning
     'generate_dunning_document', 'get_dunning_candidates', 'send_bulk_dunning',
-    'ensure_dunning_allowed', 'next_dunning_kind',
+    'mahn_hindernis', 'ensure_dunning_allowed', 'next_dunning_kind',
     # payments
     'import_bank_json', 'parse_bank_date',
     # banking (FinTS)
