@@ -1,0 +1,118 @@
+name: SEDO Teststand
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, hardening-h2-teststand]
+    paths: ['sedo_rechnungstool_v2/**', '.github/workflows/sedo-teststand.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sedo-teststand-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  teststand:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-14]
+    defaults:
+      run:
+        shell: bash
+        working-directory: sedo_rechnungstool_v2
+    env:
+      PYTHONUTF8: '1'
+      DJANGO_SECRET_KEY: nur-isolierter-teststand-kein-betriebsschluessel
+      DJANGO_ALLOWED_HOSTS: testserver,localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /sedo_rechnungstool_v2/.gitattributes
+            /sedo_rechnungstool_v2/.env.example
+            /sedo_rechnungstool_v2/sedo/
+            /sedo_rechnungstool_v2/config/
+            /sedo_rechnungstool_v2/tools/
+            /sedo_rechnungstool_v2/*.py
+            /sedo_rechnungstool_v2/*.spec
+            /sedo_rechnungstool_v2/*.bat
+            /sedo_rechnungstool_v2/*.command
+            /sedo_rechnungstool_v2/requirements*
+            /sedo_rechnungstool_v2/release-lock.json
+            /sedo_rechnungstool_v2/TESTSTAND.md
+            /sedo_rechnungstool_v2/SEDO.app/Contents/Resources/sedo.icns
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - name: Isolation und Lock pruefen
+        run: |
+          set -euo pipefail
+          test ! -e data
+          test ! -e media
+          test ! -e backups
+          test ! -e .env
+          mkdir -p "$RUNNER_TEMP/h2-evidence" "$RUNNER_TEMP/h2-home/data"
+          echo "SEDO_HOME=$RUNNER_TEMP/h2-home" >> "$GITHUB_ENV"
+          git rev-parse HEAD > "$RUNNER_TEMP/h2-evidence/commit.txt"
+          git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/h2-evidence/tree.txt"
+          git status --porcelain --untracked-files=no | tee "$RUNNER_TEMP/h2-evidence/checkout-status.txt"
+          git diff --stat | tee "$RUNNER_TEMP/h2-evidence/checkout-diff.txt"
+          python tools/teststand.py validate
+      - name: Buildvertrag und sechs Gegenproben
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s sedo/tests -p 'test_teststand*.py' -v 2>&1 | tee "$RUNNER_TEMP/h2-evidence/buildtests.log"
+          python tools/gegenproben_teststand.py --output "$RUNNER_TEMP/h2-evidence/gegenproben"
+      - name: Zwei reproduzierbare Quellpakete
+        run: |
+          set -euo pipefail
+          git status --porcelain --untracked-files=no | tee "$RUNNER_TEMP/h2-evidence/prepackage-status.txt"
+          python tools/teststand.py source --output "$RUNNER_TEMP/h2-source-a"
+          python tools/teststand.py source --output "$RUNNER_TEMP/h2-source-b"
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          tmp=Path(os.environ['RUNNER_TEMP'])
+          a,=list((tmp/'h2-source-a').glob('*.zip'));b,=list((tmp/'h2-source-b').glob('*.zip'))
+          assert a.read_bytes()==b.read_bytes(), 'Quellpakete weichen ab'
+          print('Quellpakete byteidentisch')
+          PY
+      - name: Releaseprofil frisch installieren und gesamte Suite pruefen
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          python tools/teststand.py install --output "$RUNNER_TEMP/h2-venv" 2>&1 | tee "$RUNNER_TEMP/h2-evidence/install.log"
+          "$RUNNER_TEMP/h2-venv/bin/python" manage.py test sedo --noinput 2>&1 | tee "$RUNNER_TEMP/h2-evidence/release-tests.log"
+          "$RUNNER_TEMP/h2-venv/bin/python" manage.py makemigrations --check --dry-run 2>&1 | tee "$RUNNER_TEMP/h2-evidence/migrationen.log"
+          SEDO_CHECK_REPORT="$RUNNER_TEMP/h2-evidence/source-check.json" "$RUNNER_TEMP/h2-venv/bin/python" tools/desktop_entry.py --check-strict
+          "$RUNNER_TEMP/h2-venv/bin/python" -m pip freeze --all > "$RUNNER_TEMP/h2-evidence/installed.txt"
+      - name: Natives Desktop-Testpaket erstellen und tatsaechlich starten
+        if: runner.os != 'Linux' && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/hardening-h2-teststand')
+        run: |
+          set -euo pipefail
+          python tools/teststand.py build --output "$RUNNER_TEMP/h2-native" 2>&1 | tee "$RUNNER_TEMP/h2-evidence/native-build.log"
+          cp "$RUNNER_TEMP/h2-native/BUILD_MANIFEST.json" "$RUNNER_TEMP/h2-evidence/"
+          cp "$RUNNER_TEMP/h2-native/self-check.json" "$RUNNER_TEMP/h2-evidence/"
+          cp "$RUNNER_TEMP/h2-native/installed.txt" "$RUNNER_TEMP/h2-evidence/"
+      - name: Kein Quellcode beim Test veraendert
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: h2-nachweise-${{ matrix.os }}
+          path: ${{ runner.temp }}/h2-evidence/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: h2-testpakete-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/h2-source-a/*.zip
+            ${{ runner.temp }}/h2-native/*.zip
+            ${{ runner.temp }}/h2-native/BUILD_MANIFEST.json
+          retention-days: 14

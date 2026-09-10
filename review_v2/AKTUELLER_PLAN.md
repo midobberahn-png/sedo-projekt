@@ -19,9 +19,9 @@ werden nicht als bestandene Abnahme auf Papas Rechner ausgegeben.
 
 | Block | Inhalt | Stand |
 |---|---|---|
-| H1 | Leere Abo-Auswahl verhindern; manuelle Mahnfälligkeit/Restforderung (F-68) | Umsetzung und lokale Prüfung in diesem Arbeitsblock; PR/Integration siehe Abschlussvermerk |
-| H2 | Gemeinsame PR/main-CI; versionierter, reproduzierbarer Teststand; Abhängigkeiten festschreiben | Gemeinsame CI in H1 ergänzt; Release-Lock und Testbuild noch offen |
-| H3 | Welle 3: Zustandsvertrag, zentrale Schreibfunktionen, kontrollierte Feldtrennung und passende DB-Bedingungen | Offen; keine neue Feldmigration in H1 |
+| H1 | Leere Abo-Auswahl verhindern; manuelle Mahnfälligkeit/Restforderung (F-68) | Über PR #7 integriert: `6ee2b35cf779320aedd31fbd19e4808ecb9867ab` |
+| H2 | Gemeinsame PR/main-CI; versionierter, reproduzierbarer Teststand; Abhängigkeiten festschreiben | Lock, Quellmanifest und native Testbuild-Pipeline implementiert; konkrete native/CI-Ergebnisse und Integration im Abschlussvermerk zu PR #8 |
+| H3 | Welle 3: Zustandsvertrag, zentrale Schreibfunktionen, kontrollierte Feldtrennung und passende DB-Bedingungen | Offen; keine neue Feldmigration in H1/H2 |
 | H4 | Übrige Funde gegen aktuellen Code neu priorisieren: fachliche Validierung, Datenverlust, Zugriff/Datenschutz, Exporte und Wiederherstellung vor Kosmetik | Offen; alte Fundliste ist keine aktuelle Gesamtfreigabe |
 | H5 | Zusammenhängende Ablauf-, Update-, Backup-/Restore- und E-Rechnungsvalidierung am reproduzierbaren Teststand | Offen; bisherige Einzeltests ersetzen diese Abnahme nicht |
 | UX | Nach technischer Härtung: vorhandenes UI/UX systematisch prüfen und gezielt aufwerten, kein blinder Neuaufbau | Anschließend; H1 verändert nur notwendige Sicherheitsbedienung |
@@ -60,6 +60,22 @@ Kein Hintergrundauftrag, kein automatischer Termin oder Versand eingerichtet.
 - Bewusste manuelle Wahl von Erinnerung/Mahnung bleibt erhalten. Automatikschwelle
   von 14 Tagen und Erinnerungsfrist werden nicht verkürzt. Keine neue juristische
   Verzugsaussage; dies ist die freigegebene vorsichtige Programmregel.
+
+## Teststand-Vertrag für H2
+
+Python 3.13.15 und ein hashgesperrtes Releaseprofil einschließlich lokalem Diktat.
+Normale Builds lösen keine neuen Versionen auf. Quellpakete aus sauberen Git-Ständen
+enthalten nur erlaubte versionierte Dateien; native Builds verwenden ausschließlich
+diese nochmals per Manifest geprüften Quellen in einem separaten Verzeichnis.
+Historische Windows-Zeilenenden bleiben unverändert, statt den Checkout automatisch
+zu normalisieren. Keine vorhandene Build-Umgebung oder Ausgabe wird überschrieben.
+
+Mac und Windows erhalten portable Testpakete mit Commitkennung und Buildmanifest.
+Der strenge Starttest prüft Login, CSS, Migrationen, Diktat-Bibliothek und Hardlinks;
+GUI-Bedienung, Mikrofon/Diktat, Update/Restore und Papas Rechner bleiben separat.
+Die bisherigen Build-Einstiege erzeugen deshalb Testpakete statt automatisch einen
+Inno-Setup-Installer. Signierung, Notarisierung und endgültige Releaseversion folgen
+später. Anleitung: `sedo_rechnungstool_v2/TESTSTAND.md`.
 
 ## Zustandsarchitektur für H3
 
