@@ -1,0 +1,83 @@
+name: SEDO Teststand
+on:
+  push:
+    branches: [hardening-h2-teststand]
+    paths: ['.github/workflows/sedo-teststand.yml', 'sedo_rechnungstool_v2/requirements-release.in', 'sedo_rechnungstool_v2/requirements-release-constraints.txt']
+permissions:
+  contents: read
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/hardening-h2-teststand'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/
+            /MEMORY_SEDO.md
+            /review_v2/AKTUELLER_PLAN.md
+            /sedo_rechnungstool_v2/sedo/
+            /sedo_rechnungstool_v2/config/
+            /sedo_rechnungstool_v2/tools/
+            /sedo_rechnungstool_v2/manage.py
+            /sedo_rechnungstool_v2/requirements*
+            /sedo_rechnungstool_v2/desktop.py
+            /sedo_rechnungstool_v2/sedo_desktop.spec
+            /sedo_rechnungstool_v2/build_mac.command
+            /sedo_rechnungstool_v2/BUILD_WINDOWS.bat
+            /sedo_rechnungstool_v2/README.md
+            /sedo_rechnungstool_v2/.env.example
+            /sedo_rechnungstool_v2/SEDO.app/Contents/Resources/sedo.icns
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.15'
+      - name: Ausgangspunkt sichern
+        run: |
+          set -euo pipefail
+          test ! -e sedo_rechnungstool_v2/data
+          test ! -e sedo_rechnungstool_v2/media
+          test ! -e sedo_rechnungstool_v2/backups
+          test ! -e sedo_rechnungstool_v2/.env
+          mkdir -p "$RUNNER_TEMP/h2"
+          git rev-parse HEAD > "$RUNNER_TEMP/h2/commit.txt"
+          python -m pip install uv==0.10.0
+      - name: Hashgesperrte plattformuebergreifende Abhaengigkeiten
+        working-directory: sedo_rechnungstool_v2
+        run: |
+          set -euo pipefail
+          uv pip compile --universal --python-version 3.13 --generate-hashes --no-emit-index-url requirements-release.in -o requirements-release.lock 2>&1 | tee "$RUNNER_TEMP/h2/lock.log"
+          git add -- requirements-release.lock
+          test "$(git diff --cached --name-only)" = sedo_rechnungstool_v2/requirements-release.lock
+          git config user.name 'SEDO Build'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'H2: aufgelöste Release-Abhängigkeiten mit SHA-256 festschreiben'
+          git push origin HEAD:hardening-h2-teststand
+      - name: Reinen Quellstand archivieren
+        if: always()
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, subprocess, zipfile
+          root=Path.cwd()
+          files=[]
+          for line in subprocess.check_output(['git','ls-files','-z'], text=True).split('\0'):
+              p=root/line
+              if not line or not p.is_file() or p.is_symlink(): continue
+              if line.startswith(('sedo_rechnungstool_v2/', '.github/workflows/')) or line in ('MEMORY_SEDO.md','review_v2/AKTUELLER_PLAN.md'):
+                  files.append(line)
+          out=Path(__import__('os').environ['RUNNER_TEMP'])/'h2'
+          with zipfile.ZipFile(out/'quellen.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for name in sorted(files): z.write(root/name,name)
+          manifest={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in sorted(files)}
+          (out/'source-hashes.json').write_text(json.dumps(manifest,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: h2-lock-quellstand
+          path: ${{ runner.temp }}/h2/
+          retention-days: 7
