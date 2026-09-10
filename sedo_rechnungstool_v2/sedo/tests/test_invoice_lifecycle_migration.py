@@ -41,15 +41,29 @@ class InvoiceLifecycleMigrationTests(TransactionTestCase):
                 inv = Invoice.objects.get(pk=self.ids[status])
                 self.assertEqual((inv.status, inv.lifecycle), (status, lifecycle))
 
-    def test_rueckweg_loescht_nur_neues_feld_und_erhaelt_alten_status(self):
+    def test_rueckweg_erhaelt_bisherige_statuswerte_bei_unveraendertem_lifecycle(self):
         self.migrate(NEW)
         self.migrate(OLD)
         apps = MigrationExecutor(connection).loader.project_state([OLD]).apps
         Invoice = apps.get_model('sedo', 'Invoice')
-        self.assertEqual(
-            set(Invoice.objects.values_list('status', flat=True)),
-            set(self.ids),
-        )
+        self.assertEqual(set(Invoice.objects.values_list('status', flat=True)), set(self.ids))
         with connection.cursor() as cursor:
             self.assertEqual(cursor.execute('PRAGMA integrity_check').fetchone(), ('ok',))
             self.assertEqual(cursor.execute('PRAGMA foreign_key_check').fetchall(), [])
+
+    def test_rueckweg_spiegelt_kanonische_belegzustaende_trotz_stalem_zahlcache(self):
+        self.migrate(NEW)
+        apps = MigrationExecutor(connection).loader.project_state([NEW]).apps
+        Invoice = apps.get_model('sedo', 'Invoice')
+        ids = [self.ids['erstellt'], self.ids['versendet'], self.ids['ueberfaellig']]
+        Invoice.objects.filter(pk=ids[0]).update(lifecycle='draft', status='ueberfaellig')
+        Invoice.objects.filter(pk=ids[1]).update(lifecycle='corrected', status='versendet')
+        Invoice.objects.filter(pk=ids[2]).update(lifecycle='cancelled', status='gemahnt')
+
+        self.migrate(OLD)
+        old_apps = MigrationExecutor(connection).loader.project_state([OLD]).apps
+        OldInvoice = old_apps.get_model('sedo', 'Invoice')
+        self.assertEqual(
+            list(OldInvoice.objects.filter(pk__in=ids).order_by('pk').values_list('status', flat=True)),
+            ['entwurf', 'korrigiert', 'storniert'],
+        )
