@@ -1214,7 +1214,10 @@ class F07AbleitungSchreibtKeinenBelegzustandTests(TestCase):
         self._rechnung('RE2026080021', 'entwurf')
         self._rechnung('RE2026080022', 'korrigiert')
         self._rechnung('RE2026080023', 'storniert')
-        self._rechnung('RE2026080024', 'bezahlt')
+        bezahlt = self._rechnung('RE2026080024', 'bezahlt')
+        Payment.objects.create(invoice=bezahlt, amount=bezahlt.gross_total,
+                               booking_date=timezone.localdate(),
+                               external_id='TEST-H3-REVIEW-PAID')
         self._rechnung('RE2026080025', 'erstellt', typ='457', brutto=Decimal('-119.00'))
         offen = self._rechnung('RE2026080026', 'erstellt')
 

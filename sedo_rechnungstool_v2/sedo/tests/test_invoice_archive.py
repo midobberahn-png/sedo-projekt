@@ -20,7 +20,8 @@ from django.utils import timezone
 
 from sedo.audit import AuditWriteError
 from sedo.models import AuditLog, Customer, CustomerObject, Invoice, InvoiceItem, Offer, OfferItem
-from sedo.services import generate_invoice_files, finalisiere_entwurf, create_storno, create_invoice_from_offer
+from sedo.services import (WorkflowError, generate_invoice_files, finalisiere_entwurf,
+                           create_storno, create_invoice_from_offer)
 from sedo.services.invoice_archive import (ARCHIV_FELDER, ARCHIV_VORGANG, archivnachweis,
     lese_archivdatei, stelle_archiv_wieder_her, zielpfade, BelegArchivFehler)
 from sedo.services.mail import create_email_draft, send_email_smtp
@@ -160,9 +161,10 @@ class InvoiceArchiveTests(TestCase):
             Invoice.objects.filter(pk=inv.pk).update(status='entwurf')
         Invoice.objects.filter(pk=inv.pk).update(status='ueberfaellig')
         before = self.files()
-        with self.assertRaises(BelegArchivFehler):
+        with patch('sedo.services.invoices._generate_invoice_files_inner') as generator:
             generate_invoice_files(inv)
-        with self.assertRaises(BelegArchivFehler):
+        generator.assert_not_called()
+        with self.assertRaises(WorkflowError):
             finalisiere_entwurf(inv)
         self.assertEqual(self.files(), before)
 
