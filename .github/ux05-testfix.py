@@ -12,11 +12,12 @@ new = '''    def test_arbeitswarteschlange_hat_keinen_mark_paid_post_mehr(self):
         antwort = self.client.get(reverse('sedo:open_items'))
         inhalt = antwort.content.decode('utf-8')
         mark_paid = reverse('sedo:invoice_mark_paid', args=[self.rechnungen[0].pk])
-        zahlung = reverse('sedo:invoice_add_payment', args=[self.rechnungen[0].pk])
+        detail = reverse('sedo:invoice_detail', args=[self.rechnungen[0].pk])
         self.assertNotIn(f'action="{mark_paid}"', inhalt,
                          'UX-05 entfernt den direkten Mark-paid-POST aus der OP-Zeile.')
-        self.assertIn(zahlung, inhalt,
-                      'Der sichere Zahlungsweg muss aus der Arbeitswarteschlange erreichbar bleiben.')
+        self.assertIn(detail, inhalt,
+                      'Überfällige Rechnungen müssen zur fachlichen Prüfung in der Rechnungsakte führen.')
+        self.assertIn('Mahnschritt prüfen', inhalt)
         self.assertEqual(inhalt.count('id="batch-form"'), 1,
                          'Das Mahn-Batchformular muss weiterhin genau einmal und isoliert vorkommen.')
 '''
