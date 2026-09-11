@@ -25,10 +25,15 @@ jobs:
           p.write_text(s.replace(old,new,1), encoding='utf-8')
           PY
           git diff --check
+      - name: Testabhängigkeiten installieren
+        working-directory: sedo_rechnungstool_v2
+        run: |
+          sed '/^faster-whisper/d' requirements.txt > "$RUNNER_TEMP/sedo-requirements.txt"
+          python -m pip install 'Django~=5.2.0' -r "$RUNNER_TEMP/sedo-requirements.txt" >/dev/null
       - name: Vertragstest ausführen
         working-directory: sedo_rechnungstool_v2
         run: |
-          python -m pip install 'Django~=5.2.0' >/dev/null
+          mkdir -p /tmp/sedo-ux01/data
           DJANGO_SECRET_KEY=ux01-test SEDO_HOME=/tmp/sedo-ux01 python manage.py test sedo.tests.test_design_system_v2 --noinput
       - name: Commit
         run: |
