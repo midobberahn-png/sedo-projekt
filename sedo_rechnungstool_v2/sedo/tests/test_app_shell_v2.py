@@ -21,9 +21,9 @@ class AppShellV2Tests(SimpleTestCase):
 
     def test_navigation_hat_drei_klare_arbeitsgruppen(self):
         text = BASE.read_text(encoding='utf-8')
-        daily = text.index('Tägliche Arbeit')
-        billing = text.index('Abrechnung')
-        system = text.index('System')
+        daily = text.index('<span>Tägliche Arbeit</span>')
+        billing = text.index('<span>Abrechnung</span>')
+        system = text.index('<span>System</span>')
         self.assertLess(daily, billing)
         self.assertLess(billing, system)
         for label in ('Dashboard', 'Kunden', 'Rechnungen', 'Angebote', 'Offene Posten'):
