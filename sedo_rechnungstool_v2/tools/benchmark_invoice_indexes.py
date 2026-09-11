@@ -3,6 +3,11 @@
 Misst den echten ersten SELECT von get_dunning_candidates und den Statusfilter
 von invoice_list, nicht die gesamte Webanwendung oder die Python-Mahnlogik.
 Kein Bestandszugriff, kein Versand, keine Änderung an Anwendungsquellen.
+
+Seit H3 wird die synthetische Datenbank bis zum aktuellen Schema 0014 migriert.
+Für den eigentlichen Indexvergleich werden ausschließlich die beiden Etappe-7-
+Indizes gezielt entfernt bzw. gesetzt; das Lifecycle-Schema bleibt in allen drei
+Varianten identisch.
 """
 import argparse
 import hashlib
@@ -49,7 +54,15 @@ def main():
 
         assert Path(settings.DATABASES['default']['NAME']).is_relative_to(home)
         try:
-            call_command('migrate', 'sedo', '0012', interactive=False, verbosity=0)
+            # H3 benötigt lifecycle und seine DB-Constraints. Der Benchmark
+            # vergleicht weiterhin nur die Etappe-7-Indizes; deshalb wird das
+            # aktuelle Schema vollständig aufgebaut und die zwei Indizes danach
+            # für die Ausgangsvariante wieder entfernt.
+            call_command('migrate', 'sedo', '0014', interactive=False, verbosity=0)
+            cursor = connection.cursor()
+            cursor.execute('DROP INDEX IF EXISTS invoice_status_due_idx')
+            cursor.execute('DROP INDEX IF EXISTS invoice_active_due_status_idx')
+
             today = date(2026, 9, 9)
             with patch('sedo.services.dunning.timezone.localdate', return_value=today), CaptureQueriesContext(connection) as captured:
                 get_dunning_candidates(14)
@@ -60,22 +73,36 @@ def main():
             status_sql, status_params = context['invoices'].query.sql_with_params()
             queries = {'mahnkandidaten_select': (dunning_sql, ()),
                        'rechnungslisten_statusfilter': (status_sql, status_params)}
-            # 85 % bezahlt; übrige Status deterministisch und unabhängig vom Datum verteilt.
+
+            # 85 % historischer Zahlungscache; übrige Status deterministisch.
+            # H3 trennt Beleg- und Zahlungswahrheit: nur die drei geschützten
+            # Legacy-Belegzustände benötigen einen abweichenden lifecycle.
             statuses = (['bezahlt'] * 85 + ['entwurf'] * 3 + ['storniert'] * 2 +
                         ['korrigiert'] * 2 + ['erstellt'] * 3 + ['versendet'] * 2 +
                         ['teilbezahlt', 'gemahnt', 'ueberfaellig'])
+            lifecycle_for = {
+                'entwurf': 'draft',
+                'storniert': 'cancelled',
+                'korrigiert': 'corrected',
+            }
             customers = [Customer.objects.create(name=f'TEST-IDX Kunde {i}') for i in range(44)]
             for start in range(0, args.rows, 1000):
-                Invoice.objects.bulk_create([
-                    Invoice(number=f'TEST-IDX-{i:07}', customer=customers[i % 44],
-                        status=statuses[(i * 37) % 100], gross_total='119.00',
+                invoices = []
+                for i in range(start, min(start + 1000, args.rows)):
+                    status = statuses[(i * 37) % 100]
+                    invoices.append(Invoice(
+                        number=f'TEST-IDX-{i:07}', customer=customers[i % 44],
+                        status=status, lifecycle=lifecycle_for.get(status, 'issued'),
+                        gross_total='119.00',
                         issue_date=today - timedelta(days=i % 400),
                         due_date=None if i % 17 == 0 else today + timedelta(days=(i * 29) % 730 - 365),
-                        deleted_at=datetime(2026, 8, 1, tzinfo=utc.utc) if i % 13 == 0 else None)
-                    for i in range(start, min(start + 1000, args.rows))])
-            cursor = connection.cursor()
+                        deleted_at=datetime(2026, 8, 1, tzinfo=utc.utc) if i % 13 == 0 else None,
+                    ))
+                Invoice.objects.bulk_create(invoices)
+
             report = {'python': platform.python_version(), 'django': django.get_version(),
                       'sqlite': sqlite3.sqlite_version, 'rows': args.rows, 'repeats': args.repeats,
+                      'schema': 'sedo 0014_invoice_lifecycle',
                       'analyze': False, 'daten': 'ausschließlich synthetisch; frische temporäre SQLite-DB',
                       'messumfang': 'SQL SELECT inklusive fetchall; kein End-to-End-Webbenchmark',
                       'queries': {k: {'sql': sql, 'params': params} for k, (sql, params) in queries.items()},
@@ -87,13 +114,14 @@ def main():
                     'CREATE INDEX invoice_status_idx ON sedo_invoice(status)',
                     'CREATE INDEX invoice_status_due_idx ON sedo_invoice(status, due_date)']),
                 ('umsetzung_etappe7', [
-                    'DROP INDEX invoice_status_idx', 'DROP INDEX invoice_status_due_idx']),
+                    'DROP INDEX invoice_status_idx',
+                    'DROP INDEX invoice_status_due_idx',
+                    'CREATE INDEX invoice_status_due_idx ON sedo_invoice(status, due_date)',
+                    'CREATE INDEX invoice_active_due_status_idx ON sedo_invoice(due_date, status) WHERE deleted_at IS NULL']),
             ]
             for variant, ddl in variants:
                 for sql in ddl:
                     cursor.execute(sql)
-                if variant == 'umsetzung_etappe7':
-                    call_command('migrate', 'sedo', '0013', interactive=False, verbosity=0)
                 result = {}
                 for name, (sql, params) in queries.items():
                     # Ein unterschiedlicher Kommentar vermeidet veraltete EXPLAIN-Cacheeinträge.
