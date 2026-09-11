@@ -5,6 +5,7 @@ on:
       - uiux-05-open-items-workqueue
     paths:
       - .github/workflows/ux05-testfix.yml
+      - .github/ux05-testfix.py
 permissions:
   contents: write
 jobs:
