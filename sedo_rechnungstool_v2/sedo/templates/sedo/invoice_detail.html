@@ -65,7 +65,7 @@
 
 <div class="detail-hero invoice-hero">
   <div class="hero-main">
-    <span class="badge status-{{ invoice.display_state }}">{{ invoice.display_state_label }}</span>
+    {% include 'sedo/_invoice_state_stack.html' with invoice=invoice %}
     <h2>{{ invoice.gross_total }} €</h2>
     <p>Bruttobetrag · bezahlt {{ invoice.paid_amount }} € · offen {{ invoice.open_amount }} €{% if invoice.is_overdue %} · {{ invoice.days_overdue }} Tage überfällig{% endif %}</p>
   </div>
@@ -83,7 +83,8 @@
       <div><span>Kunde</span><strong>{{ invoice.customer }}</strong></div>
       <div><span>Objekt</span><strong>{{ invoice.obj|default:'—' }}</strong></div>
       <div><span>Rechnungsdatum</span><strong>{{ invoice.issue_date }}</strong></div>
-      <div><span>Status</span><strong>{{ invoice.get_status_display }}</strong></div>
+      <div><span>Belegzustand</span><strong>{{ invoice.get_lifecycle_display }}</strong></div>
+      <div><span>Zahlung</span><strong>{% if invoice.lifecycle != 'issued' or invoice.invoice_type == '457' %}—{% elif invoice.payment_state == 'paid' %}Bezahlt{% elif invoice.payment_state == 'partial' %}Teilbezahlt{% else %}Offen{% endif %}</strong></div>
     </div>
     {% if invoice.reference_invoice %}<div class="notice-line">Bezug: <a href="{% url 'sedo:invoice_detail' invoice.reference_invoice.pk %}">{{ invoice.reference_invoice.number }}</a> ({{ invoice.reference_invoice.get_invoice_type_display }})</div>{% endif %}
     {% for followup in invoice.active_followups %}<div class="notice-line">{{ followup.get_invoice_type_display }}: <a href="{% url 'sedo:invoice_detail' followup.pk %}">{{ followup.number }}</a></div>{% endfor %}

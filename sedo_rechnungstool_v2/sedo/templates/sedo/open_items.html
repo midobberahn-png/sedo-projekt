@@ -77,7 +77,7 @@
   <div class="table-wrap"><table class="table table-modern action-table">
       <tr>
         <th style="width:32px"><input type="checkbox" id="check-all" title="Alle auswählen"></th>
-        <th>Rechnung</th><th>Kunde / Objekt</th><th>Fällig</th><th>Betrag</th><th>Bezahlt</th><th>Offen</th><th>Status</th><th>Aktionen</th>
+        <th>Rechnung</th><th>Kunde / Objekt</th><th>Fällig</th><th>Betrag</th><th>Bezahlt</th><th>Offen</th><th>Zustand</th><th>Aktionen</th>
       </tr>
       {% for i in invoices %}
       <tr class="{% if i.is_overdue %}row-warning{% endif %}">
@@ -88,11 +88,7 @@
         <td>{{ i.gross_total }} €</td>
         <td>{{ i.paid_amount }} €</td>
         <td><strong>{{ i.open_amount }} €</strong></td>
-        {# 'korrigiert' kann auf dem Reiter „Alle ohne Storno" erscheinen und war
-           dort bisher farblos. 'entwurf' steht in keiner dieser Listen mehr –
-           der Zweig bleibt trotzdem stehen, falls sich die Mengen ändern.
-           Nur vorhandene Badge-Klassen verwenden: green/red/amber/yellow. #}
-        <td><span class="badge status-{{ i.status }} {% if i.status == 'bezahlt' %}green{% elif i.status == 'ueberfaellig' or i.status == 'storniert' %}red{% elif i.status == 'gemahnt' %}amber{% elif i.status == 'entwurf' or i.status == 'korrigiert' %}yellow{% endif %}">{{ i.get_status_display }}</span></td>
+        <td>{% include 'sedo/_invoice_state_stack.html' with invoice=i compact=1 %}</td>
         <td><div class="row-actions">
           <a class="btn small" href="{% url 'sedo:invoice_add_payment' i.pk %}">Zahlung</a>
           {% if i.open_amount > 0 %}
