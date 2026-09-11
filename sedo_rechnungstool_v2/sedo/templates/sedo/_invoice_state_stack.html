@@ -1,0 +1,33 @@
+<div class="invoice-state-stack{% if compact %} compact{% endif %}">
+  <div class="state-row state-document">
+    {% if not compact %}<span class="state-label">Beleg</span>{% endif %}
+    <span class="state-pill lifecycle-{{ invoice.lifecycle }}">{{ invoice.get_lifecycle_display }}</span>
+  </div>
+
+  {% if invoice.lifecycle == 'issued' and invoice.invoice_type != '457' %}
+  <div class="state-row state-payment">
+    {% if not compact %}<span class="state-label">Zahlung</span>{% endif %}
+    {% if invoice.payment_state == 'paid' %}
+      <span class="state-pill payment-paid">Bezahlt</span>
+    {% elif invoice.payment_state == 'partial' %}
+      <span class="state-pill payment-partial">Teilbezahlt</span>
+      <span class="state-amount">{{ invoice.open_amount }} € offen</span>
+    {% else %}
+      <span class="state-pill payment-open">Offen</span>
+      {% if invoice.open_amount > 0 %}<span class="state-amount">{{ invoice.open_amount }} € offen</span>{% endif %}
+    {% endif %}
+  </div>
+
+  {% if invoice.is_overdue %}
+  <div class="state-context context-danger">
+    {{ invoice.days_overdue }} Tage überfällig{% if invoice.due_date %} · fällig {{ invoice.due_date|date:"d.m.Y" }}{% endif %}
+  </div>
+  {% elif invoice.due_date and invoice.open_amount > 0 %}
+  <div class="state-context">Fällig {{ invoice.due_date|date:"d.m.Y" }}</div>
+  {% endif %}
+
+  {% if invoice.display_state == 'gemahnt' %}
+  <div class="state-context context-warning">Mahnwesen aktiv</div>
+  {% endif %}
+  {% endif %}
+</div>
