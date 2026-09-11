@@ -1,11 +1,14 @@
 from pathlib import Path
+import subprocess
+
 p=Path('sedo_rechnungstool_v2/sedo/tests/test_review_v2.py')
 s=p.read_text(encoding='utf-8')
-# Branch-Datei wurde bei einem API-Schreibfehler versehentlich ersetzt; stelle
-# sie aus Git-parent wieder her, falls der Platzhalter vorliegt.
 if s.strip() == '{% raw %}PLACEHOLDER{% endraw %}':
-    import subprocess
-    s=subprocess.check_output(['git','show','HEAD^:sedo_rechnungstool_v2/sedo/tests/test_review_v2.py'], text=True)
+    subprocess.run(['git','fetch','origin','main','--depth=1'], check=True,
+                   stdout=subprocess.DEVNULL)
+    s=subprocess.check_output([
+        'git','show','FETCH_HEAD:sedo_rechnungstool_v2/sedo/tests/test_review_v2.py'
+    ], text=True)
 old="""        self.assertIn('Löschen nicht möglich', inhalt)
         self.assertNotIn(reverse('sedo:invoice_delete', args=[rechnung.pk]), inhalt)
 """
