@@ -65,7 +65,7 @@ def _customer_price_history(customer_id) -> dict[str, InvoiceItem]:
     items = (
         InvoiceItem.objects
         .filter(invoice__customer_id=customer_id, invoice__deleted_at__isnull=True)
-        .exclude(invoice__status__in=['entwurf', 'storniert'])
+        .filter(invoice__lifecycle='issued')
         .exclude(invoice__invoice_type='457')
         .select_related('invoice')
         .order_by('-invoice__issue_date', '-invoice__id')

@@ -128,6 +128,15 @@ class Invoice(SoftDeleteModel):
         ('storniert', 'Storniert'),
         ('korrigiert', 'Korrigiert'),
     ]
+    LIFECYCLE = [
+        ('draft', 'Entwurf'),
+        ('issued', 'Ausgestellt'),
+        ('corrected', 'Ersetzt durch Korrektur'),
+        ('cancelled', 'Storniert'),
+    ]
+    PAYMENT_STATES = [
+        ('unpaid', 'Offen'), ('partial', 'Teilbezahlt'), ('paid', 'Bezahlt'),
+    ]
 
     # Das Feld `status` trägt zwei Bedeutungen: den Zahlstatus (erstellt,
     # versendet, ueberfaellig, teilbezahlt, gemahnt, bezahlt) und den
@@ -163,7 +172,9 @@ class Invoice(SoftDeleteModel):
     vat_rate = models.DecimalField('USt %', max_digits=5, decimal_places=2, default=Decimal('19.00'))
     vat_amount = models.DecimalField('USt Betrag', max_digits=12, decimal_places=2, default=Decimal('0.00'))
     gross_total = models.DecimalField('Brutto', max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    # Legacy-Anzeige-/Kompatibilitätscache. Die kanonische Belegwahrheit ist lifecycle.
     status = models.CharField('Status', max_length=30, choices=STATUS, default='erstellt')
+    lifecycle = models.CharField('Belegzustand', max_length=16, choices=LIFECYCLE, default='issued')
     pdf_file = models.FileField('PDF', upload_to='invoices/pdf/', blank=True)
     xml_file = models.FileField('XML', upload_to='invoices/xml/', blank=True)
     zugferd_file = models.FileField('ZUGFeRD-PDF', upload_to='invoices/zugferd/', blank=True)
@@ -183,6 +194,15 @@ class Invoice(SoftDeleteModel):
                          name='invoice_active_due_status_idx'),
         ]
         constraints = [
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status__in=('entwurf', 'korrigiert', 'storniert'))
+                    | models.Q(status='entwurf', lifecycle='draft')
+                    | models.Q(status='korrigiert', lifecycle='corrected')
+                    | models.Q(status='storniert', lifecycle='cancelled')
+                ),
+                name='invoice_lifecycle_legacy_consistent',
+            ),
             # Idempotenz-Schutz für den GWG-Monatslauf: pro Kunde, Objekt und
             # Leistungszeitraum nur EINE aktive Monatsrechnung – auch wenn der
             # Lauf doppelt/parallel gestartet wird (Check-then-act reicht nicht).
@@ -190,7 +210,7 @@ class Invoice(SoftDeleteModel):
                 fields=['customer', 'obj', 'period_start', 'period_end'],
                 condition=(models.Q(source='GWG Monatsrechnung')
                            & models.Q(deleted_at__isnull=True)
-                           & ~models.Q(status='storniert')),
+                           & ~models.Q(lifecycle='cancelled')),
                 name='invoice_unique_gwg_monthly_run',
             ),
             # Harte Parallelitäts-Schranken (v3.23.1): Die ensure_*-Guards
@@ -213,6 +233,16 @@ class Invoice(SoftDeleteModel):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        # Übergangskompatibilität für vorhandene Aufrufer/Tests: bei einer
+        # NEUEN Rechnung mit altem Belegstatus wird lifecycle einmalig
+        # abgeleitet. Spätere Status-Cache-Updates ändern lifecycle nie.
+        if self._state.adding and self.lifecycle == 'issued':
+            self.lifecycle = {
+                'entwurf': 'draft', 'korrigiert': 'corrected', 'storniert': 'cancelled',
+            }.get(self.status, self.lifecycle)
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return self.number
 
@@ -225,7 +255,63 @@ class Invoice(SoftDeleteModel):
 
     @property
     def open_amount(self):
-        return (self.gross_total - self.paid_amount).quantize(Decimal('0.01'))
+        return (Decimal(str(self.gross_total)) - self.paid_amount).quantize(Decimal('0.01'))
+
+    @property
+    def is_draft(self):
+        return self.lifecycle == 'draft'
+
+    @property
+    def is_issued(self):
+        return self.lifecycle == 'issued'
+
+    @property
+    def is_corrected(self):
+        return self.lifecycle == 'corrected'
+
+    @property
+    def is_cancelled(self):
+        return self.lifecycle == 'cancelled'
+
+    @property
+    def payment_state(self):
+        """Zahlungszustand ausschließlich aus aktiven Zahlungen und Forderung ableiten."""
+        gross = Decimal(str(self.gross_total))
+        if gross <= Decimal('0.00'):
+            return 'unpaid'
+        paid = self.paid_amount
+        if paid >= gross:
+            return 'paid'
+        if paid > Decimal('0.00'):
+            return 'partial'
+        return 'unpaid'
+
+    @property
+    def display_state(self):
+        """Ein UI-Status ohne Vermischung der kanonischen Zustände."""
+        if self.lifecycle == 'draft':
+            return 'entwurf'
+        if self.lifecycle == 'corrected':
+            return 'korrigiert'
+        if self.lifecycle == 'cancelled':
+            return 'storniert'
+        if self.invoice_type == '457':
+            return 'erstellt'
+        if self.payment_state == 'paid':
+            return 'bezahlt'
+        if self.payment_state == 'partial':
+            return 'teilbezahlt'
+        if self.dunning_documents.exists():
+            return 'gemahnt'
+        if self.due_date and self.due_date < timezone.localdate():
+            return 'ueberfaellig'
+        if self.status == 'versendet':
+            return 'versendet'
+        return 'erstellt'
+
+    @property
+    def display_state_label(self):
+        return dict(self.STATUS).get(self.display_state, self.display_state)
 
     @property
     def active_storno(self):
@@ -234,7 +320,7 @@ class Invoice(SoftDeleteModel):
         # sie wurden nie ausgestellt und dürfen das Original nicht blockieren –
         # sonst entsteht eine Sackgasse (siehe active_correction).
         return self.followups.filter(invoice_type='457', deleted_at__isnull=True).exclude(
-            status='entwurf').first()
+            lifecycle='draft').first()
 
     @property
     def active_correction(self):
@@ -249,7 +335,7 @@ class Invoice(SoftDeleteModel):
         desselben Programms widersprachen sich bei derselben Zahlung.
         """
         return self.followups.filter(invoice_type='384', deleted_at__isnull=True).exclude(
-            status='entwurf').first()
+            lifecycle='draft').first()
 
     @property
     def active_followups(self):
@@ -261,7 +347,7 @@ class Invoice(SoftDeleteModel):
         # bisher als überfällig – sie erschienen rot in „Offene Posten" und
         # zählten in die Summe der überfälligen Forderungen (F-07). Ein
         # Stornobeleg (457) ist ebenfalls nie überfällig: er fordert nichts.
-        if not self.due_date or self.status in self.NICHT_OFFENE_STATUS or self.invoice_type == '457':
+        if not self.due_date or self.lifecycle != 'issued' or self.invoice_type == '457':
             return False
         return self.open_amount > Decimal('0.00') and self.due_date < timezone.localdate()
 

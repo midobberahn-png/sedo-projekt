@@ -20,7 +20,8 @@ from django.utils import timezone
 
 from sedo.audit import AuditWriteError
 from sedo.models import AuditLog, Customer, CustomerObject, Invoice, InvoiceItem, Offer, OfferItem
-from sedo.services import generate_invoice_files, finalisiere_entwurf, create_storno, create_invoice_from_offer
+from sedo.services import (WorkflowError, generate_invoice_files, finalisiere_entwurf,
+                           create_storno, create_invoice_from_offer)
 from sedo.services.invoice_archive import (ARCHIV_FELDER, ARCHIV_VORGANG, archivnachweis,
     lese_archivdatei, stelle_archiv_wieder_her, zielpfade, BelegArchivFehler)
 from sedo.services.mail import create_email_draft, send_email_smtp
@@ -117,7 +118,9 @@ class InvoiceArchiveTests(TestCase):
             if status == 'entwurf':
                 continue
             with self.subTest(status=status):
-                Invoice.objects.filter(pk=inv.pk).update(status=status)
+                lifecycle = {'storniert':'cancelled', 'korrigiert':'corrected'}.get(status, 'issued')
+                Invoice.objects.filter(pk=inv.pk).update(status=status, lifecycle=lifecycle)
+                inv.refresh_from_db()
                 before = self.state(inv), self.files(), AuditLog.objects.count()
                 generate_invoice_files(inv)
                 self.assertEqual((self.state(inv), self.files(), AuditLog.objects.count()), before)
@@ -152,11 +155,16 @@ class InvoiceArchiveTests(TestCase):
 
     def test_zurueckgesetzter_status_oeffnet_keinen_schreibweg(self):
         inv = self.issued()
-        Invoice.objects.filter(pk=inv.pk).update(status='entwurf')
+        # Ein geschützter Legacy-Belegstatus kann lifecycle nicht mehr allein überschreiben.
+        from django.db import IntegrityError, transaction
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Invoice.objects.filter(pk=inv.pk).update(status='entwurf')
+        Invoice.objects.filter(pk=inv.pk).update(status='ueberfaellig')
         before = self.files()
-        with self.assertRaises(BelegArchivFehler):
+        with patch('sedo.services.invoices._generate_invoice_files_inner') as generator:
             generate_invoice_files(inv)
-        with self.assertRaises(BelegArchivFehler):
+        generator.assert_not_called()
+        with self.assertRaises(WorkflowError):
             finalisiere_entwurf(inv)
         self.assertEqual(self.files(), before)
 
@@ -308,7 +316,7 @@ class InvoiceArchiveTests(TestCase):
     def test_erneuter_smtp_versand_nutzt_originalbytes_auch_korrigiert(self):
         inv = self.issued(); original = self.docs(inv)['zugferd_file']
         self.mutate_customer_items(inv)
-        Invoice.objects.filter(pk=inv.pk).update(status='korrigiert')
+        Invoice.objects.filter(pk=inv.pk).update(status='korrigiert', lifecycle='corrected')
         before = self.state(inv), self.files()
         with patch('sedo.views.smtp_is_configured', return_value=True), patch('sedo.views.send_email_smtp') as send:
             response = self.client.post(reverse('sedo:invoice_email', args=[inv.pk]))

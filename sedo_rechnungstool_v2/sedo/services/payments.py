@@ -58,7 +58,7 @@ def _match_invoice(purpose: str) -> Invoice | None:
     # nicht an die Korrektur weiter. Entwürfe fliegen raus: auf einen nie
     # ausgestellten Beleg gehört keine Bankzahlung.
     invoice = (
-        Invoice.objects.exclude(status__in=('storniert', 'entwurf'))
+        Invoice.objects.exclude(lifecycle__in=('cancelled', 'draft'))
         .filter(number__in=tokens)
         .order_by('-issue_date')
         .first()
@@ -68,14 +68,14 @@ def _match_invoice(purpose: str) -> Invoice | None:
     # (Mireks Entscheid 14.08.). Ohne aktive Korrektur bleibt die Zahlung
     # „unklar“ und wird manuell zugeordnet.
     depth = 0
-    while invoice is not None and invoice.status == 'korrigiert' and depth < 5:
+    while invoice is not None and invoice.lifecycle == 'corrected' and depth < 5:
         invoice = invoice.active_correction
         depth += 1
     # Endprüfung über ALLE Belegzustände: active_correction filtert nur auf
     # invoice_type und deleted_at – die Kette kann deshalb in einem
     # Korrektur-ENTWURF enden, und die Bankzahlung würde an einem nie
     # ausgestellten Beleg festgemacht.
-    if invoice is not None and invoice.status in Invoice.GESCHUETZTE_STATUS:
+    if invoice is not None and invoice.lifecycle != 'issued':
         return None  # Kette nicht auflösbar → manuell klären
     return invoice
 

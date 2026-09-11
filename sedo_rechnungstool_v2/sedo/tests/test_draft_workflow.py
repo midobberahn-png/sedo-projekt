@@ -126,7 +126,7 @@ class DraftWorkflowTests(TestCase):
             generate_invoice_files(inv, erstmalig=True)
         xml_path = Path(inv.xml_file.path)
         xml_bytes = xml_path.read_bytes()
-        Invoice.objects.filter(pk=inv.pk).update(status='entwurf')
+        Invoice.objects.filter(pk=inv.pk).update(status='entwurf', lifecycle='draft')
         generate_invoice_files(inv)
         self.assertFalse(inv.xml_file or inv.zugferd_file)
         self.assertFalse(xml_path.exists())
@@ -424,7 +424,10 @@ class DraftWorkflowTests(TestCase):
         original = self.draft(prefix='RE', status='erstellt')
         inv = self.draft(invoice_type='384', reference_invoice=original)
         create_storno(original)
-        Invoice.objects.filter(pk=original.pk).update(status='ueberfaellig')
+        # Adversarial: Auch wenn der gespeicherte Belegzustand fälschlich wieder
+        # 'issued' lautet, muss der tatsächlich ausgestellte Storno-Folgebeleg
+        # die Korrekturfinalisierung weiterhin blockieren.
+        Invoice.objects.filter(pk=original.pk).update(status='ueberfaellig', lifecycle='issued')
         with self.assertRaises(WorkflowError):
             finalisiere_entwurf(inv)
         self.assertEqual(inv.status, 'entwurf')

@@ -55,7 +55,7 @@
 <div class="split">
   <div class="card">
     <div class="section-title"><h2>Letzte Rechnungen</h2><a class="btn" href="{% url 'sedo:invoice_list' %}">Alle Rechnungen</a></div>
-    <div class="table-wrap"><table class="table"><tr><th>Nr.</th><th>Kunde</th><th>Objekt</th><th>Brutto</th><th>Status</th></tr>{% for r in latest_invoices %}<tr><td><a href="{% url 'sedo:invoice_detail' r.pk %}"><strong>{{ r.number }}</strong></a></td><td>{{ r.customer }}</td><td>{{ r.obj|default:'—' }}</td><td>{{ r.gross_total }} €</td><td><span class="badge {% if r.status == 'bezahlt' %}green{% elif r.status == 'storniert' or r.status == 'ueberfaellig' %}red{% elif r.status == 'gemahnt' %}amber{% endif %}">{{ r.get_status_display }}</span></td></tr>{% empty %}<tr><td colspan="5"><div class="empty-state">Noch keine Rechnungen.</div></td></tr>{% endfor %}</table></div>
+    <div class="table-wrap"><table class="table"><tr><th>Nr.</th><th>Kunde</th><th>Objekt</th><th>Brutto</th><th>Status</th></tr>{% for r in latest_invoices %}<tr><td><a href="{% url 'sedo:invoice_detail' r.pk %}"><strong>{{ r.number }}</strong></a></td><td>{{ r.customer }}</td><td>{{ r.obj|default:'—' }}</td><td>{{ r.gross_total }} €</td><td><span class="badge {% if r.display_state == 'bezahlt' %}green{% elif r.display_state == 'storniert' or r.display_state == 'ueberfaellig' %}red{% elif r.display_state == 'gemahnt' %}amber{% endif %}">{{ r.display_state_label }}</span></td></tr>{% empty %}<tr><td colspan="5"><div class="empty-state">Noch keine Rechnungen.</div></td></tr>{% endfor %}</table></div>
   </div>
 
   <div class="card info-card">

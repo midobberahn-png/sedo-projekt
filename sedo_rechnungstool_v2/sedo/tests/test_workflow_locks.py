@@ -60,7 +60,8 @@ class StornoLockTests(TestCase):
 
     def test_storno_einer_korrigierten_rechnung_wird_blockiert(self):
         self.original.status = 'korrigiert'
-        self.original.save(update_fields=['status'])
+        self.original.lifecycle = 'corrected'
+        self.original.save(update_fields=['status', 'lifecycle'])
         with self.assertRaises(WorkflowError):
             create_storno(self.original)
 
@@ -78,7 +79,8 @@ class StornoLockTests(TestCase):
         storno = create_storno(self.original)
         storno.soft_delete()
         self.original.status = 'erstellt'
-        self.original.save(update_fields=['status'])
+        self.original.lifecycle = 'issued'
+        self.original.save(update_fields=['status', 'lifecycle'])
         neu = create_storno(self.original)
         self.assertEqual(neu.invoice_type, '457')
 
@@ -172,7 +174,8 @@ class CorrectionLockTests(TestCase):
 
     def test_korrektur_link_fuer_stornierte_rechnung_blockiert(self):
         self.original.status = 'storniert'
-        self.original.save(update_fields=['status'])
+        self.original.lifecycle = 'cancelled'
+        self.original.save(update_fields=['status', 'lifecycle'])
         resp = self.client.get(reverse('sedo:invoice_correction', args=[self.original.pk]))
         self.assertEqual(resp.status_code, 302)
         self.assertIn(reverse('sedo:invoice_detail', args=[self.original.pk]), resp.url)

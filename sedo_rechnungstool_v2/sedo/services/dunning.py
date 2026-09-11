@@ -45,7 +45,7 @@ def _aktive_folgebelege():
     """Derselbe Belegbegriff wie active_storno/active_correction, nicht der Zahlstatus."""
     return Invoice.all_objects.filter(
         deleted_at__isnull=True, invoice_type__in=('384', '457'),
-    ).exclude(status='entwurf')
+    ).exclude(lifecycle='draft')
 
 
 def _aktuelle_rechnung(invoice: Invoice) -> Invoice | None:
@@ -60,8 +60,8 @@ def _beleg_hindernis(invoice: Invoice | None) -> str:
         return 'Die Rechnung ist nicht mehr verfügbar und kann nicht gemahnt werden.'
     if invoice.invoice_type == '457':
         return f'{invoice.number} ist eine Stornorechnung und kann nicht gemahnt werden.'
-    if invoice.status in _UNDUNNABLE_STATUS:
-        return (f'Rechnung {invoice.number} ({invoice.get_status_display()}) '
+    if invoice.lifecycle != 'issued':
+        return (f'Rechnung {invoice.number} ({invoice.get_lifecycle_display()}) '
                 'kann nicht gemahnt werden.')
     # Nicht die Rückwärtsrelation verwenden: deren Prefetch kann veraltet sein.
     folge = (_aktive_folgebelege().filter(reference_invoice_id=invoice.pk)
@@ -274,8 +274,8 @@ def generate_dunning_document(invoice: Invoice, kind: str = 'reminder', *, reque
                     # Zusätzliche Schranke direkt am Status-UPDATE; niemals einen
                     # geschützten Zustand durch 'gemahnt' ersetzen.
                     changed_at = timezone.now()
-                    updated = (Invoice.objects.filter(pk=current.pk, status=before)
-                               .exclude(status__in=_UNDUNNABLE_STATUS).exclude(invoice_type='457')
+                    updated = (Invoice.objects.filter(pk=current.pk, status=before, lifecycle='issued')
+                               .exclude(invoice_type='457')
                                .filter(~Exists(_aktive_folgebelege().filter(reference_invoice_id=OuterRef('pk'))))
                                .update(status='gemahnt', updated_at=changed_at))
                     if not updated:
@@ -322,7 +322,7 @@ def get_dunning_candidates(days_overdue_threshold: int = DEFAULT_DUNNING_THRESHO
     cutoff = today - timedelta(days=days_overdue_threshold)
     queryset = (
         Invoice.objects
-        .exclude(status__in=_UNDUNNABLE_STATUS)
+        .filter(lifecycle='issued')
         .exclude(invoice_type='457')
         .filter(~Exists(_aktive_folgebelege().filter(reference_invoice_id=OuterRef('pk'))))
         .filter(due_date__lte=cutoff, due_date__lt=today)

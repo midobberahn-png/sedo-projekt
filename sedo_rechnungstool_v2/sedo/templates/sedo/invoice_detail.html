@@ -6,9 +6,9 @@
     <div class="sub">{{ invoice.customer }}{% if invoice.obj %} · {{ invoice.obj }}{% endif %} · {{ invoice.issue_date }}</div>
   </div>
   <div class="toolbar detail-actions">
-    {% if invoice.status != 'entwurf' and invoice.zugferd_file %}<a class="btn primary" href="{{ invoice.zugferd_file.url }}" target="_blank">ZUGFeRD öffnen</a>{% endif %}
+    {% if invoice.lifecycle != 'draft' and invoice.zugferd_file %}<a class="btn primary" href="{{ invoice.zugferd_file.url }}" target="_blank">ZUGFeRD öffnen</a>{% endif %}
     {% if invoice.pdf_file %}<a class="btn" href="{{ invoice.pdf_file.url }}" target="_blank">PDF</a>{% endif %}
-    {% if invoice.status != 'entwurf' and invoice.xml_file %}<a class="btn" href="{{ invoice.xml_file.url }}" target="_blank">XML</a>{% endif %}
+    {% if invoice.lifecycle != 'draft' and invoice.xml_file %}<a class="btn" href="{{ invoice.xml_file.url }}" target="_blank">XML</a>{% endif %}
     {% comment %}
     Die Knöpfe hatten bisher fast keine Bedingungen: Ein Entwurf ließ sich per
     E-Mail verschicken, auf ein ersetztes Original ließ sich zahlen, und der
@@ -16,20 +16,20 @@
     Die Kreuzprüfung fehlte auch hier – „Korrektur laden" sah nur nach einer
     vorhandenen Korrektur, nicht nach einem Storno, und umgekehrt.
     {% endcomment %}
-    {% if invoice.status != 'entwurf' %}<form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn success">E-Mail</button></form>{% endif %}
-    {% if invoice.status != 'entwurf' and invoice.status != 'korrigiert' and invoice.status != 'storniert' %}<a class="btn primary" href="{% url 'sedo:invoice_add_payment' invoice.pk %}">Zahlung erfassen</a>{% endif %}
-    {% if invoice.status == 'entwurf' %}<form method="post" action="{% url 'sedo:invoice_generate' invoice.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Entwurfs-PDF neu erzeugen</button></form>{% endif %}
-    {% if invoice.invoice_type != '457' and invoice.status != 'entwurf' and invoice.status != 'storniert' and invoice.status != 'korrigiert' and not invoice.active_correction and not invoice.active_storno %}<a class="btn" href="{% url 'sedo:invoice_correction' invoice.pk %}">Korrektur laden</a>{% endif %}
+    {% if invoice.lifecycle != 'draft' %}<form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn success">E-Mail</button></form>{% endif %}
+    {% if invoice.lifecycle != 'draft' and invoice.lifecycle != 'corrected' and invoice.lifecycle != 'cancelled' %}<a class="btn primary" href="{% url 'sedo:invoice_add_payment' invoice.pk %}">Zahlung erfassen</a>{% endif %}
+    {% if invoice.lifecycle == 'draft' %}<form method="post" action="{% url 'sedo:invoice_generate' invoice.pk %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Entwurfs-PDF neu erzeugen</button></form>{% endif %}
+    {% if invoice.invoice_type != '457' and invoice.lifecycle != 'draft' and invoice.lifecycle != 'cancelled' and invoice.lifecycle != 'corrected' and not invoice.active_correction and not invoice.active_storno %}<a class="btn" href="{% url 'sedo:invoice_correction' invoice.pk %}">Korrektur laden</a>{% endif %}
     {% if not mahn_hindernis %}
     <form method="post" action="{% url 'sedo:invoice_reminder' invoice.pk 'reminder' %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Zahlungserinnerung</button></form>
     <form method="post" action="{% url 'sedo:invoice_reminder' invoice.pk 'dunning' %}" style="display:inline">{% csrf_token %}<button type="submit" class="btn">Mahnung</button></form>
     {% endif %}
-    {% if invoice.invoice_type != '457' and invoice.status != 'entwurf' and invoice.status != 'storniert' and invoice.status != 'korrigiert' and not invoice.active_storno and not invoice.active_correction %}<form method="post" action="{% url 'sedo:invoice_storno' invoice.pk %}" style="display:inline" onsubmit="return confirm('Stornorechnung zu {{ invoice.number }} erzeugen?');">{% csrf_token %}<button type="submit" class="btn danger">Storno</button></form>{% endif %}
-    {% if ausblenden_hindernis %}<button type="button" class="btn" disabled title="{{ ausblenden_hindernis }}">Löschen nicht möglich</button>{% else %}<a class="btn danger" href="{% url 'sedo:invoice_delete' invoice.pk %}">{% if invoice.status == 'entwurf' %}Entwurf verwerfen{% else %}Löschen{% endif %}</a>{% endif %}
+    {% if invoice.invoice_type != '457' and invoice.lifecycle != 'draft' and invoice.lifecycle != 'cancelled' and invoice.lifecycle != 'corrected' and not invoice.active_storno and not invoice.active_correction %}<form method="post" action="{% url 'sedo:invoice_storno' invoice.pk %}" style="display:inline" onsubmit="return confirm('Stornorechnung zu {{ invoice.number }} erzeugen?');">{% csrf_token %}<button type="submit" class="btn danger">Storno</button></form>{% endif %}
+    {% if ausblenden_hindernis %}<button type="button" class="btn" disabled title="{{ ausblenden_hindernis }}">Löschen nicht möglich</button>{% else %}<a class="btn danger" href="{% url 'sedo:invoice_delete' invoice.pk %}">{% if invoice.lifecycle == 'draft' %}Entwurf verwerfen{% else %}Löschen{% endif %}</a>{% endif %}
   </div>
 </div>
 
-{% if mahn_hindernis and invoice.status != 'entwurf' %}
+{% if mahn_hindernis and invoice.lifecycle != 'draft' %}
 <div class="card">
   <h2>Mahnungen gesperrt</h2>
   <p>{{ mahn_hindernis }}</p>
@@ -49,7 +49,7 @@
 </div>
 {% endif %}
 
-{% if invoice.status == 'entwurf' %}
+{% if invoice.lifecycle == 'draft' %}
 <div class="card warning-card">
   <h2>Entwurf {{ invoice.number }} – noch nicht ausgestellt</h2>
   <p>Beim Erzeugen oder Speichern entsteht nur ein Wasserzeichen-PDF, kein E-Rechnungs-XML.
@@ -65,7 +65,7 @@
 
 <div class="detail-hero invoice-hero">
   <div class="hero-main">
-    <span class="badge status-{{ invoice.status }}">{{ invoice.get_status_display }}</span>
+    <span class="badge status-{{ invoice.display_state }}">{{ invoice.display_state_label }}</span>
     <h2>{{ invoice.gross_total }} €</h2>
     <p>Bruttobetrag · bezahlt {{ invoice.paid_amount }} € · offen {{ invoice.open_amount }} €{% if invoice.is_overdue %} · {{ invoice.days_overdue }} Tage überfällig{% endif %}</p>
   </div>
@@ -96,7 +96,7 @@
     <div class="sum-row"><span>USt {{ invoice.vat_rate }} %</span><strong>{{ invoice.vat_amount }} €</strong></div>
     <div class="sum-row total"><span>Brutto</span><strong>{{ invoice.gross_total }} €</strong></div>
     <div class="hint">Archiv: Dateien öffnen, Zahlungen erfassen, korrigieren, mahnen oder stornieren.</div>
-    {% if invoice.open_amount > 0 and invoice.status != 'entwurf' and invoice.status != 'korrigiert' and invoice.status != 'storniert' %}<form method="post" action="{% url 'sedo:invoice_mark_paid' invoice.pk %}" class="mt-3">{% csrf_token %}<button class="btn success" type="submit">Restbetrag als bezahlt markieren</button></form>{% endif %}
+    {% if invoice.open_amount > 0 and invoice.lifecycle != 'draft' and invoice.lifecycle != 'corrected' and invoice.lifecycle != 'cancelled' %}<form method="post" action="{% url 'sedo:invoice_mark_paid' invoice.pk %}" class="mt-3">{% csrf_token %}<button class="btn success" type="submit">Restbetrag als bezahlt markieren</button></form>{% endif %}
   </div>
 </div>
 
@@ -124,7 +124,7 @@ Diese Karte enthält ein ZWEITES Formular auf sedo:invoice_email. Es muss
 dieselbe Entwurfssperre tragen wie der Knopf oben – sonst bliebe der Versand
 eines Entwurfs über diesen Weg offen.
 {% endcomment %}
-{% if invoice.status != 'entwurf' %}
+{% if invoice.lifecycle != 'draft' %}
 <div class="card" id="ai-cover-card">
   <div class="section-head"><h2>E-Mail mit KI-Begleittext</h2><span class="muted">optional – der Standardtext bleibt verfügbar</span></div>
   <p class="hint">Erzeugt einen individuellen Begleittext mit neutraler Anrede. An Claude gehen nur Rechnungs-Eckdaten und Positionsbezeichnungen – keine Kunden- oder Objektdaten.</p>

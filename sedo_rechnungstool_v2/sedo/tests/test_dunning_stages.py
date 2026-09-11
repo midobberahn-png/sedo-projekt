@@ -13,7 +13,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from sedo.models import Customer, DunningDocument, Invoice
+from sedo.models import Customer, DunningDocument, Invoice, Payment
 from .file_fixtures import isolate_files
 from sedo.services import (
     WorkflowError,
@@ -77,11 +77,17 @@ class DunningStageTests(TestCase):
         self.assertIsNone(next_dunning_kind(self.invoice))
         self.assertEqual(get_dunning_candidates(), [])
 
-    def test_bezahlte_und_stornierte_rechnungen_sind_keine_kandidaten(self):
-        for status in ('bezahlt', 'storniert', 'korrigiert', 'entwurf'):
-            self.invoice.status = status
-            self.invoice.save(update_fields=['status'])
-            self.assertIsNone(next_dunning_kind(self.invoice), status)
+    def test_bezahlte_und_gesperrte_belegzustaende_sind_keine_kandidaten(self):
+        payment = Payment.objects.create(invoice=self.invoice, amount=self.invoice.gross_total,
+                                         booking_date=timezone.localdate(),
+                                         external_id='TEST-H3-STAGE-PAID')
+        self.assertIsNone(next_dunning_kind(self.invoice), 'paid')
+        payment.soft_delete()
+        for status, lifecycle in (('storniert','cancelled'), ('korrigiert','corrected'), ('entwurf','draft')):
+            with self.subTest(status=status):
+                Invoice.objects.filter(pk=self.invoice.pk).update(status=status, lifecycle=lifecycle)
+                self.invoice.refresh_from_db()
+                self.assertIsNone(next_dunning_kind(self.invoice), status)
 
 
 class DunningDuplicateLockTests(TestCase):

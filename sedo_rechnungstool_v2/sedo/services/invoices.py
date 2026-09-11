@@ -21,6 +21,7 @@ from .numbering import create_numbered_invoice, save_with_unique_number
 from .invoice_files import (datei_rueckweg, quarantiniere_dateien,
                             merke_veroeffentlichung, veroeffentliche_neue_datei)
 from .workflow_errors import WorkflowError, BelegArchivFehler
+from .invoice_state import guarded_lifecycle_update
 from .invoice_archive import (ARCHIV_FELDER, archivnachweis, pruefe_archiv,
                               pruefe_schreibziele, versiegele_archiv, zielpfade)
 
@@ -42,23 +43,23 @@ def ensure_storno_allowed(original: Invoice) -> None:
     if original.invoice_type == '457':
         raise WorkflowError(
             f'{original.number} ist selbst eine Stornorechnung und kann nicht erneut storniert werden.')
-    if original.status == 'entwurf':
+    if original.lifecycle == 'draft':
         raise WorkflowError(
             f'{original.number} ist ein Entwurf und wurde nie ausgestellt. '
             'Bitte zuerst finalisieren oder verwerfen.')
-    if original.status == 'storniert':
-        raise WorkflowError(f'Rechnung {original.number} ist bereits storniert.')
     existing = original.active_storno
     if existing:
         raise WorkflowError(
             f'Zu Rechnung {original.number} existiert bereits die Stornorechnung {existing.number}.')
+    if original.lifecycle == 'cancelled':
+        raise WorkflowError(f'Rechnung {original.number} ist bereits storniert.')
     # Kreuzprüfung am Belegobjekt statt am Statusfeld.
     correction = original.active_correction
     if correction:
         raise WorkflowError(
             f'Zu Rechnung {original.number} existiert bereits die Korrekturrechnung '
             f'{correction.number}. Bitte ggf. diese stornieren.')
-    if original.status == 'korrigiert':
+    if original.lifecycle == 'corrected':
         raise WorkflowError(f'Rechnung {original.number} wurde bereits korrigiert.')
 
 
@@ -70,23 +71,23 @@ def ensure_correction_allowed(original: Invoice) -> None:
     """
     if original.invoice_type == '457':
         raise WorkflowError(f'{original.number} ist eine Stornorechnung und kann nicht korrigiert werden.')
-    if original.status == 'entwurf':
+    if original.lifecycle == 'draft':
         raise WorkflowError(
             f'{original.number} ist ein Entwurf und wurde nie ausgestellt. '
             'Bitte zuerst finalisieren oder direkt bearbeiten.')
-    if original.status == 'storniert':
-        raise WorkflowError(f'Rechnung {original.number} ist storniert und kann nicht mehr korrigiert werden.')
-    existing = original.active_correction
-    if existing:
-        raise WorkflowError(
-            f'Zu Rechnung {original.number} existiert bereits die Korrekturrechnung {existing.number}.')
-    # Kreuzprüfung am Belegobjekt statt am Statusfeld.
+    # Der konkrete Folgebeleg ist informativer als nur der lifecycle-Cache.
     storno = original.active_storno
     if storno:
         raise WorkflowError(
             f'Zu Rechnung {original.number} existiert bereits die Stornorechnung '
             f'{storno.number}. Eine stornierte Rechnung wird nicht mehr korrigiert.')
-    if original.status == 'korrigiert':
+    if original.lifecycle == 'cancelled':
+        raise WorkflowError(f'Rechnung {original.number} ist storniert und kann nicht mehr korrigiert werden.')
+    existing = original.active_correction
+    if existing:
+        raise WorkflowError(
+            f'Zu Rechnung {original.number} existiert bereits die Korrekturrechnung {existing.number}.')
+    if original.lifecycle == 'corrected':
         raise WorkflowError(f'Rechnung {original.number} ist bereits als korrigiert markiert.')
 
 
@@ -97,7 +98,7 @@ def ensure_zahlung_erlaubt(invoice: Invoice) -> None:
     'bezahlt' oder 'teilbezahlt' und hob damit den Belegzustand auf (F-07).
     Die Meldung nennt den Beleg, auf den die Zahlung stattdessen gehört.
     """
-    if invoice.status == 'entwurf':
+    if invoice.lifecycle == 'draft':
         raise WorkflowError(
             f'{invoice.number} ist ein Entwurf. Auf einen Entwurf kann keine Zahlung gebucht '
             'werden – bitte zuerst finalisieren.')
@@ -108,12 +109,12 @@ def ensure_zahlung_erlaubt(invoice: Invoice) -> None:
         raise WorkflowError(
             f'{invoice.number} ist eine Stornorechnung und nimmt keine Zahlung auf. '
             'Zahlungen gehören auf die zugehörige Rechnung.')
-    if invoice.status == 'korrigiert' or invoice.active_correction:
+    if invoice.lifecycle == 'corrected' or invoice.active_correction:
         korrektur = invoice.active_correction
         ziel = f' Bitte auf {korrektur.number} buchen.' if korrektur else ''
         raise WorkflowError(
             f'Rechnung {invoice.number} wurde durch eine Korrektur ersetzt.{ziel}')
-    if invoice.status == 'storniert' or invoice.active_storno:
+    if invoice.lifecycle == 'cancelled' or invoice.active_storno:
         storno = invoice.active_storno
         hinweis = f' (Stornorechnung {storno.number})' if storno else ''
         raise WorkflowError(
@@ -127,7 +128,7 @@ def ensure_versand_erlaubt(invoice: Invoice) -> None:
     das nochmal" ist ein normaler Kundenwunsch, und der Versand ändert ab
     Etappe 3 keinen Status mehr, kann also nichts mehr kaputtmachen.
     """
-    if invoice.status == 'entwurf':
+    if invoice.lifecycle == 'draft':
         raise WorkflowError(
             f'{invoice.number} ist ein Entwurf und darf nicht versendet werden. '
             'Bitte zuerst finalisieren.')
@@ -176,11 +177,11 @@ def ausblenden_hindernis(invoice: Invoice) -> str:
     # Ein Entwurf wurde nie ausgestellt – auch dann nicht, wenn er als Korrektur
     # oder Storno angelegt wurde. Er muss verworfen werden können, sonst sitzt
     # er als toter Folgebeleg fest und niemand kommt an ihn heran.
-    if invoice.status != 'entwurf' and (invoice.invoice_type in ('384', '457')
+    if invoice.lifecycle != 'draft' and (invoice.invoice_type in ('384', '457')
                                         or invoice.reference_invoice_id):
         return (f'{invoice.number} ist ein Folgebeleg zu einer anderen Rechnung. '
                 'Folgebelege werden nicht ausgeblendet – sonst bliebe das Original dauerhaft blockiert.')
-    if invoice.status in ('storniert', 'korrigiert'):
+    if invoice.lifecycle in ('cancelled', 'corrected'):
         return (f'Rechnung {invoice.number} hat bereits einen Folgebeleg und kann nicht '
                 'ausgeblendet werden.')
     if invoice.active_storno or invoice.active_correction:
@@ -201,18 +202,16 @@ def ausblenden_hindernis(invoice: Invoice) -> str:
 
 def mark_invoice_corrected(original: Invoice, request=None) -> None:
     """Geschützter Belegzustandswechsel mit verpflichtendem Nachweis."""
-    vorher = original.status
+    vorher_lifecycle = original.lifecycle
+    vorher_status = original.status
     with transaction.atomic():
-        updated = Invoice.objects.filter(pk=original.pk, status=vorher).exclude(
-            status__in=('entwurf', 'korrigiert', 'storniert'),
-        ).update(status='korrigiert', updated_at=timezone.now())
-        if not updated:
-            raise WorkflowError(
-                f'Rechnung {original.number} wurde parallel geändert oder ist bereits ersetzt.')
-        original.refresh_from_db(fields=['status'])
+        guarded_lifecycle_update(original, expected='issued', target='corrected',
+                                 legacy_status='korrigiert')
         write_audit(request, 'update', original,
-                    f'Rechnung {original.number}: {vorher} → korrigiert', pflicht=True,
-                    metadata={'von': vorher, 'nach': 'korrigiert', 'anlass': 'korrektur'})
+                    f'Rechnung {original.number}: ausgestellt → korrigiert', pflicht=True,
+                    metadata={'von': vorher_status, 'nach': 'korrigiert',
+                              'von_lifecycle': vorher_lifecycle, 'nach_lifecycle': 'corrected',
+                              'anlass': 'korrektur'})
 
 
 def _is_ars_source(source: str) -> bool:
@@ -282,7 +281,7 @@ def invoice_to_core_row(invoice: Invoice) -> InvoiceRow:
         ars_mapping=is_ars, seller_id=seller_id, include_seller_assigned_id=include_seller_assigned_id,
         document_type_code=invoice.invoice_type,
         document_title=DOC_TITLES.get(invoice.invoice_type, 'Rechnung'),
-        is_draft=invoice.status == 'entwurf',
+        is_draft=invoice.lifecycle == 'draft',
         reference_invoice_no=invoice.reference_invoice.number if invoice.reference_invoice_id else '',
     )
     return row
@@ -298,7 +297,7 @@ def generate_invoice_files(invoice: Invoice, *, erstmalig=False, request=None) -
     invoice.refresh_from_db()
     if invoice.deleted_at is not None:
         raise WorkflowError('Die Rechnung ist nicht mehr verfügbar.')
-    if invoice.status != 'entwurf' and not erstmalig:
+    if invoice.lifecycle != 'draft' and not erstmalig:
         report = pruefe_archiv(invoice)
         if report['fehler']:
             raise BelegArchivFehler(report['fehler'][0])
@@ -309,7 +308,7 @@ def generate_invoice_files(invoice: Invoice, *, erstmalig=False, request=None) -
         if not Invoice.objects.filter(pk=invoice.pk).update(updated_at=F('updated_at')):
             raise WorkflowError('Die Rechnung ist nicht mehr verfügbar.')
         invoice.refresh_from_db()
-        if invoice.status != 'entwurf' and not erstmalig:
+        if invoice.lifecycle != 'draft' and not erstmalig:
             report = pruefe_archiv(invoice)
             if report['fehler']:
                 raise BelegArchivFehler(report['fehler'][0])
@@ -317,7 +316,7 @@ def generate_invoice_files(invoice: Invoice, *, erstmalig=False, request=None) -
         pruefe_schreibziele(invoice, erstmalig=erstmalig)
         merken(invoice)
         result = _generate_invoice_files_inner(invoice)
-        if invoice.status != 'entwurf':
+        if invoice.lifecycle != 'draft':
             versiegele_archiv(invoice, request=request)
         return result
 
@@ -331,7 +330,7 @@ def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
     out_dir = pdf_path.parent
     due = invoice.due_date or (invoice.issue_date + timedelta(days=invoice.customer.payment_days))
     row = invoice_to_core_row(invoice)
-    is_draft = invoice.status == 'entwurf'
+    is_draft = invoice.lifecycle == 'draft'
 
     def _at_midnight(day):
         return timezone.datetime.combine(day, timezone.datetime.min.time()) if day else None
@@ -381,7 +380,7 @@ def entwurf_sperren(invoice: Invoice, *, revision=None, finalisieren=False) -> N
     Bearbeiten/Finalisieren/Verwerfen; eine Formularrevision verhindert zudem
     das Überschreiben von Änderungen aus einem zweiten Browserfenster.
     """
-    qs = Invoice.objects.filter(pk=invoice.pk, status='entwurf')
+    qs = Invoice.objects.filter(pk=invoice.pk, lifecycle='draft')
     if revision is not None:
         from django.utils.dateparse import parse_datetime
         try:
@@ -391,8 +390,10 @@ def entwurf_sperren(invoice: Invoice, *, revision=None, finalisieren=False) -> N
         if zeitpunkt is None or timezone.is_naive(zeitpunkt):
             raise WorkflowError('Ungültiger Bearbeitungsstand. Bitte die Seite neu laden.')
         qs = qs.filter(updated_at=zeitpunkt)
-    neu = 'erstellt' if finalisieren else 'entwurf'
-    if not qs.update(status=neu, updated_at=timezone.now()):
+    values = {'updated_at': timezone.now()}
+    if finalisieren:
+        values.update(lifecycle='issued', status='erstellt')
+    if not qs.update(**values):
         raise WorkflowError('Der Entwurf wurde inzwischen geändert, finalisiert oder verworfen. '
                             'Bitte die Seite neu laden.')
     # Nicht nur status: eine ältere Python-Instanz darf keine veralteten
@@ -427,11 +428,11 @@ def finalisiere_entwurf(invoice: Invoice, request=None, *, datum_heute=False,
                     raise WorkflowError('Die Ursprungsrechnung der Korrektur ist nicht mehr verfügbar.')
                 # ensure_correction_allowed sieht nach dem Statuswechsel die
                 # Korrektur selbst. Deshalb explizit nur FREMDE Folgebelege prüfen.
-                if (original.status in ('entwurf', 'storniert', 'korrigiert')
+                if (original.lifecycle != 'issued'
                         or original.invoice_type == '457'
                         or original.followups.filter(deleted_at__isnull=True,
                                                      invoice_type__in=('384', '457'))
-                        .exclude(pk=invoice.pk).exclude(status='entwurf').exists()):
+                        .exclude(pk=invoice.pk).exclude(lifecycle='draft').exists()):
                     raise WorkflowError('Die Ursprungsrechnung wurde inzwischen ersetzt oder storniert.')
             if datum_heute:
                 tage = ((invoice.due_date - altes_datum).days if invoice.due_date
@@ -503,6 +504,7 @@ def _create_storno_inner(original: Invoice, request=None, merken=None) -> Invoic
         due_date=timezone.localdate(),
         vat_rate=original.vat_rate,
         status='erstellt',
+        lifecycle='issued',
         source='Storno',
         reference_invoice=original,
         note=f'Stornorechnung zu {original.number}',
@@ -520,16 +522,15 @@ def _create_storno_inner(original: Invoice, request=None, merken=None) -> Invoic
             leistungsart_id=item.leistungsart_id,
             leistungsart_text=item.leistungsart_text,
         )
-    vorher = original.status
-    updated = Invoice.objects.filter(pk=original.pk, status=vorher).exclude(
-        status__in=('entwurf', 'korrigiert', 'storniert'),
-    ).update(status='storniert', updated_at=timezone.now())
-    if not updated:
-        raise WorkflowError('Die Ursprungsrechnung wurde parallel geändert.')
-    original.refresh_from_db(fields=['status'])
+    vorher_lifecycle = original.lifecycle
+    vorher_status = original.status
+    guarded_lifecycle_update(original, expected='issued', target='cancelled',
+                             legacy_status='storniert')
     write_audit(request, 'update', original,
-                f'Rechnung {original.number}: {vorher} → storniert ({storno.number})',
-                pflicht=True, metadata={'von': vorher, 'nach': 'storniert', 'anlass': 'storno'})
+                f'Rechnung {original.number}: ausgestellt → storniert ({storno.number})',
+                pflicht=True, metadata={'von': vorher_status, 'nach': 'storniert',
+                                        'von_lifecycle': vorher_lifecycle,
+                                        'nach_lifecycle': 'cancelled', 'anlass': 'storno'})
     merken(storno)
     generate_invoice_files(storno, erstmalig=True, request=request)
     return storno
@@ -566,6 +567,7 @@ def _create_invoice_from_offer_inner(offer: Offer, merken) -> Invoice:
         due_date=timezone.localdate() + timedelta(days=offer.customer.payment_days),
         vat_rate=offer.vat_rate,
         status='erstellt',
+        lifecycle='issued',
         source='Angebot',
         note=f'Diese Rechnung beruht auf Angebot {offer.number}.',
     )
