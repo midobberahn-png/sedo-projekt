@@ -1,0 +1,33 @@
+name: UX-04 Rechnungsdetail anwenden
+on:
+  push:
+    branches:
+      - uiux-04-invoice-detail-actions
+    paths:
+      - .github/workflows/ux04-apply.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python .github/ux04-apply.py
+      - run: git diff --check
+      - name: Testabhängigkeiten installieren
+        working-directory: sedo_rechnungstool_v2
+        run: |
+          sed '/^faster-whisper/d' requirements.txt > "$RUNNER_TEMP/sedo-requirements.txt"
+          python -m pip install 'Django~=5.2.0' -r "$RUNNER_TEMP/sedo-requirements.txt" >/dev/null
+      - name: UX-Vertrag testen
+        working-directory: sedo_rechnungstool_v2
+        run: |
+          mkdir -p /tmp/sedo-ux04/data
+          DJANGO_SECRET_KEY=ux04-test SEDO_HOME=/tmp/sedo-ux04 python manage.py test sedo.tests.test_design_system_v2 sedo.tests.test_app_shell_v2 sedo.tests.test_state_system_v2 sedo.tests.test_invoice_detail_v2 --noinput
+      - name: Commit
+        run: |
+          git add sedo_rechnungstool_v2/sedo/templates/sedo/base.html sedo_rechnungstool_v2/sedo/templates/sedo/invoice_detail.html
+          git config user.name 'SEDO UX'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'UX-04: Rechnungsdetail auf klare Aktionshierarchie umstellen'
+          git push origin HEAD:uiux-04-invoice-detail-actions
