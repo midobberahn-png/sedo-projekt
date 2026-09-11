@@ -882,11 +882,18 @@ class F11F66BatchMahnungNurMitAuswahlTests(TestCase):
                       'Die Kästchen liegen außerhalb des Formulars und brauchen das '
                       'form-Attribut, sonst wird die Auswahl nicht mitgesendet.')
 
-    def test_bezahlt_knopf_zeigt_auf_die_zahlungsroute(self):
+    def test_arbeitswarteschlange_hat_keinen_mark_paid_post_mehr(self):
         antwort = self.client.get(reverse('sedo:open_items'))
         inhalt = antwort.content.decode('utf-8')
-        ziel = reverse('sedo:invoice_mark_paid', args=[self.rechnungen[0].pk])
-        self.assertIn(f'action="{ziel}"', inhalt)
+        mark_paid = reverse('sedo:invoice_mark_paid', args=[self.rechnungen[0].pk])
+        detail = reverse('sedo:invoice_detail', args=[self.rechnungen[0].pk])
+        self.assertNotIn(f'action="{mark_paid}"', inhalt,
+                         'UX-05 entfernt den direkten Mark-paid-POST aus der OP-Zeile.')
+        self.assertIn(detail, inhalt,
+                      'Überfällige Rechnungen müssen zur fachlichen Prüfung in der Rechnungsakte führen.')
+        self.assertIn('Mahnschritt prüfen', inhalt)
+        self.assertEqual(inhalt.count('id="batch-form"'), 1,
+                         'Das Mahn-Batchformular muss weiterhin genau einmal und isoliert vorkommen.')
 
 
 class Neu1AuditTrailFaelltNichtStillAusTests(TestCase):
