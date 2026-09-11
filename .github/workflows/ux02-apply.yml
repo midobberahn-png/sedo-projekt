@@ -5,6 +5,7 @@ on:
       - uiux-02-app-shell-navigation
     paths:
       - .github/workflows/ux02-apply.yml
+      - sedo_rechnungstool_v2/sedo/tests/test_app_shell_v2.py
 permissions:
   contents: write
 jobs:
