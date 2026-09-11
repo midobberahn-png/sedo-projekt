@@ -22,8 +22,10 @@ runner.MUTATIONEN = [
      "invoices = list(Invoice.all_objects.order_by('pk'))",
      'test_f14_ausgeblendeter_folgebeleg_zaehlt_nicht'),
     ('storno_vorrang', SERVICE,
-     "                    'storniert', 'Storno hat Vorrang.",
-     "                    'korrigiert', 'Storno hat Vorrang.",
+     """                    'storniert', 'Storno hat Vorrang. Beide Folgebelege bitte prüfen.' if beide else
+                    'Ausgestelltes, nicht ausgeblendetes Storno vorhanden.', nach_lifecycle='cancelled', bitte_pruefen=beide, **graph))""",
+     """                    'korrigiert', 'Storno hat Vorrang. Beide Folgebelege bitte prüfen.' if beide else
+                    'Ausgestelltes, nicht ausgeblendetes Storno vorhanden.', nach_lifecycle='corrected', bitte_pruefen=beide, **graph))""",
      'test_f07_storno_hat_vorrang_und_beide_nummern_sind_sichtbar'),
     ('zahlstatus_neu_ableiten', SERVICE,
      "    return abgeleiteter_zahlstatus(probe) or 'erstellt'",
@@ -42,8 +44,8 @@ runner.MUTATIONEN = [
      "pk=fund['invoice_id'], lifecycle=fund['von_lifecycle'],",
      'test_guard_weist_veralteten_status_ab'),
     ('revisions_guard', SERVICE,
-     "        updated_at=fund['revision'],",
-     "        updated_at=timezone.now(),",
+     "        updated_at=fund['revision'],\n",
+     "",
      'test_guard_weist_veraltete_revision_ab'),
     ('f89_storno_status', SERVICE,
      "elif invoice.invoice_type == '457' and invoice.status == 'bezahlt':",
