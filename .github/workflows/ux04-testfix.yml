@@ -5,6 +5,7 @@ on:
       - uiux-04-invoice-detail-actions
     paths:
       - .github/workflows/ux04-testfix.yml
+      - .github/ux04-testfix.py
 permissions:
   contents: write
 jobs:
