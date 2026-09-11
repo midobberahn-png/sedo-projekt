@@ -1,0 +1,273 @@
+/* SEDO App Shell v2 · UX-02
+   Fokus: Navigation, Command-Bar und klare Trennung von Alltag/Abrechnung/System. */
+
+:root{
+  --shell-sidebar-w:248px;
+  --shell-topbar-h:68px;
+  --shell-sidebar-bg:#082f53;
+  --shell-sidebar-bg-2:#0a4779;
+  --shell-sidebar-text:#e7f1fb;
+  --shell-sidebar-muted:#9fc2df;
+  --shell-sidebar-line:rgba(255,255,255,.12);
+}
+
+.layout{align-items:stretch}
+.sidebar{
+  width:var(--shell-sidebar-w);
+  min-width:var(--shell-sidebar-w);
+  background:linear-gradient(180deg,var(--shell-sidebar-bg) 0%,#0a3e6c 52%,#072b4c 100%);
+  box-shadow:8px 0 24px rgba(8,47,83,.12);
+}
+.brand{
+  min-height:78px;
+  padding:18px 18px 16px;
+  gap:12px;
+  border-bottom:1px solid var(--shell-sidebar-line);
+  background:transparent;
+}
+.brand img{width:38px;height:38px;border-radius:9px;box-shadow:none}
+.brand strong{font-size:21px;letter-spacing:-.015em}
+.brand small{font-size:11px;font-weight:600;color:#b7d2e9;margin-top:1px}
+
+/* Suche lebt ab UX-02 in der oberen Command-Bar. */
+.sidebar>.global-search{display:none}
+
+.nav{
+  padding:10px 10px 16px;
+  gap:2px;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(255,255,255,.18) transparent;
+}
+.nav::before{display:none}
+.drawer-title{
+  padding:18px 10px 6px;
+  color:var(--shell-sidebar-muted);
+  font-size:10px;
+  font-weight:750;
+  letter-spacing:.13em;
+}
+.nav a,.nav-group>summary,.nav-logout-btn{
+  min-height:40px;
+  padding:9px 10px;
+  gap:10px;
+  border-radius:8px;
+  border-left:0;
+  color:var(--shell-sidebar-text);
+  font-size:13px;
+  font-weight:600;
+  transition:background .12s ease,color .12s ease;
+}
+.nav a:hover,.nav-group>summary:hover,.nav-logout-btn:hover{
+  background:rgba(255,255,255,.09);
+  color:#fff;
+  transform:none;
+}
+.nav a.active,.nav a[aria-current="page"]{
+  background:rgba(255,255,255,.96);
+  color:#0b4c86;
+  border-left:0;
+  box-shadow:0 4px 14px rgba(0,0,0,.11);
+}
+.nav a.active .nav-ico,.nav a[aria-current="page"] .nav-ico{color:#0b5cad}
+.nav-ico{width:22px;min-width:22px;display:grid;place-items:center;color:#c9def0}
+.nav a.active .nav-ico{color:#0b5cad}
+.nav-text{width:auto!important;text-align:left!important;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nav-group{margin-top:2px}
+.nav-group>summary{list-style:none;cursor:pointer;display:flex;align-items:center}
+.nav-group>summary::-webkit-details-marker{display:none}
+.nav-caret{margin-left:auto;font-size:11px;color:#9fc2df}
+.nav-sub{padding:3px 0 2px 22px}
+.nav-sub a,.nav-sub .nav-logout-btn{font-size:12px;min-height:36px}
+.nav-logout-form{margin:0}
+
+.sidebar-toggle{
+  position:absolute;
+  top:18px;
+  right:-15px;
+  width:30px;
+  height:30px;
+  border:1px solid #d7e2ee;
+  border-radius:9px;
+  background:#fff;
+  color:#0b5cad;
+  box-shadow:0 3px 12px rgba(15,23,42,.12);
+  z-index:12;
+}
+
+/* Top command bar */
+.main{padding:0;min-height:100vh;background:var(--ds-bg)}
+.app-commandbar{
+  position:sticky;
+  top:0;
+  z-index:9;
+  min-height:var(--shell-topbar-h);
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:12px 28px;
+  border-bottom:1px solid var(--ds-border);
+  background:rgba(255,255,255,.93);
+  backdrop-filter:blur(14px);
+}
+.command-search{
+  position:relative;
+  width:min(620px,58vw);
+  margin-right:auto;
+}
+.command-search .global-search{position:relative}
+.command-search input{
+  height:42px;
+  padding:9px 88px 9px 38px;
+  border-radius:10px;
+  background:#f7f9fc;
+  border-color:#dbe4ee;
+  font-size:14px;
+}
+.command-search input:focus{background:#fff}
+.command-search::before{
+  content:'⌕';
+  position:absolute;
+  left:13px;
+  top:50%;
+  transform:translateY(-52%);
+  color:#64748b;
+  z-index:2;
+  font-size:18px;
+  pointer-events:none;
+}
+.command-shortcut{
+  position:absolute;
+  right:9px;
+  top:50%;
+  transform:translateY(-50%);
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 7px;
+  border:1px solid #d8e1eb;
+  border-radius:6px;
+  background:#fff;
+  color:#64748b;
+  font-size:11px;
+  font-weight:650;
+  pointer-events:none;
+}
+.global-search-results{
+  position:absolute;
+  top:48px;
+  left:0;
+  right:0;
+  max-height:min(520px,70vh);
+  overflow:auto;
+  border:1px solid var(--ds-border);
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 18px 45px rgba(15,23,42,.16);
+  z-index:30;
+  padding:7px;
+}
+.gs-group{
+  padding:10px 9px 5px;
+  color:#64748b;
+  font-size:10px;
+  font-weight:750;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.gs-item,.gs-action{
+  width:100%;
+  display:block;
+  text-align:left;
+  border:0;
+  border-radius:8px;
+  background:#fff;
+  color:#172033;
+  padding:9px 10px;
+  cursor:pointer;
+}
+.gs-item:hover,.gs-item.active,.gs-action:hover,.gs-action.active{background:#f1f7fd}
+.gs-title{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:650}
+.gs-sub{margin-top:2px;color:#64748b;font-size:12px}
+.gs-badge{font-size:10px;color:#475569;background:#eef2f7;padding:2px 6px;border-radius:999px}
+.gs-empty{padding:18px 12px;color:#64748b;text-align:center}
+
+.command-actions{display:flex;align-items:center;gap:8px}
+.command-action{
+  min-height:38px;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  padding:8px 10px;
+  border-radius:9px;
+  color:#475569;
+  font-size:13px;
+  font-weight:650;
+}
+.command-action:hover{background:#f4f7fb;color:#0f172a}
+.command-user{
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#eaf4ff;
+  color:#0b5cad;
+  font-weight:750;
+  font-size:12px;
+}
+
+.page-shell{padding:28px 32px 38px;max-width:1520px}
+
+/* Desktop einklappen: kompakte Iconleiste statt komplettem Overlay. */
+@media(min-width:1051px){
+  body.sidebar-locked{--shell-sidebar-w:72px}
+  body.sidebar-locked .sidebar{width:72px;min-width:72px}
+  body.sidebar-locked .brand{justify-content:center;padding-left:10px;padding-right:10px}
+  body.sidebar-locked .brand img{width:36px;height:36px}
+  body.sidebar-locked .brand-text,
+  body.sidebar-locked .drawer-title,
+  body.sidebar-locked .nav-text,
+  body.sidebar-locked .nav-caret{display:none}
+  body.sidebar-locked .nav{padding-left:8px;padding-right:8px}
+  body.sidebar-locked .nav a,
+  body.sidebar-locked .nav-group>summary,
+  body.sidebar-locked .nav-logout-btn{justify-content:center;padding:9px}
+  body.sidebar-locked .nav-sub{padding-left:0}
+  body.sidebar-locked .nav-ico{width:22px;min-width:22px}
+}
+
+@media(max-width:1050px){
+  .layout{display:block}
+  .sidebar{
+    position:fixed;
+    left:0;
+    top:0;
+    bottom:0;
+    width:min(300px,86vw);
+    min-width:0;
+    height:100vh;
+    transform:translateX(-105%);
+    transition:transform .18s ease;
+    z-index:50;
+  }
+  body.sidebar-locked .sidebar{transform:translateX(0)}
+  .sidebar-toggle{position:fixed;top:15px;left:14px;right:auto;z-index:60}
+  body.sidebar-locked::after{
+    content:'';
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.35);
+    z-index:40;
+  }
+  .nav{display:flex;grid-template-columns:none}
+  .app-commandbar{padding:10px 16px 10px 58px;min-height:62px}
+  .command-search{width:100%}
+  .command-actions{display:none}
+  .page-shell{padding:20px 18px 30px}
+}
+
+@media(max-width:640px){
+  .command-shortcut{display:none}
+  .command-search input{padding-right:12px}
+  .page-shell{padding:16px 12px 26px}
+}

@@ -1,8 +1,9 @@
-/* Globale Suche (v2.1): Kunden, Rechnungen, Angebote, Objekte.
+/* Globale Suche / Command Center (UX-02)
  *
- * Sitzt in der Sidebar, fragt /api/suche/ mit Debounce ab und zeigt
- * gruppierte Treffer. Tastatur: „/" fokussiert das Feld (außerhalb von
- * Eingabefeldern), Pfeile navigieren, Enter öffnet, Escape schließt.
+ * Kunden, Rechnungen, Angebote und Objekte über /api/suche/.
+ * Zusätzlich lokale Schnellaktionen aus data-action-* Attributen.
+ * Tastatur: / sowie Cmd/Ctrl+K fokussieren, Pfeile navigieren,
+ * Enter öffnet, Escape schließt.
  */
 (function () {
   'use strict';
@@ -16,6 +17,16 @@
     var activeIndex = -1;
     var controller = null;
 
+    function configuredActions() {
+      var actions = [
+        ['Neue Rechnung', input.dataset.actionInvoice, 'Rechnung erstellen'],
+        ['Neues Angebot', input.dataset.actionOffer, 'Angebot erstellen'],
+        ['Neuen Kunden anlegen', input.dataset.actionCustomer, 'Stammdaten'],
+        ['Offene Posten öffnen', input.dataset.actionOpenItems, 'Finanzen']
+      ];
+      return actions.filter(function (a) { return !!a[1]; });
+    }
+
     function close() {
       box.hidden = true;
       box.innerHTML = '';
@@ -23,7 +34,7 @@
     }
 
     function items() {
-      return Array.prototype.slice.call(box.querySelectorAll('.gs-item'));
+      return Array.prototype.slice.call(box.querySelectorAll('.gs-item,.gs-action'));
     }
 
     function highlight() {
@@ -32,25 +43,57 @@
       if (el) el.scrollIntoView({ block: 'nearest' });
     }
 
-    function render(results) {
+    function group(label) {
+      var g = document.createElement('div');
+      g.className = 'gs-group';
+      g.textContent = label;
+      box.appendChild(g);
+    }
+
+    function actionButton(title, url, sub) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'gs-action';
+      item.dataset.url = url;
+      var titleEl = document.createElement('div');
+      titleEl.className = 'gs-title';
+      titleEl.textContent = title;
+      item.appendChild(titleEl);
+      if (sub) {
+        var subEl = document.createElement('div');
+        subEl.className = 'gs-sub';
+        subEl.textContent = sub;
+        item.appendChild(subEl);
+      }
+      item.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        window.location.href = url;
+      });
+      return item;
+    }
+
+    function renderActions(filter) {
+      var q = (filter || '').toLowerCase();
+      var actions = configuredActions().filter(function (a) {
+        return !q || (a[0] + ' ' + a[2]).toLowerCase().indexOf(q) !== -1;
+      });
+      if (!actions.length) return 0;
+      group('Schnellaktionen');
+      actions.forEach(function (a) { box.appendChild(actionButton(a[0], a[1], a[2])); });
+      return actions.length;
+    }
+
+    function render(results, query) {
       box.innerHTML = '';
       activeIndex = -1;
-      if (!results.length) {
-        var empty = document.createElement('div');
-        empty.className = 'gs-empty';
-        empty.textContent = 'Keine Treffer.';
-        box.appendChild(empty);
-        box.hidden = false;
-        return;
-      }
+      var actionCount = renderActions(query);
+      if (results.length) group('Treffer');
+
       var lastGroup = null;
       results.forEach(function (r) {
         if (r.gruppe !== lastGroup) {
           lastGroup = r.gruppe;
-          var g = document.createElement('div');
-          g.className = 'gs-group';
-          g.textContent = r.gruppe;
-          box.appendChild(g);
+          group(r.gruppe);
         }
         var item = document.createElement('button');
         item.type = 'button';
@@ -80,6 +123,20 @@
         });
         box.appendChild(item);
       });
+
+      if (!results.length && !actionCount) {
+        var empty = document.createElement('div');
+        empty.className = 'gs-empty';
+        empty.textContent = 'Keine Treffer.';
+        box.appendChild(empty);
+      }
+      box.hidden = false;
+    }
+
+    function showHome() {
+      box.innerHTML = '';
+      activeIndex = -1;
+      renderActions('');
       box.hidden = false;
     }
 
@@ -88,15 +145,20 @@
       controller = new AbortController();
       fetch('/api/suche/?q=' + encodeURIComponent(q), { signal: controller.signal })
         .then(function (resp) { return resp.ok ? resp.json() : { results: [] }; })
-        .then(function (data) { render(data.results || []); })
-        .catch(function (err) { if (err.name !== 'AbortError') close(); });
+        .then(function (data) { render(data.results || [], q); })
+        .catch(function (err) { if (err.name !== 'AbortError') render([], q); });
     }
+
+    input.addEventListener('focus', function () {
+      if (!input.value.trim()) showHome();
+    });
 
     input.addEventListener('input', function () {
       var q = this.value.trim();
       clearTimeout(timer);
-      if (q.length < 2) { close(); return; }
-      timer = setTimeout(function () { search(q); }, 220);
+      if (!q) { showHome(); return; }
+      if (q.length < 2) { render([], q); return; }
+      timer = setTimeout(function () { search(q); }, 180);
     });
 
     input.addEventListener('keydown', function (e) {
@@ -118,16 +180,27 @@
       }
     });
 
-    input.addEventListener('blur', function () { setTimeout(close, 150); });
+    input.addEventListener('blur', function () { setTimeout(close, 160); });
 
-    /* „/" fokussiert die Suche – aber nie, wenn gerade getippt wird. */
-    document.addEventListener('keydown', function (e) {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
-      var t = document.activeElement;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      e.preventDefault();
+    function focusSearch() {
       input.focus();
       input.select();
+      if (!input.value.trim()) showHome();
+    }
+
+    document.addEventListener('keydown', function (e) {
+      var t = document.activeElement;
+      var typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        focusSearch();
+        return;
+      }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !typing) {
+        e.preventDefault();
+        focusSearch();
+      }
     });
   }
 
