@@ -1575,7 +1575,8 @@ class F07ViewsUndSichtbarkeitTests(TestCase):
         rechnung = self._rechnung('RE2026065021', status='versendet')
         inhalt = self.client.get(
             reverse('sedo:invoice_detail', args=[rechnung.pk])).content.decode('utf-8')
-        self.assertIn('Löschen nicht möglich', inhalt)
+        self.assertIn('Ausblenden nicht möglich', inhalt)
+        self.assertIn('action-menu-disabled', inhalt)
         self.assertNotIn(reverse('sedo:invoice_delete', args=[rechnung.pk]), inhalt)
 
     # --- F-63 --------------------------------------------------------------------
