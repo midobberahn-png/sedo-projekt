@@ -109,7 +109,12 @@ def global_search_api(request):
 def customer_data_api(request, pk):
     """JSON-Endpoint: Kundendaten + Objekte für AJAX-Autobefüllung im Rechnungsformular."""
     customer = get_object_or_404(Customer, pk=pk)
-    return JsonResponse({
+    return JsonResponse(_customer_form_data(customer))
+
+
+def _customer_form_data(customer):
+    """Lesende Kopfdaten für API und initiale Wizard-Zusammenfassung."""
+    return {
         'id': customer.pk,
         'salutation': customer.salutation or '',
         'customer_no': customer.customer_no or '',
@@ -135,7 +140,7 @@ def customer_data_api(request, pk):
             }
             for obj in customer.customer_objects.order_by('name')
         ],
-    })
+    }
 
 
 def _sum_decimal(queryset, field: str) -> Decimal:
@@ -859,6 +864,19 @@ def invoice_list(request):
     })
 
 
+def _invoice_wizard_initial(form):
+    """Nur gültige Auswahl-IDs lesen; gebundene Eingaben bleiben unverändert."""
+    customer_id = str(form['customer'].value() or '')
+    customer = None
+    if customer_id.isascii() and customer_id.isdigit() and len(customer_id) < 19:
+        customer = Customer.objects.filter(pk=int(customer_id)).first()
+    return {
+        'customer': _customer_form_data(customer) if customer else None,
+        'object_id': str(form['obj'].value() or ''),
+        'bound': form.is_bound,
+    }
+
+
 @login_required
 def invoice_create(request):
     pre_customer = request.GET.get('customer')
@@ -1070,6 +1088,7 @@ def invoice_create(request):
         'source_offer': offer,
         'correction_source': correction_source,
         'smtp_configured': smtp_is_configured(),
+        'wizard_initial': _invoice_wizard_initial(form),
     })
 
 

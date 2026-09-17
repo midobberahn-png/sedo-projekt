@@ -19,6 +19,30 @@
   PR/CI und nativer Teststand vor Integration verpflichtend; Ergebnis im PR.
   Keine Installation auf dem Einsatzrechner. Nächster UX-Block: UX-07 Rechnungs-Wizard.
 
+
+## UX-07 – Rechnungs-Wizard (17.09.2026)
+
+- Basis UX-06/main `e4f20daca83133222a259509f3ee2b6d864b380d`;
+  Branch `ux-07-rechnungs-wizard`.
+- Fünf Schritte erhalten. Gespeicherte Kunden/Objekte als kompakte Karten,
+  Details aufklappbar; manuelle Neuerfassung explizit. Bestehende Stammdaten
+  sind maßgeblich: manuelle Kopffelder ändern ausgewählte Stammdaten nicht.
+- Sichere Kundenwechsel: alte Ladeantworten ignorieren, Objekt-/Kopffelder
+  zurücksetzen, sichtbare Ladefehler und Wiederholung, kein Absenden während
+  unvollständiger Übernahme. Vorbelegte/gebundene Formulare behalten ihre Werte.
+- Rechnungsübersicht mit Adressen, Zeitraum, Positionen und Summen; Rücksprünge
+  in die jeweiligen Schritte. Mobile Positionskarten und Feldbeschriftungen.
+- Einziger primärer Abschluss: Rechnung erstellen. Die vorhandene send-Aktion
+  heißt korrekt „Erstellen & E-Mail vorbereiten“: sie erzeugt eine .eml-Datei,
+  keinen SMTP-Direktversand. Abo-Auswahl bleibt optional und bei Fehlern erhalten.
+- Fachservices, Modelle und Speicherwege unverändert, keine Migration.
+  Seiten-JavaScript ausgelagert; bestehender gemeinsamer Wizard unverändert.
+- Lokal 746/746 Tests (12 neue); synthetische Browserprüfungen einschließlich
+  Antwortreihenfolge, Ladefehler, Position hinzufügen/entfernen, HTML-Escaping,
+  Zahlungsziel 0 und Mobilansichten. CI/Integration wird im PR dokumentiert.
+- Kein Deployment auf dem Einsatzrechner und keine neue Releaseversionsnummer.
+  Nächster UX-Block: UX-08 Dashboard & Kundenakte.
+
 ---
 
 ## Aktueller Plan – Härtung, Zustandsmodell, danach UI/UX (10.09.2026)
