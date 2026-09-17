@@ -1,67 +1,45 @@
-{% extends 'sedo/base.html' %}{% block content %}
-<div class="workspace-header"><div><div class="eyebrow">Arbeitszentrale</div></div></div>
-<div class="topbar">
-  <div>
-    <div class="h1">Dashboard</div>
-    <div class="sub">Arbeitszentrale für Rechnungen, Monatsläufe, Zahlungen und Stammdaten.</div>
-  </div>
-  <div class="page-actions">
-    <a class="btn primary" href="{% url 'sedo:invoice_create' %}"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg> Rechnung erstellen</a>
-    <a class="btn" href="{% url 'sedo:offer_create' %}"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg> Angebot erstellen</a>
-  </div>
-</div>
-
-{% if dunning_candidates_count > 0 %}
-<div class="notice notice-warn">
-  <span class="notice-ico"><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg></span>
-  <div class="notice-body">
-    <strong>{{ dunning_candidates_count }} Rechnung{{ dunning_candidates_count|pluralize:"e" }} seit über 14 Tagen überfällig</strong> – Mahnstufe fällig (Erinnerung oder Mahnung).
-  </div>
-  <a class="btn" href="{% url 'sedo:open_items' %}?status=overdue">Jetzt prüfen</a>
-  <form method="post" action="{% url 'sedo:bulk_dunning' %}">
-    {% csrf_token %}<input type="hidden" name="kind" value="auto">
-    <button class="btn primary" type="submit">Nächste Stufe für alle</button>
-  </form>
-</div>
-{% endif %}
-
-{% if not smtp_configured %}
-<div class="notice">
-  <span class="notice-ico"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg></span>
-  <span class="notice-body">E-Mail-Versand noch nicht konfiguriert – Rechnungen werden als .eml-Datei zum Download erzeugt.</span>
-  <a class="btn" href="{% url 'sedo:settings' %}">SMTP einrichten</a>
-</div>
-{% endif %}
-
-<div class="section-eyebrow">Heute wichtig</div>
-<div class="cards kpi-primary-row">
-  <a class="card kpi-big {% if overdue_invoices > 0 %}kpi-danger{% endif %}" href="{% url 'sedo:open_items' %}?status=overdue"><div class="metric">{{ overdue_invoices }}</div><div class="metric-label">Überfällige Rechnungen</div><span class="kpi-action">Offene Posten öffnen →</span></a>
-  <a class="card kpi-big {% if dunning_candidates_count > 0 %}kpi-danger{% endif %}" href="{% url 'sedo:open_items' %}"><div class="metric">{{ dunning_candidates_count }}</div><div class="metric-label">Mahnstufe fällig</div><span class="kpi-action">Mahnautomat öffnen →</span></a>
-  <a class="card kpi-big" href="{% url 'sedo:open_items' %}"><div class="metric">{{ open_amount_total }} €</div><div class="metric-label">Offene Forderungen</div><span class="kpi-action">{{ open_invoices }} offene Rechnung{{ open_invoices|pluralize:"en" }} →</span></a>
-</div>
-<div class="cards kpi-secondary-row">
-  <div class="card kpi-small kpi-positive"><div class="metric">{{ paid_month }} €</div><div class="metric-label">Bezahlt im Monat</div></div>
-  <div class="card kpi-small"><div class="metric">{{ open_offers }}</div><div class="metric-label">Offene Angebote</div></div>
-  <div class="card kpi-small"><div class="metric">{{ customers }}</div><div class="metric-label">Kunden</div></div>
-</div>
-
-<div class="cards">
-  <a class="action-card" href="{% url 'sedo:customer_list' %}"><div class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></div><h2>Kunden & Objekte</h2><p class="muted">Stammdaten pflegen, Kunden importieren und Objekte verwalten.</p></a>
-  <a class="action-card" href="{% url 'sedo:invoice_create' %}"><div class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></div><h2>Neue Rechnung</h2><p class="muted">Einmalige Rechnung oder gespeicherten Kunden nutzen.</p></a>
-  <a class="action-card" href="{% url 'sedo:aareon_monthly' %}"><div class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-building"/></svg></div><h2>GWG-Abrechnung</h2><p class="muted">GWG-Mapping importieren und Monatslauf erzeugen.</p></a>
-  <a class="action-card" href="{% url 'sedo:open_items' %}"><div class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></div><h2>Offene Posten</h2><p class="muted">Fälligkeiten prüfen, Zahlungen erfassen und Mahnungen starten.</p></a>
-</div>
-
-<div class="split">
-  <div class="card">
-    <div class="section-title"><h2>Letzte Rechnungen</h2><a class="btn" href="{% url 'sedo:invoice_list' %}">Alle Rechnungen</a></div>
-    <div class="table-wrap"><table class="table"><tr><th>Nr.</th><th>Kunde</th><th>Objekt</th><th>Brutto</th><th>Zustand</th></tr>{% for r in latest_invoices %}<tr><td><a href="{% url 'sedo:invoice_detail' r.pk %}"><strong>{{ r.number }}</strong></a></td><td>{{ r.customer }}</td><td>{{ r.obj|default:'—' }}</td><td>{{ r.gross_total }} €</td><td>{% include 'sedo/_invoice_state_stack.html' with invoice=r compact=1 %}</td></tr>{% empty %}<tr><td colspan="5"><div class="empty-state">Noch keine Rechnungen.</div></td></tr>{% endfor %}</table></div>
+{% extends 'sedo/base.html' %}{% load static %}{% block content %}
+<link rel="stylesheet" href="{% static 'sedo/workspace-overview-v2.css' %}?v=1">
+<div class="work-page">
+  <div class="topbar">
+    <div><div class="eyebrow">Arbeitszentrale · {{ today|date:"d.m.Y" }}</div><h1 class="h1">Dashboard</h1><p class="sub">Offene Aufgaben prüfen und dort weitermachen, wo es nötig ist.</p></div>
+    <div class="page-actions"><a class="btn primary" href="{% url 'sedo:invoice_create' %}">Rechnung erstellen</a><a class="btn" href="{% url 'sedo:offer_create' %}">Angebot erstellen</a></div>
   </div>
 
-  <div class="card info-card">
-    <div class="section-head"><h2>Systemschutz</h2></div>
-    <p class="sub">Automatisches Wochenbackup und manuelle Sicherung der Datenbank sowie der PDF/XML/EML-Dateien.</p>
-    <a class="btn primary" href="{% url 'sedo:backup' %}"><svg class="ico" aria-hidden="true"><use href="#i-backup"/></svg> Backup & Sicherung öffnen</a>
-  </div>
+  <section aria-labelledby="tasks-heading">
+    <h2 id="tasks-heading">Nächste Schritte</h2>
+    <div class="work-tasks">
+      <a class="card work-task" href="{% url 'sedo:invoice_list' %}?view=draft"><span class="work-count">{{ draft_invoices }}</span><h3>Entwürfe fertigstellen</h3><p>Rechnungen prüfen und zur Ausstellung vorbereiten.</p><span class="work-link">Entwürfe öffnen →</span></a>
+      <a class="card work-task" href="{% url 'sedo:open_items' %}?status=overdue"><span class="work-count{% if overdue_invoices %} work-attention{% endif %}">{{ overdue_invoices }}</span><h3>Überfällige Rechnungen</h3><p>Zahlungseingänge und den nächsten Schritt prüfen.</p><span class="work-link">Überfällige Posten öffnen →</span></a>
+      <a class="card work-task" href="{% url 'sedo:open_items' %}"><span class="work-count{% if dunning_candidates_count %} work-attention{% endif %}">{{ dunning_candidates_count }}</span><h3>Mahnstufe prüfen</h3><p>Kandidaten ansehen und nächste Mahnstufen bewusst bestätigen.</p><span class="work-link">Mahnlauf prüfen →</span></a>
+    </div>
+    {% if not draft_invoices and not overdue_invoices and not dunning_candidates_count %}<p class="work-clear">Keine Entwürfe oder überfälligen Aufgaben. Aktuell fällige Forderungen findest du bei den offenen Posten.</p>{% endif %}
+  </section>
+
+  <section class="work-metrics" aria-label="Geschäftsübersicht">
+    <a class="card" href="{% url 'sedo:open_items' %}"><span>Offene Forderungen</span><strong>{{ open_amount_total }} €</strong><span>{{ open_invoices }} offene Rechnung{{ open_invoices|pluralize:"en" }} →</span></a>
+    <div class="card"><span>Bezahlte Rechnungen</span><strong>{{ paid_month }} €</strong><span>Rechnungsmonat {{ today|date:"F Y" }} · kein Zahlungseingangsbericht</span></div>
+    <a class="card" href="{% url 'sedo:offer_list' %}"><span>Offene Angebote</span><strong>{{ open_offers }}</strong><span>Angebote öffnen →</span></a>
+  </section>
+
+  <section class="card" aria-labelledby="recent-heading">
+    <div class="work-section-head"><div><h2 id="recent-heading">Letzte Rechnungen</h2><p class="muted">Die acht neuesten Belege nach Rechnungsdatum.</p></div><a class="btn" href="{% url 'sedo:invoice_list' %}">Rechnungsarchiv</a></div>
+    <ul class="work-records">
+      {% for r in latest_invoices %}
+      <li class="work-record">
+        <div class="work-identity"><a href="{% url 'sedo:invoice_detail' r.pk %}"><strong>{{ r.number }}</strong></a><span><a href="{% url 'sedo:customer_detail' r.customer_id %}">{{ r.customer }}</a></span>{% if r.obj %}<span class="muted">{{ r.obj }}</span>{% endif %}<span class="muted">{{ r.issue_date|date:"d.m.Y" }} · {{ r.get_invoice_type_display }}</span></div>
+        <div class="work-amount"><span>Brutto</span><strong>{{ r.gross_total }} €</strong></div>
+        <div>{% include 'sedo/_invoice_state_stack.html' with invoice=r compact=1 %}</div>
+        <div>{% if r.lifecycle == 'draft' %}<a class="btn small" href="{% url 'sedo:invoice_edit' r.pk %}" aria-label="Entwurf {{ r.number }} weiterbearbeiten">Weiterbearbeiten</a>{% else %}<a class="btn small" href="{% url 'sedo:invoice_detail' r.pk %}" aria-label="Rechnung {{ r.number }} öffnen">Öffnen</a>{% endif %}</div>
+      </li>
+      {% empty %}<li class="empty-state"><p class="empty-title">Noch keine Rechnungen</p><p>Beginne mit einer neuen Rechnung. Gespeicherte Entwürfe findest du anschließend hier.</p><a class="btn" href="{% url 'sedo:invoice_create' %}">Erste Rechnung erstellen</a></li>{% endfor %}
+    </ul>
+  </section>
+
+  <section class="card" aria-labelledby="more-heading">
+    <h2 id="more-heading">Weitere Arbeitsbereiche</h2>
+    <div class="work-shortcuts"><a href="{% url 'sedo:customer_list' %}"><strong>Kunden & Objekte</strong><span>{{ customers }} Kunden · Stammdaten und Kundenakten</span></a><a href="{% url 'sedo:aareon_monthly' %}"><strong>GWG-Abrechnung</strong><span>Mapping und Monatslauf</span></a><a href="{% url 'sedo:backup' %}"><strong>Backup & Sicherung</strong><span>Datensicherung öffnen</span></a></div>
+    {% if not smtp_configured %}<p class="work-note">Direktversand ist noch nicht eingerichtet. E-Mail-Dateien können vorbereitet und heruntergeladen werden. <a href="{% url 'sedo:settings' %}">Versand einrichten</a></p>{% endif %}
+  </section>
 </div>
 {% endblock %}

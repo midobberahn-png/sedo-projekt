@@ -631,6 +631,8 @@ def dashboard(request):
         'open_amount_total': sum((i.open_amount for i in offene_rechnungen(invoices).prefetch_related('payments')), Decimal('0.00')),
         'overdue_invoices': offene_rechnungen(invoices).filter(due_date__lt=today).count(),
         'paid_month': _sum_decimal(invoices.filter(status='bezahlt', issue_date__year=today.year, issue_date__month=today.month), 'gross_total'),
+        'draft_invoices': invoices.filter(lifecycle='draft').count(),
+        'today': today,
         'open_offers': Offer.objects.filter(status='offen').count(),
         'customers': Customer.objects.count(),
         'latest_invoices': Invoice.objects.select_related('customer','obj')[:8],
@@ -736,13 +738,66 @@ def customer_update(request, pk):
 @login_required
 def customer_detail(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
-    # Rückwärtsrelationen laufen über all_objects; soft-gelöschte Datensätze ausblenden.
-    invoices = customer.invoices.filter(deleted_at__isnull=True).select_related('obj').order_by('-issue_date')
-    offers = customer.offers.filter(deleted_at__isnull=True).select_related('obj').order_by('-issue_date')
+    # Standardmanager statt Rückwärtsrelation: ausgeblendete Belege bleiben unsichtbar.
+    invoices = Invoice.objects.filter(customer=customer).select_related('obj').order_by('-issue_date', '-number', '-pk')
+    offers = Offer.objects.filter(customer=customer).select_related('obj').order_by('-issue_date', '-number', '-pk')
+    objects = customer.customer_objects.order_by('name', 'pk')
+    open_invoices = offene_rechnungen(invoices)
+    overdue = open_invoices.filter(due_date__lt=timezone.localdate())
+    sections = [('overview', 'Übersicht'), ('invoices', 'Rechnungen'),
+                ('offers', 'Angebote'), ('objects', 'Objekte'), ('details', 'Stammdaten')]
+    section = request.GET.get('section', 'overview')
+    if section not in dict(sections):
+        section = 'overview'
+    q = request.GET.get('q', '').strip() if section in ('invoices', 'offers', 'objects') else ''
+    invoice_filter = request.GET.get('filter', 'all') if section == 'invoices' else 'all'
+    if invoice_filter not in ('all', 'draft', 'open', 'overdue'):
+        invoice_filter = 'all'
+    page = None
+    if section in ('invoices', 'offers', 'objects'):
+        records = {'invoices': invoices, 'offers': offers, 'objects': objects}[section]
+        if section == 'invoices':
+            if invoice_filter == 'draft':
+                records = records.filter(lifecycle='draft')
+            elif invoice_filter in ('open', 'overdue'):
+                records = open_invoices if invoice_filter == 'open' else overdue
+        if q:
+            if section == 'objects':
+                records = records.filter(Q(name__icontains=q) | Q(street__icontains=q) | Q(city__icontains=q))
+            else:
+                records = records.filter(Q(number__icontains=q) | Q(obj__name__icontains=q))
+        page = Paginator(records, 20).get_page(request.GET.get('page'))
+    # Nur die gewählte Liste laden; Übersicht begrenzen, Kennzahlen bleiben vollständig.
+    params = request.GET.copy()
+    params.clear()
+    params['section'] = section
+    if q:
+        params['q'] = q
+    if invoice_filter != 'all':
+        params['filter'] = invoice_filter
     return render(request, 'sedo/customer_detail.html', {
         'customer': customer,
-        'customer_invoices': invoices,
-        'customer_offers': offers,
+        'section': section,
+        'section_label': dict(sections)[section],
+        'customer_tabs': [{'key': key, 'label': label} for key, label in sections],
+        'q': q,
+        'invoice_filter': invoice_filter,
+        'page_obj': page,
+        'page_query': params.urlencode(),
+        'invoice_count': invoices.count(),
+        'offer_count': offers.count(),
+        'object_count': objects.count(),
+        'draft_count': invoices.filter(lifecycle='draft').count(),
+        'open_count': open_invoices.count(),
+        'overdue_count': overdue.count(),
+        # Die aktive Zahlungssumme stammt bereits aus offene_rechnungen();
+        # keine zusätzliche Zahlungsabfrage für jeden Kundenbeleg.
+        'open_total': sum(((gross - paid).quantize(Decimal('0.01'))
+                           for gross, paid in open_invoices.values_list('gross_total', '_active_paid')),
+                          Decimal('0.00')) if section == 'overview' else None,
+        'customer_invoices': page.object_list if section == 'invoices' else invoices[:5] if section == 'overview' else [],
+        'customer_offers': page.object_list if section == 'offers' else offers[:3] if section == 'overview' else [],
+        'customer_objects': page.object_list if section == 'objects' else [],
     })
 
 
