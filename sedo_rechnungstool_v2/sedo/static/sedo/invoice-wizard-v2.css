@@ -25,7 +25,9 @@
 .invoice-flow .wizard-final { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .invoice-flow .wizard-final > .hint { flex-basis: 100%; order: 5; }
 .invoice-flow .wizard-bar-right { min-width: 0; flex-wrap: wrap; }
-.invoice-flow .pos-desc-body { display: block; }
+.invoice-flow .position-form .pos-desc-body { display: flex; }
+.invoice-flow .pos-desc-toggle { display: none; }
+.wizard-enhanced .invoice-flow .position-form:not(.has-desc) .pos-desc-toggle { display: inline-flex; }
 .wizard-enhanced .invoice-flow .position-form:not(.has-desc) .pos-desc-body { display: none; }
 .invoice-flow summary:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 3px; }
 @media (max-width: 760px) {
