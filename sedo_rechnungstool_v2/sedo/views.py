@@ -12,6 +12,7 @@ import logging
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
 from django.db.models.functions import ExtractYear
@@ -784,6 +785,19 @@ def invoice_list(request):
     year_s   = request.GET.get('year', '').strip()
     month_s  = request.GET.get('month', '').strip()
     status_f = request.GET.get('status', '').strip()
+    view = request.GET.get('view', 'all')
+    views = [('all', 'Alle Belege'), ('draft', 'Entwürfe'),
+             ('issued', 'Ausgestellt'), ('corrected', 'Ersetzt'),
+             ('cancelled', 'Storniert')]
+    if view not in dict(views):
+        view = 'all'
+    # Ungültige Datumswerte dürfen weder Fehler noch unsichtbare Filter erzeugen.
+    year_s = (str(int(year_s)) if year_s.isascii() and year_s.isdigit()
+              and len(year_s) <= 4 and 1 <= int(year_s) <= 9999 else '')
+    month_s = (str(int(month_s)) if month_s.isascii() and month_s.isdigit()
+               and len(month_s) <= 2 and 1 <= int(month_s) <= 12 else '')
+    if status_f not in dict(Invoice.STATUS):
+        status_f = ''
 
     invoices = Invoice.objects.select_related('customer', 'obj').all()
 
@@ -795,27 +809,53 @@ def invoice_list(request):
         invoices = invoices.filter(issue_date__year=int(year_s))
     if month_s.isdigit():
         invoices = invoices.filter(issue_date__month=int(month_s))
+    # Neue Ansichten nutzen ausschließlich den kanonischen Belegzustand.
+    if view != 'all':
+        invoices = invoices.filter(lifecycle=view)
     if status_f:
         lifecycle_filter = {'entwurf': 'draft', 'korrigiert': 'corrected', 'storniert': 'cancelled'}.get(status_f)
         invoices = (invoices.filter(lifecycle=lifecycle_filter) if lifecycle_filter
                     else invoices.filter(status=status_f, lifecycle='issued'))
 
     # Verfügbare Jahre für das Filter-Dropdown
-    available_years = (
+    available_years = list(
         Invoice.objects.annotate(y=ExtractYear('issue_date'))
         .values_list('y', flat=True).distinct().order_by('-y')
     )
     gross_total = _sum_decimal(invoices, 'gross_total')
+    page = Paginator(invoices.order_by('-issue_date', '-number', '-pk'), 25).get_page(
+        request.GET.get('page'))
+    # Nur bekannte Filter übernehmen; Suche bleibt beim Blättern und Tabwechsel erhalten.
+    params = request.GET.copy()
+    params.clear()
+    for key, value in [('q', q), ('year', year_s), ('month', month_s)]:
+        if value:
+            params[key] = value
+    tabs = []
+    for key, label in views:
+        tab_params = params.copy()
+        tab_params['view'] = key
+        tabs.append({'key': key, 'label': label, 'url': '?' + tab_params.urlencode()})
+    params['view'] = view
+    if status_f:
+        params['status'] = status_f
 
     return render(request, 'sedo/invoice_list.html', {
-        'invoices': invoices,
+        'invoices': page.object_list,
+        'page_obj': page,
+        'page_query': params.urlencode(),
+        'archive_tabs': tabs,
+        'view': view,
+        'view_label': dict(views)[view],
+        'has_filters': bool(q or year_s or month_s or status_f or view != 'all'),
+        'legacy_status_label': dict(Invoice.STATUS).get(status_f, ''),
         'q': q,
         'year': year_s,
         'month': month_s,
         'status': status_f,
         'available_years': available_years,
+        'year_without_results': bool(year_s and int(year_s) not in available_years),
         'gross_total': gross_total,
-        'status_choices': Invoice.STATUS,
     })
 
 
