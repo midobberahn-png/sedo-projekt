@@ -1,17 +1,17 @@
 {% extends 'sedo/base.html' %}{% load static %}{% block content %}
 <link rel="stylesheet" href="{% static 'sedo/workspace-overview-v2.css' %}?v=1">
-<div class="work-page">
+<div class="work-page dashboard-page">
   <div class="topbar">
-    <div><div class="eyebrow">Arbeitszentrale · {{ today|date:"d.m.Y" }}</div><h1 class="h1">Dashboard</h1><p class="sub">Offene Aufgaben prüfen und dort weitermachen, wo es nötig ist.</p></div>
+    <div><div class="eyebrow">Arbeitszentrale · {{ today|date:"d.m.Y" }}</div><h1 class="h1 welcome-heading"><span class="sr-only">Dashboard · </span>Willkommen bei SEDO.</h1><p class="sub">Alles im Blick. Und Zeit für das Wesentliche.</p></div>
     <div class="page-actions"><a class="btn primary" href="{% url 'sedo:invoice_create' %}">Rechnung erstellen</a><a class="btn" href="{% url 'sedo:offer_create' %}">Angebot erstellen</a></div>
   </div>
 
   <section aria-labelledby="tasks-heading">
     <h2 id="tasks-heading">Nächste Schritte</h2>
     <div class="work-tasks">
-      <a class="card work-task" href="{% url 'sedo:invoice_list' %}?view=draft"><span class="work-count">{{ draft_invoices }}</span><h3>Entwürfe fertigstellen</h3><p>Rechnungen prüfen und zur Ausstellung vorbereiten.</p><span class="work-link">Entwürfe öffnen →</span></a>
-      <a class="card work-task" href="{% url 'sedo:open_items' %}?status=overdue"><span class="work-count{% if overdue_invoices %} work-attention{% endif %}">{{ overdue_invoices }}</span><h3>Überfällige Rechnungen</h3><p>Zahlungseingänge und den nächsten Schritt prüfen.</p><span class="work-link">Überfällige Posten öffnen →</span></a>
-      <a class="card work-task" href="{% url 'sedo:open_items' %}"><span class="work-count{% if dunning_candidates_count %} work-attention{% endif %}">{{ dunning_candidates_count }}</span><h3>Mahnstufe prüfen</h3><p>Kandidaten ansehen und nächste Mahnstufen bewusst bestätigen.</p><span class="work-link">Mahnlauf prüfen →</span></a>
+      <a class="card work-task" href="{% url 'sedo:invoice_list' %}?view=draft"><span class="task-heading"><span class="work-count">{{ draft_invoices }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></span></span><h3>Entwürfe fertigstellen</h3><p>Rechnungen prüfen und zur Ausstellung vorbereiten.</p><span class="work-link">Entwürfe öffnen →</span></a>
+      <a class="card work-task" href="{% url 'sedo:open_items' %}?status=overdue"><span class="task-heading"><span class="work-count{% if overdue_invoices %} work-attention{% endif %}">{{ overdue_invoices }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></span></span><h3>Überfällige Rechnungen</h3><p>Zahlungseingänge und den nächsten Schritt prüfen.</p><span class="work-link">Überfällige Posten öffnen →</span></a>
+      <a class="card work-task" href="{% url 'sedo:open_items' %}"><span class="task-heading"><span class="work-count{% if dunning_candidates_count %} work-attention{% endif %}">{{ dunning_candidates_count }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></span></span><h3>Mahnstufe prüfen</h3><p>Kandidaten ansehen und nächste Mahnstufen bewusst bestätigen.</p><span class="work-link">Mahnlauf prüfen →</span></a>
     </div>
     {% if not draft_invoices and not overdue_invoices and not dunning_candidates_count %}<p class="work-clear">Keine Entwürfe oder überfälligen Aufgaben. Aktuell fällige Forderungen findest du bei den offenen Posten.</p>{% endif %}
   </section>
