@@ -3,7 +3,7 @@
 {% block content %}
 <div class="topbar">
   <div>
-    <div class="h1">Monatsabschluss</div>
+    <h1 class="h1">Monatsabschluss</h1>
     <div class="sub">Rechnungsexport für den Steuerberater.</div>
   </div>
 </div>
@@ -44,8 +44,8 @@
 
 <div class="card">
   <div class="section-head"><h2>Rechnungen im Monat {{ selected_month }}</h2></div>
-  <table class="table">
-    <thead><tr><th>Nr.</th><th>Datum</th><th>Kunde</th><th>Objekt</th><th>Status</th><th class="num">Brutto</th><th>Aktion</th></tr></thead>
+  <div class="responsive-table" tabindex="0" role="region" aria-label="Monatsabschluss – Tabelle"><table class="table responsive-records">
+    <thead><tr><th scope="col">Nr.</th><th scope="col">Datum</th><th scope="col">Kunde</th><th scope="col">Objekt</th><th scope="col">Status</th><th class="num">Brutto</th><th scope="col">Aktion</th></tr></thead>
     <tbody>
       {% for inv in invoices %}
       <tr>
@@ -61,7 +61,7 @@
       <tr><td colspan="7" class="muted">Keine Rechnungen für diesen Monat gefunden.</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 
 {% comment %}

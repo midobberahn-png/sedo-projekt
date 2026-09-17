@@ -9,8 +9,10 @@
   <link rel="stylesheet" href="/static/sedo/app-shell-v2.css?v=1">
   <link rel="stylesheet" href="/static/sedo/state-system-v2.css?v=1">
   <link rel="stylesheet" href="/static/sedo/invoice-detail-v2.css?v=1">
+  <link rel="stylesheet" href="/static/sedo/accessibility-v2.css?v=1">
 </head>
-<body class="sidebar-cover">
+<body class="app-shell">
+<a class="skip-link" href="#main-content">Zum Inhalt springen</a>
 {# Einheitliches Icon-Set (Inline-SVG-Sprite, Strichstil, erbt Farbe via currentColor) #}
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
@@ -43,7 +45,7 @@
 </svg>
 <div class="layout">
   <aside class="sidebar" id="appSidebar">
-    <button class="sidebar-toggle" type="button" aria-label="Menü ein- oder ausklappen" title="Menü" onclick="document.body.classList.toggle('sidebar-locked')"><svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <button type="button" class="sidebar-close btn" id="sidebar-close" hidden>Menü schließen</button>
     <div class="brand">
       <img src="/static/sedo/sedo_logo.png" alt="SEDO">
       <div class="brand-text"><strong>SEDO</strong><small>Büro &amp; Abrechnung · v2</small></div>
@@ -77,8 +79,9 @@
       </details>
     </nav>
   </aside>
-  <main class="main">
+  <main class="main" id="app-main">
     <header class="app-commandbar" aria-label="Schnellzugriff">
+      <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="appSidebar" aria-expanded="true" aria-label="Menü ein- oder ausklappen" hidden><svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg></button>
       <div class="command-search">
         <div class="global-search">
           <input type="search" id="global-search" placeholder="Suchen oder Aktion starten …" autocomplete="off"
@@ -88,7 +91,8 @@
                  data-action-customer="{% url 'sedo:customer_create' %}"
                  data-action-open-items="{% url 'sedo:open_items' %}">
           <span class="command-shortcut" aria-hidden="true">⌘/Ctrl K</span>
-          <div class="global-search-results" id="global-search-results" hidden></div>
+          <div class="global-search-results" id="global-search-results" role="region" aria-label="Suchergebnisse und Schnellaktionen" hidden></div>
+          <span class="sr-only" id="search-status" role="status"></span>
         </div>
       </div>
       <div class="command-actions" aria-label="Schnellaktionen">
@@ -97,108 +101,17 @@
         <span class="command-user" aria-hidden="true">SE</span>
       </div>
     </header>
-    <div class="page-shell">
+    <div class="page-shell" id="main-content" tabindex="-1">
+      {% if messages %}<div class="server-messages" role="region" aria-label="Meldungen">{% for message in messages %}<div class="notice {{ message.tags }}" role="status">{{ message }}</div>{% endfor %}</div>{% endif %}
       {% block content %}{% endblock %}
       <div class="footer-note">v2.3.1 · Backup im Systemmenü</div>
     </div>
   </main>
 </div>
 
-<!-- Toast-Container: Django-Messages als Slide-in-Toasts -->
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
-
-<!-- Schritt-Assistent (wirkt nur auf Seiten mit [data-wizard]) -->
-<script src="/static/sedo/wizard.js?v=3_23"></script>
-<script src="/static/sedo/global_search.js?v=3_0"></script>
-
-{% if messages %}
-<script>
-window.__sedoMessages = [{% for message in messages %}{"text":"{{ message|escapejs }}","tags":"{{ message.tags }}"},{% endfor %}];
-</script>
-{% endif %}
-
-<script>
-(function(){
-  /* ── Sidebar-Steuerung ─────────────────────────────── */
-  const links = document.querySelectorAll('.nav a');
-  links.forEach(a => a.addEventListener('click', () => {
-    if (window.matchMedia('(max-width: 1050px)').matches)
-      document.body.classList.remove('sidebar-locked');
-  }));
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') document.body.classList.remove('sidebar-locked');
-  });
-
-  /* ── Toast-System ─────────────────────────────────── */
-  const ICONS = {
-    success: '✓', error: '✕', warning: '⚠', info: 'ℹ'
-  };
-  const COLORS = {
-    success: '#166534', error: '#991b1b', warning: '#92400e', info: '#174ea6'
-  };
-  const BG = {
-    success: '#f0fdf4', error: '#fff1f2', warning: '#fffbeb', info: '#eff6ff'
-  };
-  const BORDER = {
-    success: '#bbf7d0', error: '#fecdd3', warning: '#fde68a', info: '#bfdbfe'
-  };
-
-  function showToast(text, tags) {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-
-    // Level aus Django-tags ermitteln (success, error, warning, info)
-    let level = 'info';
-    if (tags.includes('success')) level = 'success';
-    else if (tags.includes('error'))   level = 'error';
-    else if (tags.includes('warning')) level = 'warning';
-
-    const toast = document.createElement('div');
-    toast.className = 'sedo-toast';
-    toast.setAttribute('role', 'alert');
-    toast.innerHTML = `
-      <span class="toast-icon">${ICONS[level]}</span>
-      <span class="toast-text">${text}</span>
-      <button class="toast-close" aria-label="Schließen">×</button>
-    `;
-    toast.style.cssText = `
-      background:${BG[level]};
-      border:1px solid ${BORDER[level]};
-      color:${COLORS[level]};
-    `;
-
-    container.appendChild(toast);
-
-    // Einblenden
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => toast.classList.add('toast-visible'));
-    });
-
-    // Schließen-Button
-    toast.querySelector('.toast-close').addEventListener('click', () => dismiss(toast));
-
-    // Auto-dismiss nach 5 s (Fehler nach 8 s)
-    const delay = level === 'error' ? 8000 : 5000;
-    setTimeout(() => dismiss(toast), delay);
-  }
-
-  window.showToast = showToast;  // global für Seiten-Skripte (z. B. KI-Assistent)
-
-  function dismiss(toast) {
-    toast.classList.remove('toast-visible');
-    toast.classList.add('toast-hiding');
-    setTimeout(() => toast.remove(), 360);
-  }
-
-  // Django-Messages als Toasts anzeigen
-  if (window.__sedoMessages) {
-    window.__sedoMessages.forEach(m => {
-      // text kommt über json_script – wir lesen es direkt aus dem Array
-      const raw = m.text || '';
-      showToast(raw, m.tags || 'info');
-    });
-  }
-})();
-</script>
+<script src="/static/sedo/wizard.js?v=3_24"></script>
+<script src="/static/sedo/global_search.js?v=3_1"></script>
+<script src="/static/sedo/accessibility-v2.js?v=1"></script>
 </body>
 </html>

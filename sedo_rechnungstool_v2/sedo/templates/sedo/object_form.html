@@ -1,8 +1,8 @@
 {% extends 'sedo/base.html' %}{% block content %}
-<form method="post">{% csrf_token %}
+<form method="post">{% csrf_token %}{{ form.non_field_errors }}
 <div class="work-dialog">
-  <div class="work-dialog-header"><div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-building"/></svg></div><div><h1>{{ title }}</h1><div class="sub">Objekt / Leistungsort für Kunden und Monatsrechnungen.</div></div></div><a class="work-close" href="{% if object %}{% url 'sedo:customer_detail' object.customer.pk %}{% else %}{% url 'sedo:customer_list' %}{% endif %}">×</a></div>
-  <div class="work-body"><h2 class="work-section-title">Objektanschrift</h2><div class="work-grid">{% for field in form %}<div class="{% if field.name == 'name' or field.name == 'customer' %}field-wide{% endif %}"><label>{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="muted">{{ field.errors }}</div>{% endif %}</div>{% endfor %}</div></div>
+  <div class="work-dialog-header"><div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-building"/></svg></div><div><h1>{{ title }}</h1><div class="sub">Objekt / Leistungsort für Kunden und Monatsrechnungen.</div></div></div><a class="work-close" aria-label="Abbrechen und zurück" href="{% if object %}{% url 'sedo:customer_detail' object.customer.pk %}{% else %}{% url 'sedo:customer_list' %}{% endif %}">×</a></div>
+  <div class="work-body"><h2 class="work-section-title">Objektanschrift</h2><div class="work-grid">{% for field in form %}<div class="{% if field.name == 'name' or field.name == 'customer' %}field-wide{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.errors %}<div class="muted">{{ field.errors }}</div>{% endif %}</div>{% endfor %}</div></div>
   <div class="sticky-actions"><a class="btn" href="{% url 'sedo:customer_list' %}">Abbrechen</a><button class="btn primary" type="submit">Speichern</button></div>
 </div>
 </form>
