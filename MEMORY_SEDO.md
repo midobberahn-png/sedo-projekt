@@ -3,6 +3,33 @@
 > Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, freigegebener Härtungs- und Abnahmeplan. Historische Abschnitte darunter bleiben als Verlauf erhalten.
 
 
+## UX-08 – Dashboard & Kundenakte (17.09.2026)
+
+- Basis UX-07/main `9e93b7409256cca9e6251a934b4b9c346e4f31b3`;
+  Branch `ux-08-dashboard-kundenakte`.
+- Dashboard mit drei Arbeitseinstiegen: Entwürfe, überfällige Rechnungen und
+  Mahnstufenprüfung. Direkter Sammelmahn-POST entfernt; Einstieg führt zur
+  bestehenden Kandidatenprüfung in Offene Posten.
+- Kundenakte mit serverseitigen Bereichen Übersicht/Rechnungen/Angebote/Objekte/
+  Stammdaten. Kundenbezogene Suche, stabile 20er-Seiten und Rechnungsansichten
+  Alle/Entwürfe/Offen/Überfällig. Übersicht maximal fünf Rechnungen/drei Angebote;
+  Kennzahlen bleiben vollständig und schließen ausgeblendete Belege aus.
+- Einheitliche Beleg-/Zahlungszustände, Entwurf führt zur Bearbeitung, sonst
+  Detailansicht. Objektlöschen erst unter Weitere Aktionen und bestehender
+  Bestätigungsseite. Keine direkten Zahlungs-, Versand- oder Stornoaktionen.
+- Offene Summen/Kandidaten nutzen bestehende Fachregeln. Dashboard-Monatskennzahl
+  unverändert berechnet, aber klar als bezahlte Rechnungen des Rechnungsmonats
+  bezeichnet, nicht als Zahlungseingangsbericht.
+- Gemeinsames seitenbezogenes CSS, ohne zusätzliches JavaScript bedienbar;
+  synthetische Browserkontrolle Desktop/Mobil bis 320 Pixel.
+- 14 neue Funktionstests; lokal 760/760 Gesamttests unter Django 5.2 bestanden.
+  Vollständige CI einschließlich Gegenproben und nativer Testpakete vor Merge;
+  konkrete Prüfläufe und Integration im PR dokumentiert.
+- Keine Modell-/Serviceänderung oder Migration. Kein Deployment auf dem
+  Einsatzrechner, keine neue Releaseversionsnummer. Nächster Block: UX-09
+  Restmodule, Responsive & Accessibility.
+
+
 ## UX-06 – Rechnungsarchiv & Listen (17.09.2026)
 
 - Ausgangspunkt: UX-05/main `b40dcdd371de434d2cf02286fd6efb5818e3ad26`.
