@@ -2,6 +2,23 @@
 
 > Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, freigegebener Härtungs- und Abnahmeplan. Historische Abschnitte darunter bleiben als Verlauf erhalten.
 
+
+## UX-06 – Rechnungsarchiv & Listen (17.09.2026)
+
+- Ausgangspunkt: UX-05/main `b40dcdd371de434d2cf02286fd6efb5818e3ad26`.
+- Branch `ux-06-rechnungsarchiv`: fünf gebündelte Spalten, Belegzustandsansichten,
+  Suche/Jahr/Monat, 25 Belege pro Seite und Bruttosumme über alle Treffer.
+- Dokumente aufklappbar; Entwürfe bieten Bearbeiten, sonst führt Öffnen zur
+  abgesicherten Detailseite. Kein direkter Versand oder Korrekturstart aus der Liste.
+- Legacy-Statuslinks kompatibel, Filter beim Blättern erhalten, ausgeblendete
+  Belege ausgeschlossen. Zahlungszustand weiterhin aus aktiven Zahlungen.
+- 14 neue Funktionstests; lokal 734 Tests unter Django 5.2.17 bestanden.
+  macOS benötigt für diese Suite einen kanonischen Temp-Pfad (`TMPDIR=/private/tmp`),
+  da bestehende Archivtests sonst /var und /private/var vergleichen.
+- Keine Modell-/Serviceänderung, keine Migration, keine neue Releaseversionsnummer.
+  PR/CI und nativer Teststand vor Integration verpflichtend; Ergebnis im PR.
+  Keine Installation auf dem Einsatzrechner. Nächster UX-Block: UX-07 Rechnungs-Wizard.
+
 ---
 
 ## Aktueller Plan – Härtung, Zustandsmodell, danach UI/UX (10.09.2026)
