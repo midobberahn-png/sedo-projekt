@@ -58,6 +58,7 @@
         label.className = 'wizard-pill-label';
         label.textContent = step.getAttribute('data-step-label') || ('Schritt ' + (i + 1));
 
+        btn.setAttribute('aria-label', 'Schritt ' + (i + 1) + ': ' + label.textContent);
         btn.appendChild(no);
         btn.appendChild(label);
         btn.addEventListener('click', function () {
@@ -99,6 +100,7 @@
       if (finalBox) finalBox.hidden = !isLast;
       if (progress) {
         progress.hidden = false;
+        progress.setAttribute('role', 'status');
         if (progressCur) progressCur.textContent = String(index + 1);
         if (progressTotal) progressTotal.textContent = String(steps.length);
       }
@@ -115,12 +117,13 @@
        die Funktion überhaupt nicht – Scrollen darf den Assistenten nie stoppen. */
     function scrollToTop(el) {
       if (!el || typeof el.scrollIntoView !== 'function') return;
-      try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      try { el.scrollIntoView({ behavior: window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
       catch (e) { try { el.scrollIntoView(); } catch (e2) { /* ignorieren */ } }
     }
 
     function focusFirstField(step) {
-      var field = step.querySelector(FOCUS_SELECTOR);
+      var field = step.querySelector(FOCUS_SELECTOR) || step.querySelector('h2');
+      if (field && field.tagName === 'H2') field.setAttribute('tabindex', '-1');
       if (!field || typeof field.focus !== 'function') return;
       try { field.focus({ preventScroll: true }); }
       catch (e) { try { field.focus(); } catch (e2) { /* ignorieren */ } }

@@ -3,6 +3,34 @@
 > Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, freigegebener Härtungs- und Abnahmeplan. Historische Abschnitte darunter bleiben als Verlauf erhalten.
 
 
+## UX-09 – Restmodule, Responsive & Accessibility (17.09.2026)
+
+- Basis UX-08/main `3e357cb1b2c83513e84edf71add55c6cb981b6c2`;
+  Branch `ux-09-restmodule-accessibility`.
+- Alte `sidebar-cover`-Überlagerung entfernt. Mobile Navigation mit sichtbarem
+  Menüknopf, inertem Hintergrund, Fokusumlauf, Escape und Fokus-Rückkehr;
+  ohne JavaScript bleibt das Menü sichtbar. Desktop einklappbar, Administration
+  und zugängliche Linknamen bleiben erhalten. Sprunglink zum Hauptinhalt.
+- Globale Suche mit kontrastreichem Text, nativen Trefferlinks (Tab/Pfeile/Enter),
+  Escape und lesender Statusansage. Überholte Antworten nach Eingabewechsel oder
+  Schließen werden ignoriert; Suchfehler als solche sichtbar.
+- Restmodul-Tabellen als beschriftete mobile Karten; native Tabellenrollen bleiben
+  erhalten. Ohne JS fokussierbare Scrollbereiche mit sichtbaren Spaltenköpfen.
+  Formulare/Importe/Filter beschriftet, Abo-Feld- und Formularfehler sichtbar,
+  Angebotspositionen mit Labels und mobiler Darstellung wie Rechnungs-Wizard.
+- Meldungen serverseitig ohne JS lesbar; dynamische Meldungen als Text statt HTML,
+  ohne automatisches Verschwinden. Fokusmarkierung und reduzierte Bewegung;
+  Wizard-Schrittnamen bleiben zugänglich, Prüfschritt bekommt sinnvollen Fokus.
+- Zahlungs-Löschen unter Weitere Aktionen; bestätigende Seite und alle POST-/CSRF-
+  Verträge unverändert. Keine Views-, Modell-, Fachservice- oder Datenänderung.
+- Zehn neue gerenderte Funktionstests (zahlreiche Restmodul-Unterfälle), zusätzliche
+  Browserprüfungen für Navigation/Suche/No-JS/320-Pixel-Darstellung. Vollständige
+  Regression, Gegenproben und nativer Plattform-Teststand vor Integration;
+  konkrete Prüfläufe im PR dokumentiert. Keine Behauptung einer WCAG-Zertifizierung.
+- Kein Deployment auf dem Einsatzrechner, keine neue Releaseversionsnummer.
+  Damit sind die geplanten UI/UX-Blöcke UX-01 bis UX-09 umgesetzt.
+
+
 ## UX-08 – Dashboard & Kundenakte (17.09.2026)
 
 - Basis UX-07/main `9e93b7409256cca9e6251a934b4b9c346e4f31b3`;

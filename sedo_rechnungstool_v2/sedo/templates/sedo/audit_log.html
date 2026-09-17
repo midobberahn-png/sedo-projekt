@@ -4,7 +4,7 @@
 <div class="topbar">
   <div>
     <div class="eyebrow">System · Sicherheit</div>
-    <div class="h1">Audit-Log</div>
+    <h1 class="h1">Audit-Log</h1>
     <div class="sub">Protokoll kritischer Aktionen wie Login, Backup, Import, Zahlung, Mahnung und Löschung.</div>
   </div>
   <div class="toolbar"><a class="btn" href="{% url 'sedo:security_status' %}">Sicherheitsstatus</a></div>
@@ -12,8 +12,8 @@
 
 <div class="card">
   <form method="get" class="toolbar">
-    <input name="q" value="{{ q }}" placeholder="Suche nach Benutzer, Objekt, Hinweis oder IP">
-    <select name="action">
+    <label class="control-label" for="audit_log-q">Benutzer, Objekt, Hinweis oder IP</label><input id="audit_log-q" name="q" value="{{ q }}" placeholder="Suche nach Benutzer, Objekt, Hinweis oder IP">
+    <label class="control-label" for="audit_log-action">Aktion</label><select id="audit_log-action" name="action">
       <option value="">Alle Aktionen</option>
       {% for key,label in actions %}<option value="{{ key }}" {% if action == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
@@ -24,8 +24,8 @@
 
 <div class="card">
   <div class="table-wrap">
-    <table class="table table-modern">
-      <tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Objekttyp</th><th>Objekt</th><th>IP</th><th>Hinweis</th></tr>
+    <div class="responsive-table" tabindex="0" role="region" aria-label="Audit-Protokoll – Tabelle"><table class="table responsive-records table-modern">
+      <tr><th scope="col">Zeit</th><th scope="col">Benutzer</th><th scope="col">Aktion</th><th scope="col">Objekttyp</th><th scope="col">Objekt</th><th scope="col">IP</th><th scope="col">Hinweis</th></tr>
       {% for log in logs %}
       <tr>
         <td>{{ log.created_at|date:'d.m.Y H:i:s' }}</td>
@@ -37,7 +37,7 @@
         <td>{{ log.message }}</td>
       </tr>
       {% empty %}<tr><td colspan="7"><div class="empty-state">Keine Audit-Einträge gefunden.</div></td></tr>{% endfor %}
-    </table>
+    </table></div>
   </div>
 </div>
 {% endblock %}

@@ -1,9 +1,10 @@
 {% extends 'sedo/base.html' %}{% load static %}{% block content %}
+<link rel="stylesheet" href="{% static 'sedo/invoice-wizard-v2.css' %}?v=1">
 <form method="post" id="offer-form">{% csrf_token %}
 <div class="work-dialog invoice-flow">
   <div class="work-dialog-header">
     <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg></div><div><h1>Neues Angebot</h1><div class="sub">In sechs Schritten zum fertigen Angebot – die KI übernimmt die Positionen.</div></div></div>
-    <a class="work-close" href="{% url 'sedo:offer_list' %}" title="Abbrechen">×</a>
+    <a class="work-close" aria-label="Abbrechen und zurück" href="{% url 'sedo:offer_list' %}" title="Abbrechen">×</a>
   </div>
 
   <div class="work-body" data-wizard>
@@ -24,9 +25,9 @@
         </div>
 
         <div class="field-wide" style="margin-bottom:14px">
-          <label>{{ form.customer.label }}</label>
+          <label for="{{ form.customer.id_for_label }}">{{ form.customer.label }}</label>
           <div class="customer-search-wrap">
-            <input type="search" id="customer-search" placeholder="Kunden suchen…" autocomplete="off">
+            <label for="customer-search">Kunden suchen</label><input type="search" id="customer-search" placeholder="Kunden suchen…" autocomplete="off">
           </div>
           {{ form.customer }}{{ form.customer.errors }}
           <div class="hint">Kunden auswählen → alle Felder werden sofort automatisch befüllt.</div>
@@ -34,24 +35,24 @@
           <div class="customer-selected-pill" id="customer-pill">
             <strong id="pill-name">—</strong>
             <span id="pill-info"></span>
-            <button type="button" class="clear-customer" id="clear-customer" title="Auswahl aufheben">×</button>
+            <button type="button" class="clear-customer" aria-label="Kundenauswahl aufheben" id="clear-customer" title="Auswahl aufheben">×</button>
           </div>
         </div>
 
         <div class="work-grid compact-form" id="customer-fields">
-          <div><label>Angebotsnummer</label><input value="AG (automatisch)" disabled></div>
-          <div><label>{{ form.salutation.label }}</label>{{ form.salutation }}{{ form.salutation.errors }}</div>
-          <div><label>{{ form.name.label }} *</label>{{ form.name }}{{ form.name.errors }}</div>
-          <div><label>{{ form.name2.label }}</label>{{ form.name2 }}{{ form.name2.errors }}</div>
-          <div><label>{{ form.customer_no.label }}</label>{{ form.customer_no }}{{ form.customer_no.errors }}</div>
-          <div><label>{{ form.customer_type.label }}</label>{{ form.customer_type }}{{ form.customer_type.errors }}</div>
-          <div><label>{{ form.contact_person.label }}</label>{{ form.contact_person }}{{ form.contact_person.errors }}</div>
-          <div><label>{{ form.phone.label }}</label>{{ form.phone }}{{ form.phone.errors }}</div>
-          <div><label>{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}</div>
-          <div><label>{{ form.street.label }}</label>{{ form.street }}{{ form.street.errors }}</div>
-          <div><label>{{ form.postcode.label }}</label>{{ form.postcode }}{{ form.postcode.errors }}</div>
-          <div><label>{{ form.city.label }}</label>{{ form.city }}{{ form.city.errors }}</div>
-          <div><label>{{ form.country.label }}</label>{{ form.country }}{{ form.country.errors }}</div>
+          <div><label for="offer-number">Angebotsnummer</label><input id="offer-number" value="AG (automatisch)" disabled></div>
+          <div><label for="{{ form.salutation.id_for_label }}">{{ form.salutation.label }}</label>{{ form.salutation }}{{ form.salutation.errors }}</div>
+          <div><label for="{{ form.name.id_for_label }}">{{ form.name.label }} *</label>{{ form.name }}{{ form.name.errors }}</div>
+          <div><label for="{{ form.name2.id_for_label }}">{{ form.name2.label }}</label>{{ form.name2 }}{{ form.name2.errors }}</div>
+          <div><label for="{{ form.customer_no.id_for_label }}">{{ form.customer_no.label }}</label>{{ form.customer_no }}{{ form.customer_no.errors }}</div>
+          <div><label for="{{ form.customer_type.id_for_label }}">{{ form.customer_type.label }}</label>{{ form.customer_type }}{{ form.customer_type.errors }}</div>
+          <div><label for="{{ form.contact_person.id_for_label }}">{{ form.contact_person.label }}</label>{{ form.contact_person }}{{ form.contact_person.errors }}</div>
+          <div><label for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>{{ form.phone }}{{ form.phone.errors }}</div>
+          <div><label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}</div>
+          <div><label for="{{ form.street.id_for_label }}">{{ form.street.label }}</label>{{ form.street }}{{ form.street.errors }}</div>
+          <div><label for="{{ form.postcode.id_for_label }}">{{ form.postcode.label }}</label>{{ form.postcode }}{{ form.postcode.errors }}</div>
+          <div><label for="{{ form.city.id_for_label }}">{{ form.city.label }}</label>{{ form.city }}{{ form.city.errors }}</div>
+          <div><label for="{{ form.country.id_for_label }}">{{ form.country.label }}</label>{{ form.country }}{{ form.country.errors }}</div>
         </div>
       </div>
     </section>
@@ -69,15 +70,15 @@
         </div>
         <div class="work-grid">
           <div class="field-wide">
-            <label>{{ form.obj.label }}</label>
+            <label for="{{ form.obj.id_for_label }}">{{ form.obj.label }}</label>
             {{ form.obj }}{{ form.obj.errors }}
             <div class="hint obj-hint" id="obj-hint">Wähle zuerst einen Kunden – dann erscheinen hier nur dessen Objekte.</div>
           </div>
-          <div><label>{{ form.object_name.label }}</label>{{ form.object_name }}{{ form.object_name.errors }}</div>
-          <div><label>{{ form.object_street.label }}</label>{{ form.object_street }}{{ form.object_street.errors }}</div>
-          <div><label>{{ form.object_postcode.label }}</label>{{ form.object_postcode }}{{ form.object_postcode.errors }}</div>
-          <div><label>{{ form.object_city.label }}</label>{{ form.object_city }}{{ form.object_city.errors }}</div>
-          <div><label>{{ form.object_country.label }}</label>{{ form.object_country }}{{ form.object_country.errors }}</div>
+          <div><label for="{{ form.object_name.id_for_label }}">{{ form.object_name.label }}</label>{{ form.object_name }}{{ form.object_name.errors }}</div>
+          <div><label for="{{ form.object_street.id_for_label }}">{{ form.object_street.label }}</label>{{ form.object_street }}{{ form.object_street.errors }}</div>
+          <div><label for="{{ form.object_postcode.id_for_label }}">{{ form.object_postcode.label }}</label>{{ form.object_postcode }}{{ form.object_postcode.errors }}</div>
+          <div><label for="{{ form.object_city.id_for_label }}">{{ form.object_city.label }}</label>{{ form.object_city }}{{ form.object_city.errors }}</div>
+          <div><label for="{{ form.object_country.id_for_label }}">{{ form.object_country.label }}</label>{{ form.object_country }}{{ form.object_country.errors }}</div>
         </div>
       </div>
     </section>
@@ -90,12 +91,12 @@
       </div>
       <div class="form-card">
         <div class="work-grid compact-form">
-          <div><label>{{ form.issue_date.label }}</label>{{ form.issue_date }}{{ form.issue_date.errors }}</div>
+          <div><label for="{{ form.issue_date.id_for_label }}">{{ form.issue_date.label }}</label>{{ form.issue_date }}{{ form.issue_date.errors }}</div>
           <div>
-            <label>{{ form.valid_days.label }}</label>{{ form.valid_days }}{{ form.valid_days.errors }}
+            <label for="{{ form.valid_days.id_for_label }}">{{ form.valid_days.label }}</label>{{ form.valid_days }}{{ form.valid_days.errors }}
             <div class="due-preview hidden" id="valid-preview">Gültig bis: <strong id="valid-until-val">—</strong></div>
           </div>
-          <div><label>{{ form.vat_rate.label }}</label>{{ form.vat_rate }}{{ form.vat_rate.errors }}</div>
+          <div><label for="{{ form.vat_rate.id_for_label }}">{{ form.vat_rate.label }}</label>{{ form.vat_rate }}{{ form.vat_rate.errors }}</div>
         </div>
       </div>
     </section>
@@ -142,20 +143,20 @@
           <tbody class="position-form{% if f.long_text.value or f.article_no.value or f.long_text.errors or f.article_no.errors %} has-desc{% endif %}">
             <tr class="pos-main-row">
               <td class="pos-no-cell">{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}<span class="pos-no">{{ forloop.counter }}</span></td>
-              <td class="pos-cell-desc">{{ f.description }}{{ f.description.errors }}</td>
-              <td class="pos-cell-qty">{{ f.quantity }}{{ f.quantity.errors }}</td>
-              <td class="pos-cell-unit">{{ f.unit }}{{ f.unit.errors }}</td>
-              <td class="pos-cell-price">{{ f.unit_price }}{{ f.unit_price.errors }}</td>
+              <td class="pos-cell-desc"><label class="sr-only" for="{{ f.description.id_for_label }}">Bezeichnung</label>{{ f.description }}{{ f.description.errors }}</td>
+              <td class="pos-cell-qty"><label class="sr-only" for="{{ f.quantity.id_for_label }}">Menge</label>{{ f.quantity }}{{ f.quantity.errors }}</td>
+              <td class="pos-cell-unit"><label class="sr-only" for="{{ f.unit.id_for_label }}">Einheit</label>{{ f.unit }}{{ f.unit.errors }}</td>
+              <td class="pos-cell-price"><label class="sr-only" for="{{ f.unit_price.id_for_label }}">Einzelpreis netto</label>{{ f.unit_price }}{{ f.unit_price.errors }}</td>
               <td class="pos-line-total"><span class="pos-line-total-val">—</span></td>
-              <td class="pos-cell-del">{{ f.DELETE }}</td>
+              <td class="pos-cell-del"><label class="sr-only" for="{{ f.DELETE.id_for_label }}">Position entfernen</label>{{ f.DELETE }}</td>
             </tr>
             <tr class="pos-desc-row">
               <td></td>
               <td colspan="5">
                 <button type="button" class="pos-desc-toggle">+ Beschreibung</button>
                 <div class="pos-desc-body">
-                  <div class="pos-desc-field"><label>Leistungsbeschreibung</label>{{ f.long_text }}{{ f.long_text.errors }}</div>
-                  <div class="pos-extra-field"><label>Artikelnr.</label>{{ f.article_no }}{{ f.article_no.errors }}</div>
+                  <div class="pos-desc-field"><label for="{{ f.long_text.id_for_label }}">Leistungsbeschreibung</label>{{ f.long_text }}{{ f.long_text.errors }}</div>
+                  <div class="pos-extra-field"><label for="{{ f.article_no.id_for_label }}">Artikelnr.</label>{{ f.article_no }}{{ f.article_no.errors }}</div>
                 </div>
               </td>
               <td></td>
@@ -166,7 +167,7 @@
         </div>
         <!-- „+ Position hinzufügen" steht unter der jeweils letzten Position -->
         <div class="add-position-row"><button class="btn small" type="button" id="add-position">+ Position hinzufügen</button></div>
-        <template id="empty-form-template"><tbody class="position-form"><tr class="pos-main-row"><td class="pos-no-cell">{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}<span class="pos-no">__num__</span></td><td class="pos-cell-desc">{{ formset.empty_form.description }}</td><td class="pos-cell-qty">{{ formset.empty_form.quantity }}</td><td class="pos-cell-unit">{{ formset.empty_form.unit }}</td><td class="pos-cell-price">{{ formset.empty_form.unit_price }}</td><td class="pos-line-total"><span class="pos-line-total-val">—</span></td><td class="pos-cell-del">{{ formset.empty_form.DELETE }}</td></tr><tr class="pos-desc-row"><td></td><td colspan="5"><button type="button" class="pos-desc-toggle">+ Beschreibung</button><div class="pos-desc-body"><div class="pos-desc-field"><label>Leistungsbeschreibung</label>{{ formset.empty_form.long_text }}</div><div class="pos-extra-field"><label>Artikelnr.</label>{{ formset.empty_form.article_no }}</div></div></td><td></td></tr></tbody></template>
+        <template id="empty-form-template"><tbody class="position-form"><tr class="pos-main-row"><td class="pos-no-cell">{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}<span class="pos-no">__num__</span></td><td class="pos-cell-desc"><label class="sr-only" for="{{ formset.empty_form.description.id_for_label }}">Bezeichnung</label>{{ formset.empty_form.description }}</td><td class="pos-cell-qty"><label class="sr-only" for="{{ formset.empty_form.quantity.id_for_label }}">Menge</label>{{ formset.empty_form.quantity }}</td><td class="pos-cell-unit"><label class="sr-only" for="{{ formset.empty_form.unit.id_for_label }}">Einheit</label>{{ formset.empty_form.unit }}</td><td class="pos-cell-price"><label class="sr-only" for="{{ formset.empty_form.unit_price.id_for_label }}">Einzelpreis netto</label>{{ formset.empty_form.unit_price }}</td><td class="pos-line-total"><span class="pos-line-total-val">—</span></td><td class="pos-cell-del"><label class="sr-only" for="{{ formset.empty_form.DELETE.id_for_label }}">Position entfernen</label>{{ formset.empty_form.DELETE }}</td></tr><tr class="pos-desc-row"><td></td><td colspan="5"><button type="button" class="pos-desc-toggle">+ Beschreibung</button><div class="pos-desc-body"><div class="pos-desc-field"><label for="{{ formset.empty_form.long_text.id_for_label }}">Leistungsbeschreibung</label>{{ formset.empty_form.long_text }}</div><div class="pos-extra-field"><label for="{{ formset.empty_form.article_no.id_for_label }}">Artikelnr.</label>{{ formset.empty_form.article_no }}</div></div></td><td></td></tr></tbody></template>
 
         <div class="live-summary" id="live-summary">
           <div class="sum-line"><span class="sum-label">Nettobetrag</span><span class="sum-val" id="calc-net">0,00 €</span></div>

@@ -4,7 +4,7 @@
 <div class="topbar">
   <div>
     <div class="eyebrow">System · Sicherheit</div>
-    <div class="h1">Sicherheitsstatus</div>
+    <h1 class="h1">Sicherheitsstatus</h1>
     <div class="sub">Kompakte Kontrollseite für Produktivbetrieb, Backups und spätere Bankanbindung.</div>
   </div>
   <div class="toolbar"><a class="btn" href="{% url 'sedo:audit_log' %}">Audit-Log öffnen</a></div>
@@ -33,8 +33,8 @@
 <div class="card">
   <div class="section-head"><h2>Prüfstatus</h2></div>
   <div class="table-wrap">
-    <table class="table table-modern">
-      <tr><th>Status</th><th>Prüfung</th><th>Wert</th><th>Hinweis</th></tr>
+    <div class="responsive-table" tabindex="0" role="region" aria-label="Sicherheitsstatus – Tabelle"><table class="table responsive-records table-modern">
+      <tr><th scope="col">Status</th><th scope="col">Prüfung</th><th scope="col">Wert</th><th scope="col">Hinweis</th></tr>
       {% for c in checks %}
       <tr>
         <td>{% if c.ok %}<span class="badge success">OK</span>{% else %}<span class="badge danger">Prüfen</span>{% endif %}</td>
@@ -43,19 +43,19 @@
         <td class="muted">{{ c.hint }}</td>
       </tr>
       {% endfor %}
-    </table>
+    </table></div>
   </div>
 </div>
 
 <div class="card">
   <div class="section-head"><div><h2>Letzte Audit-Ereignisse</h2><p class="hint">Auszug der letzten sicherheitsrelevanten Aktionen.</p></div><a class="btn" href="{% url 'sedo:audit_log' %}">Alle anzeigen</a></div>
   <div class="table-wrap">
-    <table class="table table-modern">
-      <tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Objekt</th><th>Hinweis</th></tr>
+    <div class="responsive-table" tabindex="0" role="region" aria-label="Sicherheitsstatus – Tabelle"><table class="table responsive-records table-modern">
+      <tr><th scope="col">Zeit</th><th scope="col">Benutzer</th><th scope="col">Aktion</th><th scope="col">Objekt</th><th scope="col">Hinweis</th></tr>
       {% for log in recent_logs %}
       <tr><td>{{ log.created_at|date:'d.m.Y H:i' }}</td><td>{{ log.user|default:'System' }}</td><td>{{ log.get_action_display }}</td><td>{{ log.object_repr|default:log.object_type }}</td><td>{{ log.message }}</td></tr>
       {% empty %}<tr><td colspan="5"><div class="empty-state">Noch keine Audit-Ereignisse vorhanden.</div></td></tr>{% endfor %}
-    </table>
+    </table></div>
   </div>
 </div>
 
