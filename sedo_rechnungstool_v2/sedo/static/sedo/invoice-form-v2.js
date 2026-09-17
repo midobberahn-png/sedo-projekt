@@ -58,6 +58,7 @@
 
   function showSelection(kind, data) {
     const fields = kind === 'customer' ? customerFields : objectFields;
+    document.getElementById('section-' + kind).classList.toggle('section-autofilled', !!data);
     // Fehler bleiben sichtbar und bearbeitbar; gebundene Werte nicht überschreiben.
     const hasErrors = !!fields.querySelector('.errorlist');
     fields.querySelectorAll('input, select').forEach(el => {
@@ -124,7 +125,6 @@
       customerObjectCache = data.objects || [];
       updateObjectDropdown(customerObjectCache);
       showSelection('customer', data);
-      document.getElementById('section-customer').classList.add('section-autofilled');
       setText('customer-load-status', 'Gespeicherte Kundendaten übernommen.');
       updateDueDate();
     } catch (error) {
@@ -150,7 +150,6 @@
     if (!selectedObject) { clearObject(); return; }
     objectNames.forEach(name => fill('id_object_' + name, selectedObject[name]));
     showSelection('object', selectedObject);
-    document.getElementById('section-object').classList.add('section-autofilled');
   });
   document.getElementById('clear-object').addEventListener('click', () => {
     clearObject();
