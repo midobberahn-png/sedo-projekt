@@ -70,7 +70,9 @@ def main():
             request = RequestFactory().get('/rechnungen/', {'status': 'entwurf'})
             with patch('sedo.views.render', side_effect=lambda r, t, c: c):
                 context = invoice_list.__wrapped__(request)
-            status_sql, status_params = context['invoices'].query.sql_with_params()
+            # UX-06 paginiert die Anzeige. Weiterhin den gesamten echten
+            # Filter vergleichen, nicht die erste (hier noch leere) Seite.
+            status_sql, status_params = context['page_obj'].paginator.object_list.query.sql_with_params()
             queries = {'mahnkandidaten_select': (dunning_sql, ()),
                        'rechnungslisten_statusfilter': (status_sql, status_params)}
 

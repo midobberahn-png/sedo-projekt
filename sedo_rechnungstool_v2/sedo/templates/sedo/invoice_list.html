@@ -31,6 +31,7 @@
         <label for="archive-year">Rechnungsjahr</label>
         <select id="archive-year" name="year">
           <option value="">Alle Jahre</option>
+          {% if year_without_results %}<option value="{{ year }}" selected>{{ year }} (keine Belege)</option>{% endif %}
           {% for y in available_years %}<option value="{{ y|unlocalize }}" {% if year == y|stringformat:"s" %}selected{% endif %}>{{ y|unlocalize }}</option>{% endfor %}
         </select>
       </div>

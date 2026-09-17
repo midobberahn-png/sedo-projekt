@@ -53,7 +53,9 @@ class InvoiceListV2Tests(TestCase):
         response = self.client.get(self.url, {'year': '2026', 'month': '09', 'view': 'draft'})
         self.assertEqual(list(response.context['invoices']), [inv])
         self.assertEqual(response.context['month'], '9')
-        self.assertEqual(self.client.get(self.url, {'year': '2025'}).context['page_obj'].paginator.count, 0)
+        empty = self.client.get(self.url, {'year': '2025'})
+        self.assertEqual(empty.context['page_obj'].paginator.count, 0)
+        self.assertContains(empty, '<option value="2025" selected>2025 (keine Belege)</option>', html=True)
 
     def test_seiten_sind_vollstaendig_stabil_und_summe_gilt_fuer_alle_treffer(self):
         for n in range(28):

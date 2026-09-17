@@ -818,7 +818,7 @@ def invoice_list(request):
                     else invoices.filter(status=status_f, lifecycle='issued'))
 
     # Verfügbare Jahre für das Filter-Dropdown
-    available_years = (
+    available_years = list(
         Invoice.objects.annotate(y=ExtractYear('issue_date'))
         .values_list('y', flat=True).distinct().order_by('-y')
     )
@@ -854,6 +854,7 @@ def invoice_list(request):
         'month': month_s,
         'status': status_f,
         'available_years': available_years,
+        'year_without_results': bool(year_s and int(year_s) not in available_years),
         'gross_total': gross_total,
     })
 
