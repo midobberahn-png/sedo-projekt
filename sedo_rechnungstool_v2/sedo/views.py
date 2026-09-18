@@ -22,8 +22,8 @@ from django.utils import timezone
 from django.http import FileResponse, JsonResponse
 from django.views.decorators.http import require_POST
 
-from .forms import CustomerForm, CustomerObjectForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm
-from .models import Customer, CustomerObject, Invoice, InvoiceItem, Offer, Payment, CashbookEntry, AareonMapping, RecurringInvoiceTemplate, RecurringInvoiceItem, AppSetting, AuditLog, ServiceCatalogItem
+from .forms import CustomerForm, CustomerObjectForm, CustomerNoteForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm
+from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, Payment, CashbookEntry, AareonMapping, RecurringInvoiceTemplate, RecurringInvoiceItem, AppSetting, AuditLog, ServiceCatalogItem
 from .audit import AUDIT_ERROR_AT_KEY, AUDIT_ERROR_KEY, AuditWriteError, write_audit
 from .services import (
     generate_invoice_files, next_number, save_with_unique_number, create_numbered_invoice,
@@ -48,6 +48,8 @@ from .services.invoice_archive import lese_archivdatei, pruefe_archiv
 from .services.workflow_errors import BelegArchivFehler
 from .services.mail import invoice_email_subject_body
 from .services.readiness import MANUAL_CHECKS, is_local_only_mode, readiness_report, transport_security_checks
+from .services.customer_timeline import KINDS as TIMELINE_KINDS, build_customer_timeline
+from .services.reports import build_reports
 from .services.recurring_preview import build_recurring_preview
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
@@ -746,7 +748,7 @@ def customer_detail(request, pk):
     objects = customer.customer_objects.order_by('name', 'pk')
     open_invoices = offene_rechnungen(invoices)
     overdue = open_invoices.filter(due_date__lt=timezone.localdate())
-    sections = [('overview', 'Übersicht'), ('invoices', 'Rechnungen'),
+    sections = [('overview', 'Übersicht'), ('timeline', 'Chronik'), ('invoices', 'Rechnungen'),
                 ('offers', 'Angebote'), ('objects', 'Objekte'), ('details', 'Stammdaten')]
     section = request.GET.get('section', 'overview')
     if section not in dict(sections):
@@ -756,6 +758,10 @@ def customer_detail(request, pk):
     if invoice_filter not in ('all', 'draft', 'open', 'overdue'):
         invoice_filter = 'all'
     page = None
+    timeline_kind = request.GET.get('kind', 'all') if section == 'timeline' else 'all'
+    if timeline_kind not in dict(TIMELINE_KINDS):
+        timeline_kind = 'all'
+    timeline_entries = []
     if section in ('invoices', 'offers', 'objects'):
         records = {'invoices': invoices, 'offers': offers, 'objects': objects}[section]
         if section == 'invoices':
@@ -769,6 +775,11 @@ def customer_detail(request, pk):
             else:
                 records = records.filter(Q(number__icontains=q) | Q(obj__name__icontains=q))
         page = Paginator(records, 20).get_page(request.GET.get('page'))
+    elif section == 'timeline':
+        page = Paginator(build_customer_timeline(customer, timeline_kind), 30).get_page(request.GET.get('page'))
+        timeline_entries = page.object_list
+    elif section == 'overview':
+        timeline_entries = build_customer_timeline(customer)[:5]
     # Nur die gewählte Liste laden; Übersicht begrenzen, Kennzahlen bleiben vollständig.
     params = request.GET.copy()
     params.clear()
@@ -777,6 +788,8 @@ def customer_detail(request, pk):
         params['q'] = q
     if invoice_filter != 'all':
         params['filter'] = invoice_filter
+    if timeline_kind != 'all':
+        params['kind'] = timeline_kind
     return render(request, 'sedo/customer_detail.html', {
         'customer': customer,
         'section': section,
@@ -784,6 +797,10 @@ def customer_detail(request, pk):
         'customer_tabs': [{'key': key, 'label': label} for key, label in sections],
         'q': q,
         'invoice_filter': invoice_filter,
+        'timeline_kind': timeline_kind,
+        'timeline_kinds': TIMELINE_KINDS,
+        'timeline_entries': timeline_entries,
+        'note_form': CustomerNoteForm(),
         'page_obj': page,
         'page_query': params.urlencode(),
         'invoice_count': invoices.count(),
@@ -801,6 +818,40 @@ def customer_detail(request, pk):
         'customer_offers': page.object_list if section == 'offers' else offers[:3] if section == 'overview' else [],
         'customer_objects': page.object_list if section == 'objects' else [],
     })
+
+
+@login_required
+@require_POST
+def customer_note_create(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+    form = CustomerNoteForm(request.POST)
+    if form.is_valid():
+        note = form.save(commit=False)
+        note.customer = customer
+        note.author = request.user
+        note.save()
+        write_audit(request, 'create', note, f'Notiz in Kundenakte {customer.name} angelegt')
+        messages.success(request, 'Notiz zur Kunden-Chronik hinzugefügt.')
+    else:
+        messages.error(request, 'Die Notiz ist leer oder zu lang.')
+    return redirect(f"{reverse('sedo:customer_detail', args=[customer.pk])}?section=timeline")
+
+
+@login_required
+def reports(request):
+    current_year = timezone.localdate().year
+    try:
+        year = int(request.GET.get('year', current_year))
+    except (TypeError, ValueError):
+        year = current_year
+    if year < 2000 or year > current_year:
+        year = current_year
+    context = build_reports(year)
+    first_invoice = Invoice.objects.order_by('issue_date').values_list('issue_date', flat=True).first()
+    first_offer = Offer.objects.order_by('issue_date').values_list('issue_date', flat=True).first()
+    first_year = min(value.year for value in (first_invoice, first_offer) if value) if (first_invoice or first_offer) else current_year
+    context['year_options'] = range(current_year, max(1999, first_year - 1), -1)
+    return render(request, 'sedo/reports.html', context)
 
 
 @login_required

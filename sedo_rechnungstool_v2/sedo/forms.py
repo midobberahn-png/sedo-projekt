@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django import forms
 from django.forms import inlineformset_factory
-from .models import Customer, CustomerObject, Invoice, InvoiceItem, Offer, OfferItem, Payment, CashbookEntry, RecurringInvoiceTemplate, RecurringInvoiceItem, ServiceCatalogItem
+from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, OfferItem, Payment, CashbookEntry, RecurringInvoiceTemplate, RecurringInvoiceItem, ServiceCatalogItem
 
 CUSTOMER_WIDGET_CLASS = {'class': 'form-control form-control-sm'}
 SELECT_WIDGET_CLASS = {'class': 'form-select form-select-sm'}
@@ -64,6 +64,19 @@ class InvoiceForm(forms.ModelForm):
             'period_end': forms.DateInput(attrs={'type':'date','class':'form-control form-control-sm'}, format='%Y-%m-%d'),
             'vat_rate': forms.NumberInput(attrs={'class':'form-control form-control-sm','step':'0.01'}),
             'note': forms.Textarea(attrs={'class':'form-control form-control-sm','rows':3}),
+        }
+
+
+class CustomerNoteForm(forms.ModelForm):
+    class Meta:
+        model = CustomerNote
+        fields = ['text']
+        widgets = {
+            'text': forms.Textarea(attrs={
+                'class': 'form-control', 'rows': 3,
+                'placeholder': 'Gespräch, Vereinbarung oder nächsten Schritt festhalten …',
+                'maxlength': 4000,
+            }),
         }
 
 class InvoiceItemForm(forms.ModelForm):
