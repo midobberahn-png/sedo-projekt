@@ -140,6 +140,8 @@ def main() -> int:
         return _self_check()
 
     app, first_password = _bootstrap()
+    from sedo.services.mail_worker import start_mail_worker
+    start_mail_worker()
     port = _free_port()
     _serve_in_thread(app, port)
     if not _wait_until_up(port):

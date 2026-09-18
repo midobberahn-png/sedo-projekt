@@ -1,0 +1,26 @@
+{% extends 'sedo/base.html' %}{% load static l10n %}
+{% block title %}E-Mail · SEDO{% endblock %}
+{% block content %}
+{% localize off %}
+<link rel="stylesheet" href="{% static 'sedo/mail.css' %}?v=1">
+<header class="mail-heading"><div><div class="mail-eyebrow">KORRESPONDENZ</div><h1>Dein Postfach.</h1><p>Anfragen lesen. Antworten schreiben. Direkt weiterarbeiten.</p></div><div class="mail-heading-actions"><a class="btn primary" href="{% url 'sedo:mail_new' %}">Neue E-Mail</a>{% if request.user.is_staff %}<a class="btn" href="{% url 'sedo:mail_settings' %}">Postfächer verwalten</a>{% endif %}</div></header>
+<div class="mail-workspace">
+<aside class="mail-folders" aria-label="Postfächer und Ordner">
+  <a class="mail-folder-link {% if is_inbox and not folder_id and not account_id %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}">Alle Posteingänge</a>
+  <a class="mail-folder-link" href="{% url 'sedo:mail_drafts' %}">Meine Entwürfe &amp; Versand <span>{{ draft_count }}</span></a>
+  {% for account in accounts %}
+  <section class="mail-account"><h2><a href="{% url 'sedo:mail_inbox' %}?account={{ account.pk }}">{{ account.email }}</a></h2>
+    <div class="mail-sync-state" data-account="{{ account.pk }}">{% if account.last_sync %}Abgerufen {{ account.last_sync|date:'d.m. H:i' }}{% else %}Noch nicht abgerufen{% endif %}</div>
+    {% if not account.enabled %}<p class="hint">Automatischer Abruf pausiert</p>{% endif %}
+    {% if account.last_error %}<p class="mail-notice">{{ account.last_error }}</p>{% endif %}
+    <form method="post" action="{% url 'sedo:mail_account_action' account.pk %}">{% csrf_token %}<button class="btn small" name="action" value="sync">Jetzt abrufen</button>{% if request.user.is_staff %} <a class="mail-small-link" href="{% url 'sedo:mail_account' account.pk %}">Einstellungen</a>{% endif %}</form>
+    {% for folder in folders %}{% if folder.account_id == account.pk %}<a class="mail-folder-link {% if folder.pk == folder_id %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}?folder={{ folder.pk }}&amp;account={{ account.pk }}"><span>{{ folder.name }}</span>{% if folder.unread %}<b>{{ folder.unread }}</b>{% endif %}</a>{% endif %}{% endfor %}
+  </section>
+  {% empty %}<div class="mail-setup-hint"><p>Hier finden deine beiden Firmenpostfächer ihren Platz.</p>{% if request.user.is_staff %}<a href="{% url 'sedo:mail_settings' %}?email=info%40sedo-magdeburg.de">info@sedo-magdeburg.de einrichten</a><br><a href="{% url 'sedo:mail_settings' %}?email=rechnung%40sedo-magdeburg.de">rechnung@sedo-magdeburg.de einrichten</a>{% else %}<p>Bitte die Postfächer mit dem Administrationskonto einrichten.</p>{% endif %}</div>{% endfor %}
+  <p class="mail-local-note">Firmenpostfächer sind für angemeldete SEDO-Nutzer sichtbar. Eigene Entwürfe bleiben beim Verfasser.</p>
+</aside>
+<section class="mail-main">{% block mail_content %}{% endblock %}</section>
+</div>
+<script src="{% static 'sedo/mail.js' %}" defer></script>
+{% endlocalize %}
+{% endblock %}

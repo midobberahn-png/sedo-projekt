@@ -1561,6 +1561,12 @@ def offer_list(request):
 
 @login_required
 def offer_create(request):
+    from .models import MailMessage
+    from email.utils import parseaddr
+    source_id = request.POST.get('source_mail') if request.method == 'POST' else request.GET.get('source_mail')
+    source_mail = get_object_or_404(MailMessage.objects.defer('raw'), pk=source_id) if source_id and str(source_id).isdigit() else None
+    if source_id and source_mail is None:
+        return HttpResponse('Ungültiger E-Mail-Bezug.', status=400)
     offer = Offer(number=next_number('AG'), issue_date=timezone.localdate(), vat_rate=Decimal('19.00'))
     if request.method == 'POST':
         form = OfferForm(request.POST, instance=offer)
@@ -1570,12 +1576,22 @@ def offer_create(request):
             if action == 'preview':
                 preview = _preview_from_forms(form, formset, title='Entwurfsansicht Angebot')
                 return render(request, 'sedo/invoice_preview.html', {'preview': preview, 'is_offer': True})
+            if source_mail:
+                from .services.mail_storage import pin_message
+                from .services.mail_secrets import MailError
+                try:
+                    pin_message(source_mail)
+                except MailError as exc:
+                    form.add_error(None, str(exc))
+                    return render(request, 'sedo/offer_form.html', {'form': form, 'formset': formset,
+                        'source_mail': source_mail, 'stt_available': stt_status()['available']})
             customer = _customer_from_invoice_form(form)
             if not customer:
                 form.add_error('name', 'Bitte einen gespeicherten Kunden auswählen oder die Kopfdaten mit Name/Firma ausfüllen.')
             else:
                 obj = _object_from_invoice_form(form, customer)
                 off = form.save(commit=False)
+                off.source_mail = source_mail
                 off.customer = customer
                 off.obj = obj
                 off.valid_until = off.issue_date + timedelta(days=form.cleaned_data.get('valid_days') or DEFAULT_PAYMENT_DAYS)
@@ -1593,7 +1609,18 @@ def offer_create(request):
                 messages.success(request, f'Angebot {off.number} gespeichert.')
                 return redirect('sedo:offer_detail', off.pk)
     else:
-        form = OfferForm(instance=offer, initial={'valid_days':14, 'issue_date': timezone.localdate(), 'vat_rate': Decimal('19.00')})
+        initial = {'valid_days':14, 'issue_date': timezone.localdate(), 'vat_rate': Decimal('19.00')}
+        if source_mail:
+            matches = Customer.objects.filter(email__iexact=source_mail.sender_email) if source_mail.sender_email else Customer.objects.none()
+            customer = source_mail.customer or (matches.first() if matches.count() == 1 else None)
+            initial.update({'email': source_mail.sender_email, 'name': parseaddr(source_mail.sender)[0]})
+            if customer:
+                initial['customer'] = customer
+                initial.update({field: getattr(customer, field) for field in (
+                    'salutation', 'name', 'name2', 'customer_no', 'customer_type',
+                    'contact_person', 'phone', 'email', 'street', 'postcode', 'city', 'country',
+                )})
+        form = OfferForm(instance=offer, initial=initial)
         formset = OfferItemFormSet(instance=offer)
     return render(request, 'sedo/offer_form.html', {
         'form': form,
@@ -1601,6 +1628,7 @@ def offer_create(request):
         # Lokales Whisper verfügbar? Steuert, ob das Diktat über den Server
         # transkribiert wird oder die Browser-Spracherkennung nutzt.
         'stt_available': stt_status()['available'],
+        'source_mail': source_mail,
     })
 
 

@@ -1,6 +1,7 @@
-{% extends 'sedo/base.html' %}{% load static %}{% block content %}
+{% extends 'sedo/base.html' %}{% load static l10n %}{% block content %}
 <link rel="stylesheet" href="{% static 'sedo/invoice-wizard-v2.css' %}?v=1">
 <form method="post" id="offer-form">{% csrf_token %}
+{% if source_mail %}<input type="hidden" name="source_mail" value="{{ source_mail.pk|unlocalize }}"><div class="card"><strong>Angebot aus einer E-Mail</strong><p><a href="{% url 'sedo:mail_message' source_mail.pk %}">{{ source_mail.subject }}</a> · {{ source_mail.sender }}</p><p class="hint">Kundenvorschlag und Leistungsumfang bitte prüfen. Die Nachricht bleibt mit dem gespeicherten Angebot verknüpft.</p><details><summary>Anfrage nachlesen</summary><p style="white-space:pre-wrap">{{ source_mail.body|truncatechars:6000 }}</p></details></div>{% endif %}
 <div class="work-dialog invoice-flow">
   <div class="work-dialog-header">
     <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg></div><div><h1>Neues Angebot</h1><div class="sub">In sechs Schritten zum fertigen Angebot – die KI übernimmt die Positionen.</div></div></div>
@@ -322,6 +323,11 @@
         });
     });
   }
+
+  {% if source_mail and not form.is_bound %}
+  // A suggested customer must load the same object choices as a manual selection.
+  if (customerSel && customerSel.value) customerSel.dispatchEvent(new Event('change'));
+  {% endif %}
 
   if (clearBtn && customerSel) {
     clearBtn.addEventListener('click', function () {

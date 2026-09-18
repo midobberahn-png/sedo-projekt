@@ -34,6 +34,23 @@ def check() -> int:
     from django.db.migrations.executor import MigrationExecutor
     executor = MigrationExecutor(connection)
     migrated = not executor.migration_plan(executor.loader.graph.leaf_nodes())
+    # Prove the frozen package can encrypt credentials and load its CA bundle.
+    # No real account and no connection to an external mailserver are involved.
+    import ssl
+    from sedo.models import MailAccount
+    from sedo.services.mail_secrets import encrypt_password, decrypt_password
+    from sedo.services.mail_imap import tls_context
+    probe = MailAccount(email='build@example.invalid', username='build@example.invalid')
+    probe.password_encrypted = encrypt_password(probe, 'isolierter-postfach-test')
+    tls = tls_context()
+    mail_available = (decrypt_password(probe) == 'isolierter-postfach-test'
+                      and tls.check_hostname and tls.verify_mode == ssl.CERT_REQUIRED
+                      and bool(tls.get_ca_certs()))
+    try:
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/mail.css', timeout=10) as response:
+            mail_available = mail_available and response.status == 200 and bool(response.read())
+    except OSError:
+        mail_available = False
     # Die ausgelieferte App muss die Prüfschemata tatsächlich öffnen können.
     from sedo.services.zugferd_validation import _official_rules, _profile_schema
     validator = sum(len(assertions) for _, assertions in _official_rules()) == 806
@@ -50,10 +67,11 @@ def check() -> int:
         hardlinks = linked.samefile(original)
     except OSError:
         pass
-    result = {'ok': bool(http and assets and whisper and migrated and hardlinks and validator and restoration),
+    result = {'ok': bool(http and assets and whisper and migrated and hardlinks and validator and restoration and mail_available),
               'http_login': http, 'static_assets': assets, 'whisper_available': whisper,
               'migrations_complete': migrated, 'hardlinks': hardlinks,
               'invoice_validator_available': validator, 'restore_simulation': restoration,
+              'mail_available': bool(mail_available),
               'frozen': bool(getattr(sys, 'frozen', False)),
               'python': '.'.join(map(str, sys.version_info[:3]))}
     report = os.environ.get('SEDO_CHECK_REPORT')

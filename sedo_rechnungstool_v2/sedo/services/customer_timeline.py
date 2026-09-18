@@ -4,7 +4,7 @@ from django.db.models import Prefetch, Q
 from django.urls import reverse
 from django.utils import timezone
 
-from sedo.models import AuditLog, CustomerNote, DunningDocument, Invoice, Offer, Payment
+from sedo.models import AuditLog, CustomerNote, DunningDocument, Invoice, Offer, Payment, MailMessage
 
 
 KINDS = (
@@ -61,15 +61,15 @@ def build_customer_timeline(customer, kind='all'):
                 amount=offer.gross_total,
             ))
     if include('payment') and invoice_by_id:
-        payments = Payment.objects.filter(
-            invoice_id__in=invoice_by_id, invoice__deleted_at__isnull=True,
-        ).select_related('invoice').only('booking_date', 'amount', 'purpose', 'invoice__id', 'invoice__number')
-        for payment in payments:
-            entries.append(_entry(
-                'payment', _business_time(payment.booking_date),
-                f'Zahlung zu {payment.invoice.number}', payment.purpose,
-                link=reverse('sedo:invoice_detail', args=[payment.invoice_id]), amount=payment.amount,
-            ))
+        # The state labels above already need these payments. Reuse that prefetch
+        # rather than fetching all the same rows a second time for the timeline.
+        for invoice in invoices:
+            for payment in invoice._timeline_active_payments:
+                entries.append(_entry(
+                    'payment', _business_time(payment.booking_date),
+                    f'Zahlung zu {invoice.number}', payment.purpose,
+                    link=reverse('sedo:invoice_detail', args=[invoice.pk]), amount=payment.amount,
+                ))
     if include('dunning') and invoice_by_id:
         documents = DunningDocument.objects.filter(invoice_id__in=invoice_by_id).select_related('invoice')
         for document in documents:
@@ -86,6 +86,9 @@ def build_customer_timeline(customer, kind='all'):
                 actor=note.author.get_username() if note.author_id else 'System', show_time=True,
             ))
     if include('email'):
+        for mail in MailMessage.objects.filter(customer=customer).only('id', 'subject', 'sender', 'sent_at'):
+            entries.append(_entry('email', mail.sent_at, mail.subject or 'E-Mail', mail.sender,
+                                  link=reverse('sedo:mail_message', args=[mail.pk]), show_time=True))
         object_filter = Q(object_type='Customer', object_id=str(customer.pk))
         if invoice_by_id:
             object_filter |= Q(object_type='Invoice', object_id__in=[str(pk) for pk in invoice_by_id])

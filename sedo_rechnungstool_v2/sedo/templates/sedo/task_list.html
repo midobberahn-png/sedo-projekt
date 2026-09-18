@@ -6,6 +6,7 @@
   <div class="card">
     <div class="section-head"><h2>{% if edit_task %}Aufgabe bearbeiten{% else %}Neue Aufgabe{% endif %}</h2></div>
     <form method="post" class="compact-form">{% csrf_token %}
+      {% if edit_task.source_mail_id %}<p>Quelle: <a href="{% url 'sedo:mail_message' edit_task.source_mail_id %}">Zugehörige E-Mail öffnen</a></p>{% endif %}
       {{ form.non_field_errors }}
       <label>Aufgabe{{ form.title }}</label>
       <div class="grid two"><label>Fällig am{{ form.due_date }}</label><label>Priorität{{ form.priority }}</label></div>

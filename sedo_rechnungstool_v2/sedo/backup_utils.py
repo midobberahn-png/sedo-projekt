@@ -338,6 +338,15 @@ def _sanitized_db_copy(db_path: Path) -> Path:
                         'entfernen. Die Sicherung wurde abgebrochen.'
                     )
 
+            if 'sedo_mailaccount' in tabellen:
+                # The encryption key is local and deliberately not included in a backup.
+                # Remove ciphertext too; restored accounts require explicit reactivation.
+                con.execute("UPDATE sedo_mailaccount SET password_encrypted='', enabled=0, lease_token='', lease_until=NULL")
+                if con.execute("SELECT COUNT(*) FROM sedo_mailaccount WHERE password_encrypted != ''").fetchone()[0]:
+                    raise BackupError('Postfach-Zugangsdaten konnten nicht aus der Sicherung entfernt werden.')
+            if 'sedo_mailfolder' in tabellen:
+                con.execute('UPDATE sedo_mailfolder SET cached_count=0')
+
             for tabelle in PURGED_BACKUP_TABLES:
                 if tabelle in tabellen:
                     con.execute(f'DELETE FROM {tabelle}')
@@ -381,7 +390,7 @@ def backup_dir() -> Path:
     # gelandet. Der Name der Datenbank verrät den Testbetrieb zuverlässiger.
     _db = str(settings.DATABASES.get('default', {}).get('NAME', ''))
     if 'memorydb' in _db or Path(_db).name.startswith('test_'):
-        path = Path(tempfile.gettempdir()) / 'sedo_test_backups'
+        path = Path(tempfile.gettempdir()) / f'sedo_test_backups_{os.getpid()}'
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -414,6 +423,9 @@ def create_backup(reason: str = 'manual') -> Path:
                 f'NICHT im Backup enthalten – auch nicht als Rest-Bytes; die Datenbankkopie wird\n'
                 f'dafür neu aufgebaut. Ebenfalls entfernt: alle aktiven Anmelde-Sitzungen.\n'
                 f'Nach einer Wiederherstellung bitte unter Einstellungen neu eintragen.\n'
+                f'Postfach-Passwörter und der lokale IMAP-Zwischenspeicher sind nicht enthalten.\n'
+                f'Mail-Geschäftsquellen, Antwortentwürfe und Versandbelege sind in der Datenbank gesichert.\n'
+                f'Normale Servernachrichten werden nach erneuter Postfach-Einrichtung nachgeladen.\n'
                 f'Lässt sich die Bereinigung nicht belegen, bricht die Sicherung ab.\n'
             )
             zf.writestr('BACKUP_INFO.txt', info)

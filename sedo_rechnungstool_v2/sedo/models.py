@@ -135,6 +135,7 @@ class CustomerNote(TimeStampedModel):
 
 class WorkTask(TimeStampedModel):
     """Planbare Wiedervorlage mit optional genau einem fachlichen Bezug."""
+    source_mail = models.ForeignKey('MailMessage', null=True, blank=True, on_delete=models.PROTECT, related_name='tasks')
     PRIORITIES = [('normal', 'Normal'), ('high', 'Wichtig')]
     STATUS = [('open', 'Offen'), ('done', 'Erledigt')]
 
@@ -494,6 +495,7 @@ class RecurringInvoiceItem(TimeStampedModel):
 
 
 class Offer(SoftDeleteModel):
+    source_mail = models.ForeignKey('MailMessage', null=True, blank=True, on_delete=models.PROTECT, related_name='offers')
     # Seit v3.22 Soft-Delete wie Rechnungen/Zahlungen (Angebote sind
     # Geschäftsbriefe – GoBD-konsistent nur ausblenden, nie hart löschen).
     # ⚠️ Rückwärtsrelationen (customer.offers …) laufen über all_objects –
@@ -720,3 +722,7 @@ class AuditLog(TimeStampedModel):
     def __str__(self):
         who = self.user.get_username() if self.user_id else 'System'
         return f'{self.created_at:%Y-%m-%d %H:%M} · {who} · {self.get_action_display()} · {self.object_repr or self.object_type}'
+
+
+# Django registriert die Postfachmodelle zusammen mit den Geschäftsmodellen.
+from .mail_models import MailAccount, MailFolder, MailMessage, MailLocation, MailDraft, MailDraftAttachment  # noqa: E402,F401
