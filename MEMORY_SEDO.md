@@ -3,6 +3,19 @@
 > Projektspezifisches Gedächtnis. Aktueller Review-Stand: 10.09.2026, freigegebener Härtungs- und Abnahmeplan. Historische Abschnitte darunter bleiben als Verlauf erhalten.
 
 
+## Gestaltung „Licht & Blau“ (17.09.2026)
+
+- Mirek hat Dashboard-Entwurf C ausgewählt und die Übertragung auf die App freigegeben.
+- Helle Navigation, gedecktes Blau, Apricot-Akzente, sanftere Karten und Anmeldung;
+  Dashboard mit Begrüßungsband und Aufgaben-Icons. Echte Werte und Routen erhalten.
+- Zentrale neue CSS-Schicht einschließlich neutraler Legacy-Tokens. Warn-/Fehler-/
+  Belegzustände behalten ihre Semantik; blauer Fokus auf heller Navigation.
+- Keine Änderungen an Modellen, Views, Fachservices oder PDFs. Dashboard-Test sucht
+  die Arbeitsbereichsklasse als Token statt als exakte Klassenzeichenfolge.
+- Vollständige Regression und native Pakete vor Integration; Nachweise im PR.
+  Anschließende Mac-Aktualisierung mit Sicherung vorgesehen, kein Passwortreset.
+
+
 ## UX-09 – Restmodule, Responsive & Accessibility (17.09.2026)
 
 - Basis UX-08/main `3e357cb1b2c83513e84edf71add55c6cb981b6c2`;

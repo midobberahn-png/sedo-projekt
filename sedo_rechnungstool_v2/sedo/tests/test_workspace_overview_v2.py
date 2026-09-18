@@ -48,7 +48,7 @@ class WorkspaceOverviewV2Tests(TestCase):
         self.assertEqual(response.context['dunning_candidates_count'], 1)
         self.assertContains(response, 'Mahnlauf prüfen')
         self.assertNotContains(response, reverse('sedo:bulk_dunning'))
-        root = html.fromstring(response.content).xpath('//div[@class="work-page"]')[0]
+        root = html.fromstring(response.content).xpath('//div[contains(concat(" ", normalize-space(@class), " "), " work-page ")]')[0]
         self.assertFalse(root.xpath('.//form[@method="post"]'))
         link = root.xpath('.//a[.//h3[text()="Mahnstufe prüfen"]]')[0]
         self.assertEqual(link.get('href'), reverse('sedo:open_items'))
