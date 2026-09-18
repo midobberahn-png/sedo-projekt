@@ -90,7 +90,7 @@
   <div class="section-head">
     <div>
       <h2>KI-Assistent (Claude)</h2>
-      <p class="hint">Diktatfunktion für Angebotspositionen. Die Spracherkennung läuft direkt im Browser (Chrome empfohlen) – an Claude wird ausschließlich der diktierte <b>Text der Leistungen</b> übertragen, niemals Kunden-, Objekt- oder Adressdaten.</p>
+      <p class="hint">Diktatfunktion für Angebotspositionen. Lokales Whisper verarbeitet Audio auf dem SEDO-Rechner; die Browser-Alternative kann Audio an den Browseranbieter senden. An Claude gehen Leistungstexte und Katalogdaten, keine separaten Kundenfelder. Freitext wird nicht automatisch anonymisiert: bitte keine Namen oder Adressen eingeben.</p>
     </div>
     {% if ai_configured %}<span class="badge green">Aktiv</span>{% else %}<span class="badge amber">Nicht konfiguriert</span>{% endif %}
   </div>

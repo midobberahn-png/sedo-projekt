@@ -7,7 +7,7 @@ versiegelten XML-Original. Sie arbeitet offline auf den archivierten Bytes.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from functools import lru_cache
 from pathlib import Path
@@ -49,7 +49,10 @@ def _text(root, xpath):
 def _decimal(root, xpath, label, result):
     value = _text(root, xpath)
     try:
-        return Decimal(value)
+        parsed = Decimal(value)
+        if not parsed.is_finite() or abs(parsed) > Decimal('1e12'):
+            raise ValueError('Zahl außerhalb des zulässigen Bereichs')
+        return parsed
     except (InvalidOperation, ValueError):
         result.errors.append(f'{label} fehlt oder ist keine gültige Zahl.')
         return None
@@ -88,15 +91,21 @@ def _official_rules():
     }
     rules = []
     for rule in schema.xpath('//*[local-name()="rule"]'):
+        # Schematron-Kontexte sind Match-Muster: ein relativer Kontext wie
+        # ram:CountryID gilt auf JEDER Ebene, nicht nur direkt am Dokumentknoten.
+        # Der fest versionierte Regelsatz enthält auch eine Union zweier Muster.
+        expression = ' | '.join(
+            branch.strip() if branch.strip().startswith('/') else '//' + branch.strip()
+            for branch in rule.get('context').split('|'))
         context = elementpath.Selector(
-            rule.get('context'), namespaces=namespaces, parser=elementpath.XPath2Parser)
+            expression, namespaces=namespaces, parser=elementpath.XPath2Parser)
         assertions = []
         for assertion in rule.xpath('./*[local-name()="assert"]'):
             assertions.append((
                 assertion.get('id') or 'EN16931', assertion.get('flag') or 'fatal',
                 ' '.join(''.join(assertion.itertext()).split()),
                 elementpath.Selector(
-                    assertion.get('test'), namespaces=namespaces,
+                    'boolean(' + assertion.get('test') + ')', namespaces=namespaces,
                     parser=elementpath.XPath2Parser),
             ))
         rules.append((context, assertions))
@@ -118,6 +127,25 @@ def _run_official_en16931(document, result):
         result.errors.append(f'Die offizielle EN-16931-Prüfung konnte nicht vollständig ausgeführt werden: {exc}')
 
 
+@lru_cache(maxsize=2)
+def _profile_schema(profile):
+    base = Path(__file__).resolve().parents[1] / 'validation/facturx/1.09.2' / profile
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    return etree.XMLSchema(etree.parse(str(base / f'Factur-X_{profile.upper()}.xsd'), parser))
+
+
+def _check_structure(root, result):
+    result.profile = _text(root, '//ram:GuidelineSpecifiedDocumentContextParameter/ram:ID')
+    profile = 'extended' if result.profile.endswith(':extended') else 'en16931'
+    try:
+        _profile_schema(profile).assertValid(root)
+    except (etree.DocumentInvalid, etree.XMLSchemaParseError, OSError) as exc:
+        result.errors.append(f'XML-Struktur entspricht nicht dem Profil {profile.upper()}: {exc}')
+        return False
+    result.checks.append(f'XML-Struktur nach Factur-X {profile.upper()} geprüft (Schemasatz 1.09.2).')
+    return True
+
+
 def validate_invoice_zugferd(invoice) -> ValidationResult:
     result = ValidationResult()
     try:
@@ -135,6 +163,11 @@ def validate_invoice_zugferd(invoice) -> ValidationResult:
         return result
     if root.tag != f"{{{NS['rsm']}}}CrossIndustryInvoice":
         result.errors.append('XML-Wurzelelement oder Namespace entspricht nicht ZUGFeRD/CII.')
+        return result
+    if root.getroottree().docinfo.doctype:
+        result.errors.append('DOCTYPE-Deklarationen sind in Rechnungs-XML nicht erlaubt.')
+        return result
+    if not _check_structure(root, result):
         return result
     result.checks.append('XML ist wohlgeformt und verwendet den CII-Namespace.')
     _run_official_en16931(etree.ElementTree(root), result)
@@ -160,7 +193,9 @@ def validate_invoice_zugferd(invoice) -> ValidationResult:
     if _text(root, '//ram:InvoiceCurrencyCode') not in ('', 'EUR'):
         result.errors.append('SEDO-Rechnungen müssen in EUR ausgestellt sein.')
     result.profile = _text(root, '//ram:GuidelineSpecifiedDocumentContextParameter/ram:ID')
-    if 'en16931' not in result.profile.lower() or 'factur-x.eu:1p0' not in result.profile.lower():
+    if result.profile not in ('urn:cen.eu:en16931:2017',
+                              'urn:cen.eu:en16931:2017#compliant#urn:factur-x.eu:1p0:en16931',
+                              'urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended'):
         result.errors.append('Das ausgewiesene Factur-X/ZUGFeRD-EN-16931-Profil fehlt oder ist unbekannt.')
 
     lines = root.xpath('//ram:IncludedSupplyChainTradeLineItem', namespaces=NS)
@@ -175,7 +210,7 @@ def validate_invoice_zugferd(invoice) -> ValidationResult:
         if not name:
             result.errors.append(f'Bezeichnung in Position {index} fehlt.')
         if None not in (quantity, price, total):
-            expected = (quantity * price).quantize(Decimal('0.01'))
+            expected = (quantity * price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
             if expected != total.quantize(Decimal('0.01')):
                 result.errors.append(f'Position {index}: Menge × Preis ergibt {expected}, ausgewiesen sind {total}.')
             line_sum += total
@@ -212,4 +247,9 @@ def validate_invoice_zugferd(invoice) -> ValidationResult:
             'Positionen, Netto, Steuer, Brutto und Zahlbetrag sind rechnerisch konsistent.',
             'Rechnungsnummer und Bruttobetrag stimmen mit dem gespeicherten Beleg überein.',
         ])
+    result.warnings.append('Die PDF/A-3-Konformität des PDF-Containers wird hier nicht geprüft. '
+                           'Dieses Ergebnis ist kein vollständiger ZUGFeRD-Konformitätsnachweis.')
+    if result.profile.endswith(':extended'):
+        result.warnings.append('Das Dokument verwendet EXTENDED. Die zusätzlichen EXTENDED-Profilregeln '
+                               'sind vom EN-16931-Basisregelsatz nicht vollständig abgedeckt.')
     return result

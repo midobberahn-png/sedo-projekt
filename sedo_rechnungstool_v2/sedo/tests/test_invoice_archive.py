@@ -173,7 +173,7 @@ class InvoiceArchiveTests(TestCase):
         for field, path in zielpfade(inv).items():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'Historische Originalbytes ' + field.encode())
-            getattr(inv, field).name = str(path.relative_to(self.media))
+            getattr(inv, field).name = path.relative_to(self.media.resolve()).as_posix()
         inv.save()
         before = self.state(inv), self.files(), AuditLog.objects.count()
         generate_invoice_files(inv)

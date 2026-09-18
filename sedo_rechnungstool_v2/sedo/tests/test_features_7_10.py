@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import tempfile
+import os
+import subprocess
+import sys
+from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +22,22 @@ from sedo.restore_bootstrap import apply_pending_restore
 from sedo.services import generate_invoice_files
 from sedo.services.tax_export import create_tax_package
 from sedo.services.zugferd_validation import validate_invoice_zugferd
+
+
+def make_restore_database(path):
+    """Echte migrierbare Sicherung in einem isolierten Prozess, keine Mini-Attrappe."""
+    with tempfile.TemporaryDirectory() as home:
+        Path(home, 'data').mkdir()
+        result = subprocess.run([sys.executable, '-c',
+            "import django; django.setup(); from django.core.management import call_command; "
+            "call_command('migrate', verbosity=0, interactive=False); "
+            "from sedo.models import Customer; Customer.objects.create(name='Sicherungskunde')"],
+            cwd=Path(__file__).resolve().parents[2],
+            env={**os.environ, 'SEDO_HOME': home, 'DJANGO_SETTINGS_MODULE': 'config.settings',
+                 'DJANGO_SECRET_KEY': 'isolierte-wiederherstellungsprobe'}, capture_output=True)
+        if result.returncode:
+            raise AssertionError(result.stderr.decode())
+        path.write_bytes(Path(home, 'data/sedo_web.sqlite3').read_bytes())
 
 
 class FeaturesSevenToTenTests(TestCase):
@@ -98,6 +118,7 @@ class FeaturesSevenToTenTests(TestCase):
         invoice = self.invoice()
         response = self.client.post(reverse('sedo:month_close'), {
             'month': invoice.issue_date.strftime('%Y-%m'), 'action': 'download_tax_package'})
+        self.addCleanup(response.close)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/zip')
         self.assertTrue(self.user.sedo_audit_logs.filter(object_type='SteuerberaterExport').exists())
@@ -107,16 +128,7 @@ class FeaturesSevenToTenTests(TestCase):
         backup_dir = self.home / 'backups'
         backup_dir.mkdir()
         db = self.home / 'snapshot.sqlite3'
-        with sqlite3.connect(db) as snapshot:
-            snapshot.executescript('''
-                CREATE TABLE django_migrations (app TEXT, name TEXT, applied TEXT);
-                INSERT INTO django_migrations VALUES ('sedo', '0017_work_tasks', '2026-09-18');
-                CREATE TABLE sedo_customer (id INTEGER PRIMARY KEY);
-                INSERT INTO sedo_customer VALUES (1);
-                CREATE TABLE sedo_invoice (id INTEGER PRIMARY KEY);
-                CREATE TABLE sedo_offer (id INTEGER PRIMARY KEY);
-                CREATE TABLE sedo_payment (id INTEGER PRIMARY KEY);
-            ''')
+        make_restore_database(db)
         archive = backup_dir / 'SEDO_Backup_TEST.zip'
         with ZipFile(archive, 'w') as out:
             out.write(db, 'data/sedo_web.sqlite3')
@@ -143,13 +155,7 @@ class FeaturesSevenToTenTests(TestCase):
         backup_dir = self.home / 'backups'
         backup_dir.mkdir()
         db = self.home / 'snapshot.sqlite3'
-        with sqlite3.connect(db) as snapshot:
-            snapshot.executescript('''
-                CREATE TABLE django_migrations (app TEXT, name TEXT, applied TEXT);
-                INSERT INTO django_migrations VALUES ('sedo', '0017_work_tasks', '2026-09-18');
-                CREATE TABLE sedo_customer (id INTEGER PRIMARY KEY);
-                CREATE TABLE sedo_invoice (id INTEGER PRIMARY KEY);
-            ''')
+        make_restore_database(db)
         archive = backup_dir / 'SEDO_Backup_STAGE.zip'
         with ZipFile(archive, 'w') as out:
             out.write(db, 'data/sedo_web.sqlite3')
@@ -176,18 +182,21 @@ class RestoreBootstrapTests(TestCase):
             staged_db.parent.mkdir(parents=True)
             live_media.mkdir(); staged_media.mkdir()
             for path, marker in ((live_db, 'alt'), (staged_db, 'neu')):
-                with sqlite3.connect(path) as db:
+                with closing(sqlite3.connect(path)) as db:
                     db.execute('CREATE TABLE marker (value TEXT)')
                     db.execute('INSERT INTO marker VALUES (?)', (marker,))
+                    db.commit()
             (live_media / 'alt.txt').write_text('alt')
             (staged_media / 'neu.txt').write_text('neu')
             import hashlib
             digest = hashlib.sha256(staged_db.read_bytes()).hexdigest()
+            from sedo.restore_bootstrap import _tree_sha256
             (home / 'pending_restore.json').write_text(json.dumps({
                 'staging': str(staged_db.parents[1]), 'database_sha256': digest,
+                'staging_sha256': _tree_sha256(staged_db.parents[1]),
                 'backup_name': 'TEST.zip'}))
             result = apply_pending_restore(home)
-            with sqlite3.connect(live_db) as db:
+            with closing(sqlite3.connect(live_db)) as db:
                 self.assertEqual(db.execute('SELECT value FROM marker').fetchone()[0], 'neu')
             self.assertTrue((live_media / 'neu.txt').is_file())
             self.assertFalse((home / 'pending_restore.json').exists())

@@ -120,6 +120,8 @@ def main():
                     'DROP INDEX invoice_status_due_idx',
                     'CREATE INDEX invoice_status_due_idx ON sedo_invoice(status, due_date)',
                     'CREATE INDEX invoice_active_due_status_idx ON sedo_invoice(due_date, status) WHERE deleted_at IS NULL']),
+                ('review_entwurfsindex', [
+                    "CREATE INDEX invoice_draft_order_idx ON sedo_invoice(issue_date DESC, number DESC, id DESC) WHERE deleted_at IS NULL AND lifecycle = 'draft'"]),
             ]
             for variant, ddl in variants:
                 for sql in ddl:

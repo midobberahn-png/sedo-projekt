@@ -155,7 +155,7 @@ class WorkTask(TimeStampedModel):
     completed_at = models.DateTimeField('Erledigt am', null=True, blank=True)
 
     class Meta:
-        ordering = ['status', 'due_date', '-priority', '-created_at']
+        ordering = ['status', 'due_date', 'priority', '-created_at']
         indexes = [models.Index(fields=['status', 'due_date'], name='worktask_status_due_idx')]
         constraints = [
             models.CheckConstraint(
@@ -258,6 +258,10 @@ class Invoice(SoftDeleteModel):
         indexes = [
             # Statusfilter; der linke Präfix deckt auch status allein ab.
             models.Index(fields=['status', 'due_date'], name='invoice_status_due_idx'),
+            # Entwurfsansicht filtert lifecycle und sortiert nach Belegdatum.
+            models.Index(fields=['-issue_date', '-number', '-id'],
+                         condition=models.Q(deleted_at__isnull=True, lifecycle='draft'),
+                         name='invoice_draft_order_idx'),
             # Mahnauswahl: NOT IN(status) liefert keinen festen Status-Präfix.
             # Fälligkeit zuerst; Statusprüfung im Index, nur aktive Belege.
             models.Index(fields=['due_date', 'status'],
@@ -321,7 +325,9 @@ class Invoice(SoftDeleteModel):
     def paid_amount(self):
         # Rückwärtsrelation läuft über all_objects; soft-gelöschte Zahlungen
         # explizit ausschließen.
-        active_payments = self.payments.filter(deleted_at__isnull=True)
+        active_payments = getattr(self, '_timeline_active_payments', None)
+        if active_payments is None:
+            active_payments = self.payments.filter(deleted_at__isnull=True)
         return sum((p.amount for p in active_payments), Decimal('0.00'))
 
     @property

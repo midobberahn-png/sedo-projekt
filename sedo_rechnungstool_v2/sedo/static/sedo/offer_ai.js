@@ -8,8 +8,8 @@
  *  2. Fallback: Browser-Spracherkennung (Web Speech API), wenn Whisper nicht
  *     installiert ist oder die Aufnahme nicht möglich ist.
  *
- * Datenschutz: An Claude geht ausschließlich der TEXT der Leistungsbeschreibung
- * – Kunden-/Objektdaten bleiben lokal, Audio verlässt den eigenen Server nie. */
+ * Datenschutz: An Claude gehen Freitext und Katalogdaten, keine Kundenfelder.
+ * Freitext wird nicht anonymisiert. Der Browser-Fallback kann Audio hochladen. */
 (function () {
   'use strict';
 

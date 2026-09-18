@@ -1,5 +1,6 @@
 """Etappe 5: ausschließlich synthetischer Bestand, keine Betriebsdateien."""
 import json
+from contextlib import closing
 import re
 import tempfile
 from datetime import timedelta
@@ -626,7 +627,7 @@ class BelegkettenParallelTests(TransactionTestCase):
         with tempfile.TemporaryDirectory(prefix='sedo_parallel_ketten_') as tmp:
             home = Path(tmp)
             (home / 'data').mkdir()
-            with sqlite3.connect(home / 'data' / 'sedo_web.sqlite3') as schreiber:
+            with closing(sqlite3.connect(home / 'data' / 'sedo_web.sqlite3')) as schreiber:
                 # Quelle ist ausdrücklich die gerade erzeugte Test-DB im Speicher.
                 self.assertIn('memory', str(connection.settings_dict['NAME']))
                 connection.connection.backup(schreiber)

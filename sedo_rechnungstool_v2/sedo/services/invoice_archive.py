@@ -139,7 +139,7 @@ def pruefe_schreibziele(invoice, *, erstmalig: bool) -> None:
     targets = zielpfade(invoice)
     refs = [getattr(invoice, f).name for f in ARCHIV_FELDER if getattr(invoice, f).name]
     paths = [*targets.values(), *(sicherer_pfad(Path(settings.MEDIA_ROOT), n) for n in refs)]
-    names = {str(p.relative_to(Path(settings.MEDIA_ROOT).resolve())) for p in paths}
+    names = {p.relative_to(Path(settings.MEDIA_ROOT).resolve()).as_posix() for p in paths}
     # Auch Entwürfe dürfen nicht über fehlerhafte Dateiverweise fremde Originale
     # verschieben. Ausgeblendete Belege zählen ausdrücklich mit.
     query = Q()

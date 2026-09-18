@@ -1,5 +1,5 @@
 from collections import defaultdict
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Sum
 from django.utils import timezone
@@ -26,7 +26,8 @@ def build_reports(year):
     period = issued.filter(issue_date__year=year)
 
     customer_rows = list(
-        period.values('customer__name').annotate(total=Sum('gross_total')).order_by('-total', 'customer__name')
+        period.values('customer_id', 'customer__name', 'customer__customer_no')
+        .annotate(total=Sum('gross_total')).order_by('-total', 'customer__name', 'customer_id')
     )
     customer_max = max((_money(row['total']) for row in customer_rows), default=ZERO)
     for row in customer_rows:
@@ -38,7 +39,8 @@ def build_reports(year):
         'leistungsart_text', 'description', 'quantity', 'unit_price',
     )
     for service, description, quantity, unit_price in items.iterator(chunk_size=2000):
-        service_totals[(service or description or 'Ohne Bezeichnung').strip()] += quantity * unit_price
+        service_totals[(service or description or 'Ohne Bezeichnung').strip()] += (
+            quantity * unit_price).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     service_rows = [
         {'name': name, 'total': _money(total)} for name, total in service_totals.items()
     ]

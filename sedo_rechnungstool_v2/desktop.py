@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 APP_TITLE = 'SEDO Rechnungstool'
+_DATA_LOCKS = {}
 
 
 def _user_home() -> Path:
@@ -57,8 +58,12 @@ def _bootstrap() -> tuple[object, str | None]:
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
     # Whisper-Modell (~460 MB, lädt beim ersten Diktat) in den SEDO-Datenordner
     # statt in versteckte Cache-Pfade – so wandert es bei Backups/Umzügen mit.
-    home = os.environ.get('SEDO_HOME')
+    home = os.environ.setdefault('SEDO_HOME', str(Path(__file__).resolve().parent))
     if home:
+        from sedo.desktop_lock import acquire
+        canonical_home = str(Path(home).resolve())
+        if canonical_home not in _DATA_LOCKS:
+            _DATA_LOCKS[canonical_home] = acquire(home)
         os.environ.setdefault('HF_HOME', str(Path(home) / 'whisper-cache'))
 
         # Eine Wiederherstellung wird bewusst vor Django und vor Migrationen

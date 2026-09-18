@@ -1,6 +1,6 @@
 from datetime import datetime, time
 
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.urls import reverse
 from django.utils import timezone
 
@@ -35,8 +35,10 @@ def build_customer_timeline(customer, kind='all'):
     include = lambda value: kind in ('all', value)
 
     invoices = list(Invoice.objects.filter(customer=customer).only(
-        'id', 'number', 'issue_date', 'gross_total', 'lifecycle', 'status', 'invoice_type',
-    ))
+        'id', 'number', 'issue_date', 'due_date', 'gross_total', 'lifecycle', 'status', 'invoice_type',
+    ).prefetch_related(
+        Prefetch('payments', queryset=Payment.objects.filter(deleted_at__isnull=True),
+                 to_attr='_timeline_active_payments'), 'dunning_documents'))
     offers = list(Offer.objects.filter(customer=customer).only(
         'id', 'number', 'issue_date', 'gross_total', 'status',
     ))

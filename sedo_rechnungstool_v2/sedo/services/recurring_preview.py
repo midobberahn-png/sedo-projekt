@@ -40,15 +40,19 @@ def build_recurring_preview(issue_date: date, months: int = 3) -> list[dict]:
         period_end = date(planned_date.year, planned_date.month, monthrange(planned_date.year, planned_date.month)[1])
         rows = []
         month_total = Decimal('0.00')
+        planned = set()
         for template in templates:
             net = sum((item.line_total for item in template.items.all()), Decimal('0.00'))
             vat = (net * template.vat_rate / Decimal('100')).quantize(CENT, rounding=ROUND_HALF_UP)
             gross = net + vat
-            exists = (template.customer_id, template.obj_id, period_start, period_end) in existing
-            if not exists:
+            key = (template.customer_id, template.obj_id, period_start, period_end)
+            exists = key in existing
+            duplicate = key in planned
+            if not exists and not duplicate:
                 month_total += gross
+                planned.add(key)
             rows.append({
-                'template': template, 'gross': gross, 'exists': exists,
+                'template': template, 'gross': gross, 'exists': exists, 'duplicate': duplicate,
                 'due_date': planned_date + timedelta(days=(
                     template.payment_days if template.payment_days is not None
                     else template.customer.payment_days if template.customer.payment_days is not None
@@ -58,6 +62,6 @@ def build_recurring_preview(issue_date: date, months: int = 3) -> list[dict]:
         result.append({
             'period_start': period_start, 'issue_date': planned_date,
             'rows': rows, 'total': month_total,
-            'pending_count': sum(1 for row in rows if not row['exists']),
+            'pending_count': sum(1 for row in rows if not row['exists'] and not row['duplicate']),
         })
     return result

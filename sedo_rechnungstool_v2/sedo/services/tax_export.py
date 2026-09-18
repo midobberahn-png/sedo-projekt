@@ -5,9 +5,12 @@ import csv
 import hashlib
 import io
 import json
+import re
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 import zipfile
+import uuid
 
 from django.conf import settings
 from django.utils import timezone
@@ -20,8 +23,26 @@ def _de(value):
     return f'{Decimal(value):.2f}'.replace('.', ',')
 
 
+def parse_month(month):
+    if not isinstance(month, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}', month):
+        raise ValueError('Bitte einen gültigen Monat im Format JJJJ-MM wählen.')
+    year, number = map(int, month.split('-'))
+    date(year, number, 1)
+    if year == 9999:
+        raise ValueError('Das Jahr liegt außerhalb des unterstützten Bereichs.')
+    return year, number
+
+
+def _csv_text(value):
+    value = str(value or '')
+    # Nutzereingaben bleiben Text, auch beim Öffnen in Excel/LibreOffice.
+    return "'" + value if value.lstrip().startswith(('=', '+', '-', '@')) or value.startswith(('\t', '\r', '\n')) else value
+
+
 def create_tax_package(invoices, month: str, *, deleted_numbers=(), user=''):
     """Erstellt ein vollständiges ZIP oder bricht vor Veröffentlichung ab."""
+    parse_month(month)
+    deleted_numbers = list(deleted_numbers)
     documents = []
     rows = []
     total_net = total_tax = total_gross = Decimal('0.00')
@@ -33,16 +54,15 @@ def create_tax_package(invoices, month: str, *, deleted_numbers=(), user=''):
         name = f'Belege/{invoice.number}.pdf'
         documents.append((name, attachment.data))
         rows.append({
-            'Belegdatum': invoice.issue_date.strftime('%d%m'),
-            'Belegfeld 1': invoice.number,
-            'Buchungstext': f'{invoice.customer.name} · {invoice.number}'[:60],
-            'Umsatz': _de(abs(invoice.gross_total)),
-            'Soll/Haben-Kennzeichen': 'H' if invoice.gross_total >= 0 else 'S',
+            'Belegdatum': invoice.issue_date.isoformat(),
+            'Belegfeld 1': _csv_text(invoice.number),
+            'Buchungstext': _csv_text(f'{invoice.customer.name} · {invoice.number}'[:60]),
+            'Umsatz': _de(invoice.gross_total),
             'Netto': _de(invoice.net_total),
             'Umsatzsteuer': _de(invoice.vat_amount),
             'Steuersatz': _de(invoice.vat_rate),
-            'Kunde': invoice.customer.name,
-            'Kundennummer': invoice.customer.customer_no,
+            'Kunde': _csv_text(invoice.customer.name),
+            'Kundennummer': _csv_text(invoice.customer.customer_no),
             'Rechnungsart': invoice.get_invoice_type_display(),
             'Beleglink': name,
         })
@@ -52,7 +72,7 @@ def create_tax_package(invoices, month: str, *, deleted_numbers=(), user=''):
 
     buffer = io.StringIO(newline='')
     fields = list(rows[0].keys()) if rows else [
-        'Belegdatum', 'Belegfeld 1', 'Buchungstext', 'Umsatz', 'Soll/Haben-Kennzeichen',
+        'Belegdatum', 'Belegfeld 1', 'Buchungstext', 'Umsatz',
         'Netto', 'Umsatzsteuer', 'Steuersatz', 'Kunde', 'Kundennummer', 'Rechnungsart', 'Beleglink']
     writer = csv.DictWriter(buffer, fieldnames=fields, delimiter=';', lineterminator='\r\n')
     writer.writeheader()
@@ -78,7 +98,13 @@ def create_tax_package(invoices, month: str, *, deleted_numbers=(), user=''):
         'DATEV-Zuordnung erfolgt durch die Steuerberatung. Die Prüfsummen stehen in manifest.json.\n'
     ).encode('utf-8')
 
-    out_dir = Path(settings.MEDIA_ROOT) / 'month_close' / month
+    export_id = uuid.uuid4().hex
+    manifest['export_id'] = export_id
+    manifest['dateien'].extend([
+        {'datei': name, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
+        for name, data in [('Buchungsdaten.csv', csv_bytes), ('Exportprotokoll.txt', protocol)]
+    ])
+    out_dir = Path(settings.MEDIA_ROOT) / 'month_close' / month / export_id
     out_dir.mkdir(parents=True, exist_ok=True)
     # Historischer Dateiname bleibt für bestehende Ablagen/Automationen stabil;
     # der Inhalt ist jetzt das vollständige Steuerberaterpaket.
@@ -95,4 +121,6 @@ def create_tax_package(invoices, month: str, *, deleted_numbers=(), user=''):
     except Exception:
         temp.unlink(missing_ok=True)
         raise
+    manifest['paket_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest['paket'] = path.relative_to(settings.MEDIA_ROOT).as_posix()
     return path, manifest
