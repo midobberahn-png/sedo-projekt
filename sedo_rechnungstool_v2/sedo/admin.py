@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Customer, CustomerObject, Invoice, InvoiceItem, Offer, OfferItem, ServiceCatalogItem, Payment, CashbookEntry, AareonMapping, DunningDocument, AppSetting, AuditLog
+from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, OfferItem, ServiceCatalogItem, Payment, CashbookEntry, AareonMapping, DunningDocument, AppSetting, AuditLog
 
 class NurLesenMixin:
     """Macht eine Admin-Ansicht schreibgeschützt (Review-Fund F-02).
@@ -62,6 +62,12 @@ class CustomerAdmin(admin.ModelAdmin):
     list_display = ('name','customer_no','customer_type','email','city')
     search_fields = ('name','customer_no','email','city')
     inlines = [CustomerObjectInline]
+
+
+@admin.register(CustomerNote)
+class CustomerNoteAdmin(NurLesenMixin, admin.ModelAdmin):
+    list_display = ('created_at', 'customer', 'author')
+    search_fields = ('customer__name', 'text', 'author__username')
 
 class InvoiceItemInline(NurLesenMixin, admin.TabularInline):
     model = InvoiceItem

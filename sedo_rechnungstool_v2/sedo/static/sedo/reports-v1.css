@@ -1,0 +1,51 @@
+.report-page { display: grid; gap: 1.15rem; }
+.report-head { align-items: flex-end; }
+.report-year { display: grid; grid-template-columns: minmax(7rem, 1fr) auto; gap: .5rem .65rem; align-items: end; padding: .7rem .8rem; background: #f3f8fc; border: 1px solid #d8e6ef; border-radius: 14px; }
+.report-year label { grid-column: 1 / -1; font-weight: 700; white-space: nowrap; }
+.report-year select { min-width: 6.5rem; }
+.report-year .btn { white-space: nowrap; min-width: 6.4rem; }
+.report-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.report-kpis article { display: flex; flex-direction: column; gap: .35rem; }
+.report-kpis article > span { color: #52697a; font-weight: 700; }
+.report-kpis strong { font-size: clamp(1.55rem, 3vw, 2.35rem); color: #183f5a; }
+.report-kpis small { color: var(--muted); line-height: 1.45; }
+.report-section { padding: 1.2rem; }
+.report-section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+.report-section-head h2 { margin: 0; font-size: 1.12rem; }
+.report-section-head p { margin: .25rem 0 0; color: var(--muted); }
+.report-legend { display: flex; gap: 1rem; font-size: .86rem; }
+.report-legend span::before { content: ""; display: inline-block; width: .72rem; height: .72rem; border-radius: 3px; margin-right: .35rem; background: #4c91bb; }
+.report-legend .previous::before { background: #bed2df; }
+.month-chart { display: grid; gap: .55rem; }
+.month-row { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: .8rem; align-items: center; }
+.month-bars { display: grid; gap: .18rem; padding-right: 6.5rem; }
+.bar { height: 1.15rem; min-width: 2px; border-radius: 0 5px 5px 0; background: #4c91bb; position: relative; }
+.bar.previous { background: #bed2df; }
+.bar span { position: absolute; left: calc(100% + .45rem); top: 50%; transform: translateY(-50%); white-space: nowrap; font-size: .74rem; color: #52697a; }
+.report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.rank-list { display: grid; gap: .85rem; }
+.rank-row > div:first-child { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .32rem; }
+.rank-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-row span { white-space: nowrap; color: #52697a; }
+.rank-track { height: .48rem; background: #edf2f5; border-radius: 999px; overflow: hidden; }
+.rank-track span { display: block; height: 100%; background: #5a96b9; border-radius: inherit; }
+.rank-track.aging span { background: #d58b55; }
+.offer-quote { padding: 1.2rem; border-radius: 15px; background: linear-gradient(135deg, #e3f2ea, #f2f8f5); display: flex; flex-direction: column; margin-bottom: 1rem; }
+.offer-quote strong { font-size: 1.7rem; color: #246548; }
+.offer-funnel dl { display: grid; gap: .1rem; margin: 0; }
+.offer-funnel dl div { display: flex; justify-content: space-between; padding: .72rem 0; border-bottom: 1px solid #e5edf2; }
+.offer-funnel dt, .offer-funnel dd { margin: 0; }
+.offer-funnel dd { font-weight: 800; }
+@media (max-width: 900px) {
+  .report-kpis, .report-grid { grid-template-columns: 1fr; }
+  .report-head { align-items: stretch; }
+  .report-year { justify-content: stretch; }
+}
+@media (max-width: 560px) {
+  .report-year { grid-template-columns: 1fr 1fr; }
+  .report-year label { grid-column: 1 / -1; }
+  .month-bars { padding-right: 0; }
+  .bar span { position: static; display: block; transform: none; padding-left: .35rem; color: #183f5a; font-size: .68rem; line-height: 1.15rem; }
+  .bar { min-width: 4.5rem; }
+  .report-legend { display: none; }
+}

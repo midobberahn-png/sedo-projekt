@@ -1,5 +1,6 @@
 {% extends 'sedo/base.html' %}{% load static l10n %}{% block content %}
 <link rel="stylesheet" href="{% static 'sedo/workspace-overview-v2.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'sedo/customer-timeline-v1.css' %}?v=1">
 <div class="work-page customer-file">
   <a class="work-back" href="{% url 'sedo:customer_list' %}">← Alle Kunden</a>
   <div class="topbar">
@@ -19,6 +20,20 @@
   <section class="card" aria-labelledby="contact-heading">
     <div class="work-section-head"><h2 id="contact-heading">Kontakt & Zahlungsziel</h2><a class="btn small" href="?section=details">Alle Stammdaten</a></div>
     <dl class="work-facts"><div><dt>Ansprechpartner</dt><dd>{{ customer.contact_person|default:'Nicht hinterlegt' }}</dd></div><div><dt>E-Mail</dt><dd>{% if customer.email %}<a href="mailto:{{ customer.email }}">{{ customer.email }}</a>{% else %}Nicht hinterlegt{% endif %}</dd></div><div><dt>Telefon</dt><dd>{{ customer.phone|default:'Nicht hinterlegt' }}</dd></div><div><dt>Zahlungsziel</dt><dd>{{ customer.payment_days }} Tage</dd></div></dl>
+  </section>
+  {% endif %}
+
+  {% if section == 'overview' or section == 'timeline' %}
+  <section class="card timeline-card" aria-labelledby="timeline-heading">
+    <div class="work-section-head"><div><h2 id="timeline-heading">{% if section == 'overview' %}Letzte Aktivitäten{% else %}Kunden-Chronik{% endif %}</h2><p class="muted">Angebote, Rechnungen, Zahlungen, Mahnungen, E-Mails und Notizen in zeitlicher Reihenfolge.</p></div>{% if section == 'overview' %}<a class="btn small" href="?section=timeline">Ganze Chronik</a>{% endif %}</div>
+    {% if section == 'timeline' %}
+      <form class="timeline-note" method="post" action="{% url 'sedo:customer_note_create' customer.pk %}">{% csrf_token %}<label for="id_text"><strong>Notiz hinzufügen</strong><span>Gespräch, Vereinbarung oder nächsten Schritt festhalten.</span></label>{{ note_form.text }}<button class="btn primary" type="submit">Notiz speichern</button></form>
+      <nav class="timeline-filters" aria-label="Chronik filtern">{% for key, label in timeline_kinds %}<a href="?section=timeline{% if key != 'all' %}&amp;kind={{ key }}{% endif %}"{% if timeline_kind == key %} class="active" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+    {% endif %}
+    <ol class="timeline-list">
+      {% for event in timeline_entries %}<li class="timeline-entry kind-{{ event.kind }}"><div class="timeline-marker" aria-hidden="true"></div><div class="timeline-content"><div class="timeline-meta"><span class="timeline-kind">{% if event.kind == 'invoice' %}Rechnung{% elif event.kind == 'offer' %}Angebot{% elif event.kind == 'payment' %}Zahlung{% elif event.kind == 'dunning' %}Mahnung{% elif event.kind == 'email' %}E-Mail{% else %}Notiz{% endif %}</span><time datetime="{{ event.occurred_at|date:'c' }}">{% if event.show_time %}{{ event.occurred_at|date:'d.m.Y · H:i' }}{% else %}{{ event.occurred_at|date:'d.m.Y' }}{% endif %}</time>{% if event.actor %}<span>{{ event.actor }}</span>{% endif %}</div><h3>{% if event.link %}<a href="{{ event.link }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</h3>{% if event.detail %}<p>{{ event.detail|linebreaksbr }}</p>{% endif %}</div>{% if event.has_amount %}<strong class="timeline-amount">{{ event.amount }} €</strong>{% endif %}</li>
+      {% empty %}<li class="empty-state"><p class="empty-title">Noch keine Aktivitäten</p><p>Eine Notiz ist ein guter Anfang für die gemeinsame Kundenhistorie.</p></li>{% endfor %}
+    </ol>
   </section>
   {% endif %}
 

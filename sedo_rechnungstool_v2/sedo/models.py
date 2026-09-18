@@ -116,6 +116,23 @@ class CustomerObject(TimeStampedModel):
         return self.name
 
 
+class CustomerNote(TimeStampedModel):
+    """Freie, unveränderliche Gesprächs- oder Arbeitsnotiz in der Kundenakte."""
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='notes')
+    author = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sedo_customer_notes',
+    )
+    text = models.TextField('Notiz', max_length=4000)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        indexes = [models.Index(fields=['customer', '-created_at'], name='custnote_customer_date_idx')]
+
+    def __str__(self):
+        return f'Notiz zu {self.customer}'
+
+
 class Invoice(SoftDeleteModel):
     STATUS = [
         ('entwurf', 'Entwurf'),
