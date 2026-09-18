@@ -9,6 +9,8 @@ openpyxl
 reportlab
 pypdf
 lxml
+# Ausführung der offiziellen EN-16931-CII-Schematron-Regeln (XPath 2.0)
+elementpath>=5.1,<6
 python-dateutil
 qrcode[pil]
 # Lokale Spracherkennung für das KI-Diktat (optional – ohne fällt die App

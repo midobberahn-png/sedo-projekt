@@ -1,0 +1,29 @@
+{% extends 'sedo/base.html' %}
+{% block title %}Aufgaben & Wiedervorlagen{% endblock %}
+{% block content %}
+<div class="topbar"><div><div class="eyebrow">Tägliche Arbeit</div><h1 class="h1">Aufgaben & Wiedervorlagen</h1><p class="sub">Freie Aufgaben und nächste Schritte zu Kunden, Angeboten oder Rechnungen.</p></div></div>
+<div class="detail-grid">
+  <div class="card">
+    <div class="section-head"><h2>{% if edit_task %}Aufgabe bearbeiten{% else %}Neue Aufgabe{% endif %}</h2></div>
+    <form method="post" class="compact-form">{% csrf_token %}
+      {{ form.non_field_errors }}
+      <label>Aufgabe{{ form.title }}</label>
+      <div class="grid two"><label>Fällig am{{ form.due_date }}</label><label>Priorität{{ form.priority }}</label></div>
+      <label>Notiz{{ form.note }}</label>
+      <details><summary>Optional mit Vorgang verknüpfen</summary><div class="grid three mt-3"><label>Kunde{{ form.customer }}</label><label>Angebot{{ form.offer }}</label><label>Rechnung{{ form.invoice }}</label></div><p class="hint">Bitte höchstens einen Bezug auswählen.</p></details>
+      {% for field in form %}{% for error in field.errors %}<p class="form-error">{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
+      <div class="toolbar mt-3"><button class="btn primary" type="submit">Speichern</button>{% if edit_task %}<a class="btn" href="{% url 'sedo:task_list' %}">Abbrechen</a>{% endif %}</div>
+    </form>
+  </div>
+  <div class="card">
+    <div class="section-head"><h2>Arbeitsliste</h2><div class="tabs"><a class="{% if status_filter == 'open' %}active{% endif %}" href="?status=open">Offen</a><a class="{% if status_filter == 'done' %}active{% endif %}" href="?status=done">Erledigt</a><a class="{% if status_filter == 'all' %}active{% endif %}" href="?status=all">Alle</a></div></div>
+    <ul class="work-records task-list">
+      {% for task in tasks %}<li class="work-record{% if task.is_overdue %} task-overdue{% endif %}">
+        <div class="work-identity"><strong>{{ task.title }}</strong><span>{{ task.reference_label }}</span>{% if task.note %}<span class="muted">{{ task.note }}</span>{% endif %}</div>
+        <div><span class="badge{% if task.is_overdue %} red{% elif task.priority == 'high' %} yellow{% endif %}">{{ task.due_date|date:"d.m.Y" }}{% if task.status == 'done' %} · erledigt{% endif %}</span></div>
+        <div class="table-actions"><a class="btn small" href="{% url 'sedo:task_update' task.pk %}">Bearbeiten</a><form method="post" action="{% url 'sedo:task_toggle' task.pk %}">{% csrf_token %}<button class="btn small" type="submit">{% if task.status == 'done' %}Wieder öffnen{% else %}Erledigt{% endif %}</button></form></div>
+      </li>{% empty %}<li class="empty-state compact">Keine Aufgaben in dieser Ansicht.</li>{% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

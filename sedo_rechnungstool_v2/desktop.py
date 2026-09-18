@@ -61,6 +61,13 @@ def _bootstrap() -> tuple[object, str | None]:
     if home:
         os.environ.setdefault('HF_HOME', str(Path(home) / 'whisper-cache'))
 
+        # Eine Wiederherstellung wird bewusst vor Django und vor Migrationen
+        # angewendet. So gibt es keine offenen DB-Verbindungen und die App kann
+        # anschließend ältere Sicherungen kontrolliert auf den aktuellen Stand
+        # migrieren.
+        from sedo.restore_bootstrap import apply_pending_restore
+        apply_pending_restore(Path(home))
+
     import django
     django.setup()
     from django.conf import settings

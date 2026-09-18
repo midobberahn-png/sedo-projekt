@@ -23,7 +23,7 @@
   <div class="section-head">
     <h2>Steuerberater-Export</h2>
   </div>
-  <p class="sub">Erzeugt eine E-Mail-Datei mit ZIP-Anhang. Enthalten sind ausschließlich die sichtbaren Rechnungs-PDFs des gewählten Monats.</p>
+  <p class="sub">Erzeugt einen geordneten Monatsordner mit Originalbelegen, Buchungsdaten, Prüfsummen und einem lesbaren Exportprotokoll.</p>
   <form method="post" class="compact-form">
     {% csrf_token %}
     <div class="grid two">
@@ -35,11 +35,19 @@
       </label>
     </div>
     <div class="toolbar mt-3">
-      <button class="btn primary" type="submit" name="action" value="export_tax_email"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg> PDF-Export als E-Mail erstellen</button>
+      <button class="btn primary" type="submit" name="action" value="download_tax_package">Steuerberaterpaket herunterladen</button>
+      <button class="btn" type="submit" name="action" value="export_tax_email"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg> Als E-Mail vorbereiten</button>
       <a class="btn" href="?month={{ selected_month }}">Aktualisieren</a>
     </div>
   </form>
 </div>
+
+{% if export_history %}
+<div class="card">
+  <div class="section-head"><h2>Exportprotokoll</h2></div>
+  <ul class="clean-list">{% for entry in export_history %}<li><strong>{{ entry.created_at|date:"d.m.Y H:i" }}</strong> · {{ entry.message }} · {{ entry.user|default:"System" }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
 
 
 <div class="card">

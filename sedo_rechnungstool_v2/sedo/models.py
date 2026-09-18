@@ -133,6 +133,60 @@ class CustomerNote(TimeStampedModel):
         return f'Notiz zu {self.customer}'
 
 
+class WorkTask(TimeStampedModel):
+    """Planbare Wiedervorlage mit optional genau einem fachlichen Bezug."""
+    PRIORITIES = [('normal', 'Normal'), ('high', 'Wichtig')]
+    STATUS = [('open', 'Offen'), ('done', 'Erledigt')]
+
+    title = models.CharField('Aufgabe', max_length=255)
+    note = models.TextField('Notiz', blank=True, max_length=4000)
+    due_date = models.DateField('Fällig am', db_index=True)
+    priority = models.CharField('Priorität', max_length=12, choices=PRIORITIES, default='normal')
+    status = models.CharField('Status', max_length=12, choices=STATUS, default='open', db_index=True)
+    customer = models.ForeignKey(
+        Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='work_tasks')
+    offer = models.ForeignKey(
+        'Offer', on_delete=models.SET_NULL, null=True, blank=True, related_name='work_tasks')
+    invoice = models.ForeignKey(
+        'Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='work_tasks')
+    created_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_sedo_tasks')
+    completed_at = models.DateTimeField('Erledigt am', null=True, blank=True)
+
+    class Meta:
+        ordering = ['status', 'due_date', '-priority', '-created_at']
+        indexes = [models.Index(fields=['status', 'due_date'], name='worktask_status_due_idx')]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(customer__isnull=True, offer__isnull=True, invoice__isnull=True)
+                    | models.Q(customer__isnull=False, offer__isnull=True, invoice__isnull=True)
+                    | models.Q(customer__isnull=True, offer__isnull=False, invoice__isnull=True)
+                    | models.Q(customer__isnull=True, offer__isnull=True, invoice__isnull=False)
+                ),
+                name='worktask_max_one_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_overdue(self):
+        return self.status == 'open' and self.due_date < timezone.localdate()
+
+    @property
+    def reference_label(self):
+        if self.customer_id:
+            return f'Kunde {self.customer}'
+        if self.offer_id:
+            return f'Angebot {self.offer}'
+        if self.invoice_id:
+            return f'Rechnung {self.invoice}'
+        return 'Allgemein'
+
+
 class Invoice(SoftDeleteModel):
     STATUS = [
         ('entwurf', 'Entwurf'),

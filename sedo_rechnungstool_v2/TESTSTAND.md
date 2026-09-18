@@ -69,8 +69,8 @@ Zeitstempel und Signaturen können native Ausgaben trotz gleicher Eingaben verä
 - Bedienungsablauf und Programmfenster auf Mac/Windows, Mikrofonfreigabe und echtes
   lokales Diktat, Schließen/Neustart, Updates und Rückkehr auf eine Sicherung.
 - Installation und Gesamtprozess auf Papas Einsatzrechner ab 19.09.2026.
-- E-Rechnungsvalidierung, H3-Zustandsmodell und übrige risikobasierte Härtung.
-- UI/UX-Aufwertung nach Härtung, nicht mit einer erfolgreichen CSS-Abfrage erledigt.
+- H3-Zustandsmodell und übrige risikobasierte Härtung.
+- Vollständige manuelle Bedienungsabnahme der UI/UX-Aufwertung auf Papas Einsatzrechner.
 - Keine Nachinstallation oder Datenänderung auf einem persönlichen Rechner durch CI.
 
 ## Lock bewusst erneuern
