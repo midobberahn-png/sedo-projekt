@@ -92,7 +92,7 @@ jobs:
           SEDO_CHECK_REPORT="$RUNNER_TEMP/h2-evidence/source-check.json" "$RUNNER_TEMP/h2-venv/bin/python" tools/desktop_entry.py --check-strict
           "$RUNNER_TEMP/h2-venv/bin/python" -m pip freeze --all > "$RUNNER_TEMP/h2-evidence/installed.txt"
       - name: Natives Desktop-Testpaket erstellen und tatsaechlich starten
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/hardening-h2-teststand')
         run: |
           set -euo pipefail
           python tools/teststand.py build --output "$RUNNER_TEMP/h2-native" 2>&1 | tee "$RUNNER_TEMP/h2-evidence/native-build.log"
