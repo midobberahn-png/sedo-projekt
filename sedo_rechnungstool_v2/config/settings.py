@@ -86,6 +86,12 @@ ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', _defa
 def _env_bool(name: str, default: str = '0') -> bool:
     return os.environ.get(name, default).strip().lower() in ('1', 'true', 'yes', 'ja', 'on')
 
+# Die Desktop-App lauscht ausschließlich auf dem eigenen Rechner. In diesem
+# Modus ist lokales HTTP korrekt; Secure-Cookies/HSTS setzen zwingend HTTPS
+# voraus und würden sonst die Anmeldung blockieren. Für einen Netzbetrieb muss
+# der Modus bewusst abgeschaltet und HTTPS vollständig konfiguriert werden.
+SEDO_LOCAL_ONLY = _env_bool('SEDO_LOCAL_ONLY', '1')
+
 # Temporärer Testbetrieb über Cloudflare Quick Tunnel / lokale Netze.
 # Wichtig für POST-Formulare über https://*.trycloudflare.com, sonst blockiert Django CSRF.
 CSRF_TRUSTED_ORIGINS = [
