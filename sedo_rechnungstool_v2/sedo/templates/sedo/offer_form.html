@@ -324,6 +324,11 @@
     });
   }
 
+  {% if source_mail and not form.is_bound %}
+  // A suggested customer must load the same object choices as a manual selection.
+  if (customerSel && customerSel.value) customerSel.dispatchEvent(new Event('change'));
+  {% endif %}
+
   if (clearBtn && customerSel) {
     clearBtn.addEventListener('click', function () {
       customerSel.value = '';

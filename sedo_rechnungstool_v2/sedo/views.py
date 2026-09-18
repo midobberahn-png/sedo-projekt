@@ -1616,6 +1616,10 @@ def offer_create(request):
             initial.update({'email': source_mail.sender_email, 'name': parseaddr(source_mail.sender)[0]})
             if customer:
                 initial['customer'] = customer
+                initial.update({field: getattr(customer, field) for field in (
+                    'salutation', 'name', 'name2', 'customer_no', 'customer_type',
+                    'contact_person', 'phone', 'email', 'street', 'postcode', 'city', 'country',
+                )})
         form = OfferForm(instance=offer, initial=initial)
         formset = OfferItemFormSet(instance=offer)
     return render(request, 'sedo/offer_form.html', {

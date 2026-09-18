@@ -698,10 +698,13 @@ class MailWorkflowTests(MailFixture):
 
     def test_offer_get_prefills_customer_without_creating_offer_or_sending_mail(self):
         source = self.sync().message
-        customer = Customer.objects.create(name='Kundenfirma', email=source.sender_email)
+        customer = Customer.objects.create(name='Kundenfirma', email=source.sender_email,
+            street='Firmenweg 12', postcode='39104', city='Magdeburg', phone='0391 123456')
         response = self.client.get(reverse('sedo:offer_create'), {'source_mail': source.pk})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['form'].initial['customer'], customer)
+        for field in ('name', 'email', 'street', 'postcode', 'city', 'phone'):
+            self.assertEqual(response.context['form'][field].value(), getattr(customer, field))
         self.assertContains(response, 'name="source_mail"')
         self.assertEqual(Offer.objects.count(), 0)
         self.assertEqual(MailDraft.objects.count(), 0)
