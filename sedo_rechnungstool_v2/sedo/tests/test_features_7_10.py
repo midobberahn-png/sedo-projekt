@@ -118,6 +118,7 @@ class FeaturesSevenToTenTests(TestCase):
         invoice = self.invoice()
         response = self.client.post(reverse('sedo:month_close'), {
             'month': invoice.issue_date.strftime('%Y-%m'), 'action': 'download_tax_package'})
+        self.addCleanup(response.close)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/zip')
         self.assertTrue(self.user.sedo_audit_logs.filter(object_type='SteuerberaterExport').exists())

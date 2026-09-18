@@ -2369,7 +2369,7 @@ def aareon_import(request):
                 customer = invoices[0].customer
                 try:
                     eml_path = _monthly_zip_email(invoices, customer, month)
-                    return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=eml_path.name)
+                    return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=eml_path.name, content_type='message/rfc822')
                 except Exception as e:
                     messages.error(request, f'E-Mail-Entwurf konnte nicht erzeugt werden: {e}')
 
@@ -2861,7 +2861,7 @@ def month_close(request):
                 messages.error(request, 'Export abgebrochen: Das Exportprotokoll konnte nicht gespeichert werden.')
                 return redirect('sedo:month_close')
             if action == 'download_tax_package':
-                return FileResponse(open(zip_path, 'rb'), as_attachment=True, filename=zip_path.name)
+                return FileResponse(open(zip_path, 'rb'), as_attachment=True, filename=zip_path.name, content_type='application/zip')
             msg = EmailMessage()
             msg['To'] = tax_email or ''
             msg['From'] = 'info@sedo-magdeburg.de'
@@ -2876,7 +2876,7 @@ def month_close(request):
             msg.add_attachment(zip_path.read_bytes(), maintype='application', subtype='zip', filename=zip_path.name)
             eml_path = zip_path.parent / f'SEDO_Rechnungsexport_{selected_month}.eml'
             eml_path.write_bytes(msg.as_bytes())
-            return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=eml_path.name)
+            return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=eml_path.name, content_type='message/rfc822')
 
     context = {
         'selected_month': selected_month,

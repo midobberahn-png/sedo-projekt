@@ -581,7 +581,8 @@ class DraftWorkflowTests(TestCase):
         response = self.client.get(reverse('sedo:month_close'), {'month': self.today.strftime('%Y-%m')})
         self.assertEqual(response.context['invoice_count'], 1)
         self.assertEqual(response.context['gross_total'], Decimal('119.00'))
-        self.client.post(reverse('sedo:month_close'), {'month': self.today.strftime('%Y-%m'), 'action': 'export_tax_email'})
+        exported = self.client.post(reverse('sedo:month_close'), {'month': self.today.strftime('%Y-%m'), 'action': 'export_tax_email'})
+        self.addCleanup(exported.close)
         zips = list(Path(settings.MEDIA_ROOT).rglob('*Steuerberater_PDF.zip'))
         self.assertEqual(len(zips), 1)
         with zipfile.ZipFile(zips[0]) as zf:
