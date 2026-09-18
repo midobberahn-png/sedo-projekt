@@ -162,6 +162,12 @@ class FeatureReviewTests(TestCase):
         self.assertLessEqual(len(many), len(one) + 1)
         self.assertLessEqual(len(many), 8)
 
+    def test_draft_archive_uses_matching_index_without_sorting(self):
+        response = self.client.get(reverse('sedo:invoice_list') + '?view=draft')
+        plan = response.context['page_obj'].paginator.object_list.explain()
+        self.assertIn('invoice_draft_order_idx', plan)
+        self.assertNotIn('TEMP B-TREE FOR ORDER BY', plan)
+
     def test_high_priority_tasks_come_first_on_same_day(self):
         today = timezone.localdate()
         WorkTask.objects.create(title='Normal', due_date=today, priority='normal')
