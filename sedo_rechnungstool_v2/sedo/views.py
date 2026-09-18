@@ -19,7 +19,7 @@ from django.db.models.functions import ExtractYear
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.http import FileResponse, JsonResponse
+from django.http import FileResponse, JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
 
 from .forms import CustomerForm, CustomerObjectForm, CustomerNoteForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm, WorkTaskForm
@@ -52,7 +52,7 @@ from .services.customer_timeline import KINDS as TIMELINE_KINDS, build_customer_
 from .services.reports import build_reports
 from .services.recurring_preview import build_recurring_preview
 from .services.zugferd_validation import validate_invoice_zugferd
-from .services.tax_export import create_tax_package
+from .services.tax_export import create_tax_package, parse_month
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
 # dem Nutzer eine freundliche Meldung, protokollieren den echten Fehler aber hier.
@@ -627,7 +627,7 @@ def dashboard(request):
     invoices = Invoice.objects.all()
     dunning_candidates = get_dunning_candidates(days_overdue_threshold=14)
     open_tasks = WorkTask.objects.filter(status='open').select_related(
-        'customer', 'offer', 'invoice').order_by('due_date', '-priority')
+        'customer', 'offer', 'invoice').order_by('due_date', 'priority', 'pk')
     context = {
         # offene_rechnungen() schließt zusätzlich Entwürfe, durch eine Korrektur
         # ersetzte Originale und Stornobelege aus. Vorher zählte das Dashboard
@@ -2527,6 +2527,8 @@ def recurring_monthly(request):
     today = timezone.localdate()
     try:
         preview_date = date.fromisoformat(request.GET.get('preview_date', today.isoformat()))
+        if preview_date.year >= 9999:
+            raise ValueError('Kein ausreichender Zeitraum für eine Dreimonatsvorschau.')
     except ValueError:
         preview_date = today
     default_month = f"{preview_date.year}-{preview_date.month:02d}"
@@ -2813,8 +2815,10 @@ def month_close(request):
     tax_email = request.POST.get('tax_email') or AppSetting.get('tax_advisor_email', '')
 
     try:
-        year, month = [int(x) for x in selected_month.split('-')[:2]]
+        year, month = parse_month(selected_month)
     except (ValueError, AttributeError):
+        if request.method == 'POST':
+            return HttpResponseBadRequest('Bitte einen gültigen Monat im Format JJJJ-MM wählen.')
         year, month = today.year, today.month
         selected_month = f'{year:04d}-{month:02d}'
 
@@ -2847,10 +2851,15 @@ def month_close(request):
             except (WorkflowError, OSError) as exc:
                 messages.error(request, f'Export abgebrochen, keine unvollständige Auswahl ausgegeben: {exc}')
                 return redirect(f"{reverse('sedo:month_close')}?month={selected_month}")
-            write_audit(request, 'generate', object_type='SteuerberaterExport',
-                        object_repr=selected_month,
-                        message=f'Steuerberaterpaket {selected_month} mit {manifest["rechnungen"]} Rechnungen erzeugt',
-                        metadata={'vorgang': 'steuerberater_export', **manifest})
+            try:
+                write_audit(request, 'generate', object_type='SteuerberaterExport',
+                            object_repr=selected_month,
+                            message=f'Steuerberaterpaket {selected_month} mit {manifest["rechnungen"]} Rechnungen erzeugt',
+                            metadata={'vorgang': 'steuerberater_export', **manifest}, pflicht=True)
+            except AuditWriteError:
+                zip_path.unlink(missing_ok=True)
+                messages.error(request, 'Export abgebrochen: Das Exportprotokoll konnte nicht gespeichert werden.')
+                return redirect('sedo:month_close')
             if action == 'download_tax_package':
                 return FileResponse(open(zip_path, 'rb'), as_attachment=True, filename=zip_path.name)
             msg = EmailMessage()
@@ -2925,7 +2934,10 @@ def backup_page(request):
                 messages.error(request, 'Bitte zur Bestätigung WIEDERHERSTELLEN eingeben.')
                 return redirect(f'{reverse("sedo:backup")}?backup={selected}')
             try:
-                plan = stage_restore(selected)
+                digest = request.POST.get('review_sha256', '')
+                if not digest:
+                    raise BackupError('Bitte zuerst die Sicherung prüfen und die Vorschau öffnen.')
+                plan = stage_restore(selected, expected_digest=digest)
             except Exception as exc:
                 logger.exception('Wiederherstellung konnte nicht vorbereitet werden')
                 messages.error(request, f'Wiederherstellung abgebrochen: {exc}')
@@ -2990,6 +3002,8 @@ def task_list(request, pk=None):
         messages.success(request, 'Aufgabe wurde gespeichert.')
         return redirect('sedo:task_list')
     status = request.GET.get('status', 'open')
+    if status not in ('open', 'done', 'all'):
+        status = 'open'
     tasks = WorkTask.objects.select_related('customer', 'offer', 'invoice', 'created_by')
     if status in ('open', 'done'):
         tasks = tasks.filter(status=status)

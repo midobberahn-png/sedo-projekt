@@ -155,7 +155,7 @@ class WorkTask(TimeStampedModel):
     completed_at = models.DateTimeField('Erledigt am', null=True, blank=True)
 
     class Meta:
-        ordering = ['status', 'due_date', '-priority', '-created_at']
+        ordering = ['status', 'due_date', 'priority', '-created_at']
         indexes = [models.Index(fields=['status', 'due_date'], name='worktask_status_due_idx')]
         constraints = [
             models.CheckConstraint(
@@ -321,7 +321,9 @@ class Invoice(SoftDeleteModel):
     def paid_amount(self):
         # Rückwärtsrelation läuft über all_objects; soft-gelöschte Zahlungen
         # explizit ausschließen.
-        active_payments = self.payments.filter(deleted_at__isnull=True)
+        active_payments = getattr(self, '_timeline_active_payments', None)
+        if active_payments is None:
+            active_payments = self.payments.filter(deleted_at__isnull=True)
         return sum((p.amount for p in active_payments), Decimal('0.00'))
 
     @property

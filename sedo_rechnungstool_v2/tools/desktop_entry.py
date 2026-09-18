@@ -12,10 +12,10 @@ import urllib.request
 
 if not getattr(sys, 'frozen', False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import desktop
 
 
 def check() -> int:
+    import desktop
     home = Path(tempfile.mkdtemp(prefix='sedo_build_check_'))
     os.environ['SEDO_HOME'] = str(home)
     app, _ = desktop._bootstrap()
@@ -34,6 +34,13 @@ def check() -> int:
     from django.db.migrations.executor import MigrationExecutor
     executor = MigrationExecutor(connection)
     migrated = not executor.migration_plan(executor.loader.graph.leaf_nodes())
+    # Die ausgelieferte App muss die Prüfschemata tatsächlich öffnen können.
+    from sedo.services.zugferd_validation import _official_rules, _profile_schema
+    validator = sum(len(assertions) for _, assertions in _official_rules()) == 806
+    validator = validator and _profile_schema('extended') is not None and _profile_schema('en16931') is not None
+    from sedo.backup_utils import create_backup, inspect_backup
+    backup = create_backup('build_check')
+    restoration = inspect_backup(backup.name)['integrity'] == 'ok'
     hardlinks = False
     original = home/'hardlink-probe'
     original.write_bytes(b'isolierter Buildtest')
@@ -43,9 +50,10 @@ def check() -> int:
         hardlinks = linked.samefile(original)
     except OSError:
         pass
-    result = {'ok': bool(http and assets and whisper and migrated and hardlinks),
+    result = {'ok': bool(http and assets and whisper and migrated and hardlinks and validator and restoration),
               'http_login': http, 'static_assets': assets, 'whisper_available': whisper,
               'migrations_complete': migrated, 'hardlinks': hardlinks,
+              'invoice_validator_available': validator, 'restore_simulation': restoration,
               'frozen': bool(getattr(sys, 'frozen', False)),
               'python': '.'.join(map(str, sys.version_info[:3]))}
     report = os.environ.get('SEDO_CHECK_REPORT')
@@ -57,4 +65,10 @@ def check() -> int:
 
 
 if __name__ == '__main__':
-    raise SystemExit(check() if '--check-strict' in sys.argv else desktop.main())
+    if len(sys.argv) == 3 and sys.argv[1] == '--check-restore':
+        from sedo.restore_check import main
+        raise SystemExit(main(sys.argv[2]))
+    if '--check-strict' in sys.argv:
+        raise SystemExit(check())
+    import desktop
+    raise SystemExit(desktop.main())

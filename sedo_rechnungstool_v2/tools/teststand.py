@@ -194,9 +194,12 @@ def frozen(output: Path, app: Path = APP) -> Path:
         manifest = stage_source(source_zip, staged)
         envpython = install(Path(tmp) / 'venv', staged)
         # Unvollständiges lokales Diktat wird nicht länger als guter Build gewertet.
-        build_env = {**os.environ, 'SEDO_HOME': str(Path(tmp) / 'home'),
+        build_env = {**os.environ, 'SEDO_HOME': str(Path(tmp) / 'home'), 'PYTHONUTF8': '1',
                      'DJANGO_SECRET_KEY': 'isolierter-buildtest-kein-betriebsschluessel'}
         (Path(tmp) / 'home/data').mkdir(parents=True)
+        # Auch plattformspezifische Dateitausch-/Sperrfehler vor dem Paketbau prüfen.
+        run([str(envpython), 'manage.py', 'test', 'sedo', '--noinput'],
+            cwd=staged, env=build_env, timeout=600)
         run([str(envpython), '-c', 'from faster_whisper import WhisperModel; import webview, waitress'], env=build_env)
         run([str(envpython), '-m', 'PyInstaller', str(staged / 'sedo_desktop.spec'),
              '--noconfirm', '--workpath', str(Path(tmp) / 'work'), '--distpath', str(output / 'desktop')], cwd=staged, env=build_env)

@@ -3,9 +3,9 @@
 Diktat (läuft im Browser via Web Speech API) → Text → strukturierte
 Angebotspositionen via Claude Tool-Use.
 
-Bewusst enger Zuschnitt: Es werden ausschließlich Leistungsdaten an die Cloud
-übertragen – niemals Kunden-, Objekt- oder Adressdaten. Die Spracherkennung
-selbst läuft lokal im Browser, nicht über diese API. Reine Python-
+Übertragen werden eingegebene Leistungstexte und Katalogdaten, keine separaten
+Kundenfelder. Freitext wird nicht automatisch anonymisiert. Lokales Whisper
+bleibt auf dem SEDO-Rechner; Browser-Spracherkennung kann Clouddienste nutzen. Reine Python-
 Standardbibliothek (urllib), keine neuen Abhängigkeiten.
 """
 from __future__ import annotations
@@ -233,7 +233,8 @@ def _ai_to_decimal(value) -> Decimal | None:
         return None
     if isinstance(value, (int, float)):
         try:
-            return Decimal(str(value)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            number = Decimal(str(value))
+            return number.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if number.is_finite() else None
         except (InvalidOperation, ValueError):
             return None
     if isinstance(value, str):
@@ -245,7 +246,8 @@ def _ai_to_decimal(value) -> Decimal | None:
         elif ',' in s:                 # 0,45
             s = s.replace(',', '.')
         try:
-            return Decimal(s).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            number = Decimal(s)
+            return number.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if number.is_finite() else None
         except (InvalidOperation, ValueError):
             return None
     return None

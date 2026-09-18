@@ -91,14 +91,15 @@
   <div class="restore-review mt-3">
     <h3>Prüfung bestanden</h3>
     <dl class="info-list two">
-      <div><span>Datenbank</span><strong>Integrität OK</strong></div>
+      <div><span>Datenbank</span><strong>Integrität und Wiederherstellungssimulation OK</strong></div>
       <div><span>Datenstand</span><strong>{{ restore_report.migration }}</strong></div>
       <div><span>Inhalt</span><strong>{{ restore_report.counts.Kunden }} Kunden · {{ restore_report.counts.Rechnungen }} Rechnungen</strong></div>
       <div><span>Dateien</span><strong>{{ restore_report.media_files }} Medien · {{ restore_report.size|filesizeformat }}</strong></div>
     </dl>
-    <p class="hint">Vor dem Einspielen erstellt SEDO automatisch eine Sicherung des aktuellen Stands. Passwörter, Bank-PIN und aktive Anmeldungen sind aus Backups entfernt und müssen danach neu hinterlegt werden.</p>
+    <p class="hint">Vor dem Einspielen erstellt SEDO automatisch eine Sicherung des aktuellen Stands. SMTP-Passwort, KI-Schlüssel und Bank-PIN müssen danach neu hinterlegt werden. Das SEDO-Anmeldepasswort entspricht dem Stand der Sicherung; aktive Sitzungen werden nicht übernommen.</p>
     <form method="post" class="compact-form" onsubmit="return confirm('Geprüftes Backup für den nächsten App-Start vormerken?');">
       {% csrf_token %}<input type="hidden" name="backup" value="{{ restore_report.name }}">
+      <input type="hidden" name="review_sha256" value="{{ restore_report.archive_sha256 }}">
       <label>Zur Bestätigung <strong>WIEDERHERSTELLEN</strong> eingeben
         <input name="confirmation" autocomplete="off" required>
       </label>
