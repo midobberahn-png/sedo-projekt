@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django import forms
 from django.forms import inlineformset_factory
-from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, OfferItem, Payment, CashbookEntry, RecurringInvoiceTemplate, RecurringInvoiceItem, ServiceCatalogItem
+from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, OfferItem, Payment, CashbookEntry, RecurringInvoiceTemplate, RecurringInvoiceItem, ServiceCatalogItem, WorkTask
 
 CUSTOMER_WIDGET_CLASS = {'class': 'form-control form-control-sm'}
 SELECT_WIDGET_CLASS = {'class': 'form-select form-select-sm'}
@@ -78,6 +78,28 @@ class CustomerNoteForm(forms.ModelForm):
                 'maxlength': 4000,
             }),
         }
+
+
+class WorkTaskForm(forms.ModelForm):
+    class Meta:
+        model = WorkTask
+        fields = ['title', 'note', 'due_date', 'priority', 'customer', 'offer', 'invoice']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Was ist als Nächstes zu tun?'}),
+            'note': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Optionaler Hintergrund oder Gesprächsnotiz'}),
+            'due_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}, format='%Y-%m-%d'),
+            'priority': forms.Select(attrs={'class': 'form-select'}),
+            'customer': forms.Select(attrs={'class': 'form-select'}),
+            'offer': forms.Select(attrs={'class': 'form-select'}),
+            'invoice': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        refs = [cleaned.get('customer'), cleaned.get('offer'), cleaned.get('invoice')]
+        if sum(value is not None for value in refs) > 1:
+            raise forms.ValidationError('Bitte höchstens einen Bezug auswählen: Kunde, Angebot oder Rechnung.')
+        return cleaned
 
 class InvoiceItemForm(forms.ModelForm):
     class Meta:

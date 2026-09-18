@@ -635,3 +635,7 @@ body.sidebar-locked .nav-group{display:none}
 .nav .nav-logout-btn:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 .nav-group .nav-sub .nav-logout-btn{padding:8px 12px}
 .nav-group .nav-sub .nav-logout-btn .nav-text{font-size:13.5px}
+
+/* Aufgaben, Wiederherstellung und Exportprüfung */
+.task-overdue{border-left:4px solid var(--red)!important}.task-record{grid-template-columns:minmax(0,1fr) auto auto}.task-list .work-record{grid-template-columns:minmax(0,1fr) auto auto}.restore-review{padding-top:16px;border-top:1px solid var(--line2)}
+@media(max-width:800px){.task-record,.task-list .work-record{grid-template-columns:1fr}.task-list .table-actions{justify-content:flex-start}}

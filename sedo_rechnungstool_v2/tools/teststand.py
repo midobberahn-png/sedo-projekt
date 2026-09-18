@@ -30,7 +30,7 @@ ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'deskto
               'manage.py', 'sedo_desktop.spec', 'build_mac.command', 'BUILD_WINDOWS.bat',
               'TESTSTAND.md', '.env.example'}
 SUFFIXES = {'.py', '.html', '.css', '.js', '.svg', '.png', '.jpg', '.jpeg',
-            '.ico', '.icns', '.xsd', '.xsl', '.xslt', '.json', '.md', '.txt'}
+            '.ico', '.icns', '.xsd', '.xsl', '.xslt', '.sch', '.json', '.md', '.txt'}
 
 
 class BuildError(RuntimeError):

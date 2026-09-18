@@ -5,6 +5,8 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import hashlib
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 import zipfile
@@ -41,6 +43,146 @@ class BackupError(RuntimeError):
     der Zusage in der Oberfläche Bank-PIN, SMTP-Passwort oder API-Key enthält
     (Review-Fund F-81).
     """
+
+
+MAX_RESTORE_FILES = 100_000
+MAX_RESTORE_BYTES = 4 * 1024 * 1024 * 1024
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _tree_sha256(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(item for item in root.rglob('*') if item.is_file()):
+        digest.update(path.relative_to(root).as_posix().encode('utf-8'))
+        digest.update(b'\0')
+        digest.update(_sha256(path).encode('ascii'))
+        digest.update(b'\n')
+    return digest.hexdigest()
+
+
+def _safe_backup_path(name: str) -> Path:
+    if not name or Path(name).name != name or not name.endswith('.zip'):
+        raise BackupError('Ungültiger Backup-Name.')
+    path = (backup_dir() / name).resolve()
+    if not path.is_relative_to(backup_dir().resolve()) or not path.is_file():
+        raise BackupError('Das ausgewählte Backup wurde nicht gefunden.')
+    return path
+
+
+def inspect_backup(name: str) -> dict:
+    """Prüft ZIP, Pfade, SQLite-Integrität und zeigt eine Wiederherstellungsvorschau."""
+    path = _safe_backup_path(name)
+    with zipfile.ZipFile(path) as archive:
+        infos = archive.infolist()
+        if len(infos) > MAX_RESTORE_FILES or sum(info.file_size for info in infos) > MAX_RESTORE_BYTES:
+            raise BackupError('Das Backup überschreitet die sichere Größenbegrenzung.')
+        files = []
+        for info in infos:
+            member = Path(info.filename)
+            mode = info.external_attr >> 16
+            if (member.is_absolute() or '..' in member.parts or '\\' in info.filename
+                    or (mode & 0o170000) == 0o120000):
+                raise BackupError(f'Unsicherer Archivpfad: {info.filename}')
+            if not info.is_dir():
+                files.append(info.filename)
+        db_names = [item for item in files if item.startswith('data/') and item.endswith('.sqlite3')]
+        if len(db_names) != 1:
+            raise BackupError('Das Backup muss genau eine Datenbank unter data/ enthalten.')
+        with tempfile.TemporaryDirectory(prefix='sedo_restore_check_') as tmp:
+            db_path = Path(tmp) / 'restore.sqlite3'
+            with archive.open(db_names[0]) as source, db_path.open('wb') as target:
+                shutil.copyfileobj(source, target)
+            try:
+                with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as con:
+                    integrity = con.execute('PRAGMA integrity_check').fetchone()[0]
+                    tables = _table_names(con)
+                    counts = {}
+                    for table, label in (
+                        ('sedo_customer', 'Kunden'), ('sedo_invoice', 'Rechnungen'),
+                        ('sedo_offer', 'Angebote'), ('sedo_payment', 'Zahlungen')):
+                        counts[label] = con.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] if table in tables else 0
+                    migrations = con.execute(
+                        "SELECT name FROM django_migrations WHERE app='sedo' ORDER BY applied DESC LIMIT 1"
+                    ).fetchone() if 'django_migrations' in tables else None
+            except sqlite3.DatabaseError as exc:
+                raise BackupError(f'Datenbank im Backup ist nicht lesbar: {exc}') from exc
+            if integrity != 'ok':
+                raise BackupError(f'Datenbank-Integritätstest fehlgeschlagen: {integrity}')
+            required = {'django_migrations', 'sedo_customer', 'sedo_invoice'}
+            if not required.issubset(tables):
+                raise BackupError('Das Backup enthält keine vollständige SEDO-Datenbank.')
+            digest = _sha256(db_path)
+    media_files = [item for item in files if item.startswith('media/')]
+    return {
+        'name': name, 'path': path, 'size': path.stat().st_size,
+        'archive_sha256': _sha256(path),
+        'database_member': db_names[0], 'database_sha256': digest,
+        'counts': counts, 'media_files': len(media_files),
+        'migration': migrations[0] if migrations else 'unbekannt', 'integrity': 'ok',
+        'file_count': len(files),
+    }
+
+
+def stage_restore(name: str) -> dict:
+    """Prüft erneut, legt Sicherheitsbackup an und plant den Tausch beim Neustart."""
+    report = inspect_backup(name)
+    home = Path(getattr(settings, 'SEDO_HOME', settings.BASE_DIR)).resolve()
+    if (home / 'pending_restore.json').exists():
+        raise BackupError('Es ist bereits eine Wiederherstellung für den nächsten Start vorgemerkt.')
+    safety = create_backup('pre_restore')
+    staging = home / 'restore-staging' / report['database_sha256'][:16]
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True, mode=0o700)
+    source = report['path']
+    try:
+        with zipfile.ZipFile(source) as archive:
+            infos = archive.infolist()
+            if len(infos) > MAX_RESTORE_FILES or sum(info.file_size for info in infos) > MAX_RESTORE_BYTES:
+                raise BackupError('Das Backup überschreitet die sichere Größenbegrenzung.')
+            for info in infos:
+                if info.is_dir():
+                    continue
+                member = Path(info.filename)
+                mode = info.external_attr >> 16
+                if (member.is_absolute() or '..' in member.parts or '\\' in info.filename
+                        or (mode & 0o170000) == 0o120000):
+                    raise BackupError(f'Unsicherer Archivpfad: {info.filename}')
+                target = staging / member
+                if not target.resolve().is_relative_to(staging.resolve()):
+                    raise BackupError(f'Unsicherer Archivpfad: {info.filename}')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with archive.open(info) as src, target.open('xb') as dst:
+                    shutil.copyfileobj(src, dst)
+        if _sha256(source) != report['archive_sha256']:
+            raise BackupError('Das Backup wurde während der Vorbereitung verändert.')
+        staged_db = staging / report['database_member']
+        target_db = staging / 'data' / 'sedo_web.sqlite3'
+        if staged_db != target_db:
+            target_db.parent.mkdir(parents=True, exist_ok=True)
+            staged_db.replace(target_db)
+        if _sha256(target_db) != report['database_sha256']:
+            raise BackupError('Prüfsumme der vorbereiteten Datenbank stimmt nicht.')
+        plan = {
+            'schema': 1, 'backup_name': name, 'staging': str(staging),
+            'database_sha256': report['database_sha256'], 'safety_backup': str(safety),
+            'staging_sha256': _tree_sha256(staging),
+            'staged_at': timezone.localtime().isoformat(),
+        }
+        temp = home / 'pending_restore.json.tmp'
+        temp.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding='utf-8')
+        temp.replace(home / 'pending_restore.json')
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return plan
 
 
 def _safe_name(value: str) -> str:

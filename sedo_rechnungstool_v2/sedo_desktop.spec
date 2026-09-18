@@ -30,6 +30,7 @@ hiddenimports = (
 datas = django_datas + whisper_datas + [
     ('sedo/templates', 'sedo/templates'),
     ('sedo/static', 'sedo/static'),
+    ('sedo/validation', 'sedo/validation'),
 ]
 
 a = Analysis(

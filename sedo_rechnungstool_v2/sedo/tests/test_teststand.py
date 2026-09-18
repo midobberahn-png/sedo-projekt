@@ -56,6 +56,7 @@ class TeststandTests(unittest.TestCase):
     def test_erforderliche_quelltypen_werden_mitgenommen(self):
         for name in ('sedo/models.py', 'sedo/migrations/0013_invoice_query_indexes.py',
                      'sedo/templates/sedo/base.html', 'sedo/static/sedo/app.css',
+                     'sedo/validation/en16931/1.3.16/EN16931-CII-validation-preprocessed.sch',
                      '.env.example', 'tools/teststand.py', 'requirements-release.lock'):
             with self.subTest(name=name):
                 self.assertTrue(t.allowed(name))

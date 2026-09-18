@@ -5,7 +5,7 @@
   <a class="work-back" href="{% url 'sedo:customer_list' %}">← Alle Kunden</a>
   <div class="topbar">
     <div><div class="eyebrow">Kundenakte</div><h1 class="h1">{{ customer.name }}</h1><p class="sub">{{ customer.get_customer_type_display }}{% if customer.customer_no %} · Kunden-Nr. {{ customer.customer_no }}{% endif %}</p></div>
-    <div class="page-actions"><a class="btn primary" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk|unlocalize }}">Rechnung erstellen</a><a class="btn" href="{% url 'sedo:offer_create' %}?customer={{ customer.pk|unlocalize }}">Angebot erstellen</a></div>
+    <div class="page-actions"><a class="btn primary" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk|unlocalize }}">Rechnung erstellen</a><a class="btn" href="{% url 'sedo:offer_create' %}?customer={{ customer.pk|unlocalize }}">Angebot erstellen</a><a class="btn" href="{% url 'sedo:task_list' %}?customer={{ customer.pk|unlocalize }}">Wiedervorlage</a></div>
   </div>
   <nav class="work-tabs" aria-label="Bereiche der Kundenakte">
     {% for tab in customer_tabs %}<a href="?section={{ tab.key }}" {% if section == tab.key %}class="active" aria-current="page"{% endif %}>{{ tab.label }}{% if tab.key == 'invoices' %} <span>({{ invoice_count }})</span>{% elif tab.key == 'offers' %} <span>({{ offer_count }})</span>{% elif tab.key == 'objects' %} <span>({{ object_count }})</span>{% endif %}</a>{% endfor %}

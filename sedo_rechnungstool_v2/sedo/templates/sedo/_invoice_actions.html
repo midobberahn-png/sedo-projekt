@@ -27,6 +27,7 @@
       <div class="action-menu-group">
         <span class="action-menu-label">Dokumente</span>
         {% if invoice.zugferd_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{{ invoice.zugferd_file.url }}" target="_blank">ZUGFeRD öffnen</a>{% endif %}
+        {% if invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{% url 'sedo:invoice_zugferd_validation' invoice.pk %}">ZUGFeRD prüfen</a>{% endif %}
         {% if invoice.pdf_file %}<a class="action-menu-item" href="{{ invoice.pdf_file.url }}" target="_blank">PDF öffnen</a>{% endif %}
         {% if invoice.xml_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{{ invoice.xml_file.url }}" target="_blank">XML öffnen</a>{% endif %}
         {% if invoice.lifecycle == 'draft' %}
@@ -51,6 +52,7 @@
 
       <div class="action-menu-group">
         <span class="action-menu-label">Verwaltung</span>
+        <a class="action-menu-item" href="{% url 'sedo:task_list' %}?invoice={{ invoice.pk }}">Wiedervorlage anlegen</a>
         {% if invoice.invoice_type != '457' and invoice.lifecycle != 'draft' and invoice.lifecycle != 'cancelled' and invoice.lifecycle != 'corrected' and not invoice.active_storno and not invoice.active_correction %}
           <form method="post" action="{% url 'sedo:invoice_storno' invoice.pk %}" onsubmit="return confirm('Stornorechnung zu {{ invoice.number }} erzeugen?');">{% csrf_token %}<button type="submit" class="action-menu-item danger">Stornorechnung erzeugen</button></form>
         {% endif %}

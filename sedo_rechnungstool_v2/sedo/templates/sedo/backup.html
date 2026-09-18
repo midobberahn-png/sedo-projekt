@@ -32,6 +32,19 @@
 </div>
 {% endif %}
 
+{% if pending_restore %}
+<div class="card warning-card">
+  <div class="section-head"><h2>Wiederherstellung bereit</h2></div>
+  <p><strong>{{ pending_restore.backup_name }}</strong> wurde geprüft und vorbereitet.</p>
+  <p>Schließe die SEDO-App vollständig und öffne sie erneut. Der Austausch erfolgt vor dem Datenbankstart; danach werden nötige Aktualisierungen automatisch angewendet.</p>
+</div>
+{% elif last_restore %}
+<div class="card" style="border-left:4px solid var(--color-success,#16a34a)">
+  <div class="section-head"><h2>Letzte Wiederherstellung erfolgreich</h2></div>
+  <p>{{ last_restore.backup_name }} · {{ last_restore.applied_at }}</p>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="section-head"><h2>Automatische Backups</h2></div>
   <p class="sub">Die App prüft beim Start/Seitenaufruf, ob das letzte automatische Backup älter als 7 Tage ist. Falls ja, wird automatisch ein ZIP-Backup erzeugt.</p>
@@ -60,5 +73,38 @@
     <li><strong>Nicht enthalten:</strong> .env, Secret Key, Claude-API-Key, SMTP-Passwort, Bank-PIN und aktive Anmelde-Sitzungen. Die Datenbankkopie wird neu aufgebaut, damit auch keine Rest-Bytes übrig bleiben.</li>
     <li><strong>Enthalten und schützenswert:</strong> alle Kunden-, Rechnungs- und Zahlungsdaten sowie die Bank-Stammdaten ohne PIN (Anmeldename, IBAN, BLZ, FinTS-Adresse) und der SMTP-Benutzername. Ein Backup gehört deshalb nicht ungeschützt weitergegeben.</li>
   </ul>
+</div>
+
+<div class="card">
+  <div class="section-head"><div><h2>Backup wiederherstellen</h2><p class="sub">Dreistufig: auswählen, vollständig prüfen, kontrolliert beim nächsten App-Start einspielen.</p></div></div>
+  <form method="post" class="compact-form">
+    {% csrf_token %}
+    <label>Sicherung auswählen
+      <select name="backup" required>
+        <option value="">Bitte auswählen …</option>
+        {% for item in backups %}<option value="{{ item.name }}"{% if selected_backup == item.name %} selected{% endif %}>{{ item.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn" type="submit" name="action" value="inspect_restore">Integrität prüfen und Vorschau öffnen</button>
+  </form>
+  {% if restore_report %}
+  <div class="restore-review mt-3">
+    <h3>Prüfung bestanden</h3>
+    <dl class="info-list two">
+      <div><span>Datenbank</span><strong>Integrität OK</strong></div>
+      <div><span>Datenstand</span><strong>{{ restore_report.migration }}</strong></div>
+      <div><span>Inhalt</span><strong>{{ restore_report.counts.Kunden }} Kunden · {{ restore_report.counts.Rechnungen }} Rechnungen</strong></div>
+      <div><span>Dateien</span><strong>{{ restore_report.media_files }} Medien · {{ restore_report.size|filesizeformat }}</strong></div>
+    </dl>
+    <p class="hint">Vor dem Einspielen erstellt SEDO automatisch eine Sicherung des aktuellen Stands. Passwörter, Bank-PIN und aktive Anmeldungen sind aus Backups entfernt und müssen danach neu hinterlegt werden.</p>
+    <form method="post" class="compact-form" onsubmit="return confirm('Geprüftes Backup für den nächsten App-Start vormerken?');">
+      {% csrf_token %}<input type="hidden" name="backup" value="{{ restore_report.name }}">
+      <label>Zur Bestätigung <strong>WIEDERHERSTELLEN</strong> eingeben
+        <input name="confirmation" autocomplete="off" required>
+      </label>
+      <button class="btn danger" type="submit" name="action" value="stage_restore">Wiederherstellung vorbereiten</button>
+    </form>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

@@ -22,8 +22,8 @@ from django.utils import timezone
 from django.http import FileResponse, JsonResponse
 from django.views.decorators.http import require_POST
 
-from .forms import CustomerForm, CustomerObjectForm, CustomerNoteForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm
-from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, Payment, CashbookEntry, AareonMapping, RecurringInvoiceTemplate, RecurringInvoiceItem, AppSetting, AuditLog, ServiceCatalogItem
+from .forms import CustomerForm, CustomerObjectForm, CustomerNoteForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm, WorkTaskForm
+from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, Payment, CashbookEntry, AareonMapping, RecurringInvoiceTemplate, RecurringInvoiceItem, AppSetting, AuditLog, ServiceCatalogItem, WorkTask
 from .audit import AUDIT_ERROR_AT_KEY, AUDIT_ERROR_KEY, AuditWriteError, write_audit
 from .services import (
     generate_invoice_files, next_number, save_with_unique_number, create_numbered_invoice,
@@ -51,6 +51,8 @@ from .services.readiness import MANUAL_CHECKS, is_local_only_mode, readiness_rep
 from .services.customer_timeline import KINDS as TIMELINE_KINDS, build_customer_timeline
 from .services.reports import build_reports
 from .services.recurring_preview import build_recurring_preview
+from .services.zugferd_validation import validate_invoice_zugferd
+from .services.tax_export import create_tax_package
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
 # dem Nutzer eine freundliche Meldung, protokollieren den echten Fehler aber hier.
@@ -624,6 +626,8 @@ def dashboard(request):
     today = timezone.localdate()
     invoices = Invoice.objects.all()
     dunning_candidates = get_dunning_candidates(days_overdue_threshold=14)
+    open_tasks = WorkTask.objects.filter(status='open').select_related(
+        'customer', 'offer', 'invoice').order_by('due_date', '-priority')
     context = {
         # offene_rechnungen() schließt zusätzlich Entwürfe, durch eine Korrektur
         # ersetzte Originale und Stornobelege aus. Vorher zählte das Dashboard
@@ -646,6 +650,9 @@ def dashboard(request):
         'ai_configured': ai_is_configured(),
         'ai_text_model': AppSetting.get('ai_text_model', ''),
         'ai_default_text_model': AI_DEFAULT_TEXT_MODEL,
+        'open_tasks': open_tasks[:6],
+        'open_tasks_count': open_tasks.count(),
+        'overdue_tasks_count': open_tasks.filter(due_date__lt=today).count(),
     }
     return render(request, 'sedo/dashboard.html', context)
 
@@ -1324,6 +1331,18 @@ def invoice_detail(request, pk):
 
 
 @login_required
+def invoice_zugferd_validation(request, pk):
+    invoice = get_object_or_404(Invoice.objects.select_related('customer'), pk=pk)
+    if invoice.lifecycle == 'draft':
+        messages.error(request, 'Ein Entwurf besitzt noch keine versandfähige ZUGFeRD-Datei.')
+        return redirect('sedo:invoice_detail', pk=pk)
+    result = validate_invoice_zugferd(invoice)
+    return render(request, 'sedo/invoice_zugferd_validation.html', {
+        'invoice': invoice, 'validation': result,
+    })
+
+
+@login_required
 @require_POST
 def invoice_generate(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
@@ -1359,6 +1378,16 @@ def invoice_email(request, pk):
     except WorkflowError as fehler:
         messages.error(request, str(fehler))
         return redirect('sedo:invoice_detail', pk)
+
+    # Ausgestellte SEDO-Belege besitzen beide Dateien. Alte Datensätze ohne
+    # Dateiverweis laufen anschließend wie bisher in die harte Archivprüfung,
+    # die den Versand ebenfalls stoppt. Diese Trennung hält Import-/Altbelege
+    # verständlich und erlaubt keine Umgehung bei echten ZUGFeRD-Dateien.
+    if invoice.xml_file and invoice.zugferd_file:
+        validation = validate_invoice_zugferd(invoice)
+        if not validation.ok:
+            messages.error(request, 'Versand gestoppt: Die ZUGFeRD-Prüfung hat Fehler gefunden. Bitte den Prüfbericht öffnen.')
+            return redirect('sedo:invoice_zugferd_validation', pk=pk)
 
     # Nur gespeicherte Originalbytes; fehlendes Archiv ist kein Generierungsauftrag.
     try:
@@ -2810,34 +2839,33 @@ def month_close(request):
         action = request.POST.get('action')
         if tax_email:
             AppSetting.set('tax_advisor_email', tax_email)
-        if action == 'export_tax_email':
+        if action in ('export_tax_email', 'download_tax_package'):
             try:
-                original_pdfs = [(inv, lese_archivdatei(inv, 'pdf_file')) for inv in invoices]
-            except WorkflowError as exc:
+                zip_path, manifest = create_tax_package(
+                    invoices, selected_month, deleted_numbers=ausgeblendete_nummern,
+                    user=request.user.get_username())
+            except (WorkflowError, OSError) as exc:
                 messages.error(request, f'Export abgebrochen, keine unvollständige Auswahl ausgegeben: {exc}')
                 return redirect(f"{reverse('sedo:month_close')}?month={selected_month}")
-            out_dir = Path(settings.MEDIA_ROOT) / 'month_close' / selected_month
-            out_dir.mkdir(parents=True, exist_ok=True)
-            zip_path = out_dir / f'SEDO_Rechnungen_{selected_month}_Steuerberater_PDF.zip'
-            pdf_count = 0
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr('README.txt', f'SEDO PDF-Rechnungsexport fuer {selected_month}\nEnthalten sind ausschliesslich die sichtbaren Rechnungs-PDFs.\n')
-                for inv, attachment in original_pdfs:
-                    safe_name = attachment.name if attachment.name.startswith(inv.number) else f'{inv.number}_{attachment.name}'
-                    zf.writestr(safe_name, attachment.data)
-                    pdf_count += 1
+            write_audit(request, 'generate', object_type='SteuerberaterExport',
+                        object_repr=selected_month,
+                        message=f'Steuerberaterpaket {selected_month} mit {manifest["rechnungen"]} Rechnungen erzeugt',
+                        metadata={'vorgang': 'steuerberater_export', **manifest})
+            if action == 'download_tax_package':
+                return FileResponse(open(zip_path, 'rb'), as_attachment=True, filename=zip_path.name)
             msg = EmailMessage()
             msg['To'] = tax_email or ''
             msg['From'] = 'info@sedo-magdeburg.de'
             msg['Subject'] = f'SEDO Rechnungsexport {selected_month}'
             msg.set_content(
                 f'Sehr geehrte Damen und Herren,\n\n'
-                f'anbei erhalten Sie die Rechnungs-PDFs für {selected_month}.\n'
-                f'Enthaltene PDF-Rechnungen: {pdf_count}\n\n'
+                f'anbei erhalten Sie das Steuerberaterpaket für {selected_month}.\n'
+                f'Enthaltene Rechnungen: {manifest["rechnungen"]}\n'
+                f'Enthalten sind Belege, Buchungsdaten und ein Exportprotokoll.\n\n'
                 f'Mit freundlichen Grüßen\nSEDO Objektdienstleistungen GmbH\n'
             )
             msg.add_attachment(zip_path.read_bytes(), maintype='application', subtype='zip', filename=zip_path.name)
-            eml_path = out_dir / f'SEDO_Rechnungsexport_{selected_month}.eml'
+            eml_path = zip_path.parent / f'SEDO_Rechnungsexport_{selected_month}.eml'
             eml_path.write_bytes(msg.as_bytes())
             return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=eml_path.name)
 
@@ -2848,13 +2876,17 @@ def month_close(request):
         'invoice_count': invoices.count(),
         'gross_total': _sum_decimal(invoices, 'gross_total'),
         'ausgeblendete_nummern': ausgeblendete_nummern,
+        'export_history': AuditLog.objects.filter(
+            object_type='SteuerberaterExport', object_repr=selected_month)[:8],
     }
     return render(request, 'sedo/month_close.html', context)
 
 @login_required
 def backup_page(request):
     """Systembereich: Backup verwalten."""
-    from .backup_utils import BackupError, create_backup
+    from .backup_utils import BackupError, backup_dir, create_backup, inspect_backup, stage_restore
+    selected = request.POST.get('backup') or request.GET.get('backup') or ''
+    restore_report = None
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'backup_now':
@@ -2881,7 +2913,47 @@ def backup_page(request):
             AppSetting.set('auto_weekly_backup_enabled', '1')
             write_audit(request, 'backup', object_type='Backup', object_repr='Automatisches Wochenbackup', message='Automatisches Wochenbackup aktiviert')
             messages.success(request, 'Automatisches Wochenbackup wurde aktiviert.')
+        elif action == 'inspect_restore':
+            try:
+                inspect_backup(selected)
+            except BackupError as exc:
+                messages.error(request, f'Backup-Prüfung abgebrochen: {exc}')
+                return redirect('sedo:backup')
+            return redirect(f'{reverse("sedo:backup")}?backup={selected}')
+        elif action == 'stage_restore':
+            if request.POST.get('confirmation', '').strip().upper() != 'WIEDERHERSTELLEN':
+                messages.error(request, 'Bitte zur Bestätigung WIEDERHERSTELLEN eingeben.')
+                return redirect(f'{reverse("sedo:backup")}?backup={selected}')
+            try:
+                plan = stage_restore(selected)
+            except Exception as exc:
+                logger.exception('Wiederherstellung konnte nicht vorbereitet werden')
+                messages.error(request, f'Wiederherstellung abgebrochen: {exc}')
+            else:
+                write_audit(request, 'backup', object_type='BackupRestore', object_repr=selected,
+                            message='Wiederherstellung geprüft und für den nächsten App-Start vorgemerkt',
+                            metadata={'vorgang': 'restore_staged', 'safety_backup': plan['safety_backup']})
+                messages.success(request, 'Wiederherstellung ist vollständig vorbereitet. Bitte die App schließen und erneut öffnen; vor dem Start wird der geprüfte Stand eingespielt.')
+            return redirect('sedo:backup')
         return redirect('sedo:backup')
+    if selected:
+        try:
+            restore_report = inspect_backup(selected)
+        except BackupError as exc:
+            messages.error(request, f'Backup-Prüfung abgebrochen: {exc}')
+            selected = ''
+    backups = sorted(backup_dir().glob('*.zip'), key=lambda item: item.stat().st_mtime, reverse=True)
+    home = Path(getattr(settings, 'SEDO_HOME', settings.BASE_DIR))
+    pending_restore = None
+    last_restore = None
+    try:
+        pending_restore = json.loads((home / 'pending_restore.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        pass
+    try:
+        last_restore = json.loads((home / 'last_restore.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        pass
     context = {
         'auto_weekly_backup_enabled': AppSetting.get('auto_weekly_backup_enabled', '1'),
         'last_backup_at': AppSetting.get('last_backup_at', ''),
@@ -2892,8 +2964,52 @@ def backup_page(request):
         # unsichtbar – die Seite zeigt den Vermerk als Warnung an (F-81).
         'last_backup_error': AppSetting.get('last_backup_error', ''),
         'last_backup_error_at': AppSetting.get('last_backup_error_at', ''),
+        'backups': backups, 'selected_backup': selected,
+        'restore_report': restore_report, 'pending_restore': pending_restore,
+        'last_restore': last_restore,
     }
     return render(request, 'sedo/backup.html', context)
+
+
+@login_required
+def task_list(request, pk=None):
+    task = get_object_or_404(WorkTask, pk=pk) if pk else None
+    initial = {'due_date': timezone.localdate()}
+    for key in ('customer', 'offer', 'invoice'):
+        value = request.GET.get(key)
+        if value and str(value).isdigit():
+            initial[key] = value
+    form = WorkTaskForm(request.POST or None, instance=task, initial=initial if not task else None)
+    if request.method == 'POST' and form.is_valid():
+        saved = form.save(commit=False)
+        if not saved.pk:
+            saved.created_by = request.user
+        saved.save()
+        write_audit(request, 'update' if task else 'create', saved,
+                    f'Aufgabe „{saved.title}“ {"bearbeitet" if task else "angelegt"}')
+        messages.success(request, 'Aufgabe wurde gespeichert.')
+        return redirect('sedo:task_list')
+    status = request.GET.get('status', 'open')
+    tasks = WorkTask.objects.select_related('customer', 'offer', 'invoice', 'created_by')
+    if status in ('open', 'done'):
+        tasks = tasks.filter(status=status)
+    return render(request, 'sedo/task_list.html', {
+        'form': form, 'edit_task': task, 'tasks': tasks, 'status_filter': status,
+        'today': timezone.localdate(),
+    })
+
+
+@login_required
+@require_POST
+def task_toggle(request, pk):
+    task = get_object_or_404(WorkTask, pk=pk)
+    task.status = 'open' if task.status == 'done' else 'done'
+    task.completed_at = None if task.status == 'open' else timezone.now()
+    task.save(update_fields=['status', 'completed_at', 'updated_at'])
+    write_audit(request, 'update', task, f'Aufgabe „{task.title}“ als {task.get_status_display()} markiert')
+    messages.success(request, f'Aufgabe ist jetzt {task.get_status_display().lower()}.')
+    return redirect('sedo:dashboard' if request.POST.get('next') == reverse('sedo:dashboard')
+                    else 'sedo:task_list')
 
 @login_required
 def security_status(request):

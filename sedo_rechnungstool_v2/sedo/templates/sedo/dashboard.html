@@ -16,6 +16,19 @@
     {% if not draft_invoices and not overdue_invoices and not dunning_candidates_count %}<p class="work-clear">Keine Entwürfe oder überfälligen Aufgaben. Aktuell fällige Forderungen findest du bei den offenen Posten.</p>{% endif %}
   </section>
 
+  <section class="card" aria-labelledby="my-tasks-heading">
+    <div class="work-section-head"><div><h2 id="my-tasks-heading">Meine Wiedervorlagen</h2><p class="muted">Fällige Gespräche und nächste Schritte an einer Stelle.</p></div><a class="btn" href="{% url 'sedo:task_list' %}">Alle Aufgaben{% if open_tasks_count %} · {{ open_tasks_count }}{% endif %}</a></div>
+    <ul class="work-records">
+      {% for task in open_tasks %}
+      <li class="work-record task-record{% if task.is_overdue %} task-overdue{% endif %}">
+        <div class="work-identity"><strong>{{ task.title }}</strong><span>{{ task.reference_label }}</span>{% if task.note %}<span class="muted">{{ task.note|truncatechars:100 }}</span>{% endif %}</div>
+        <div><span class="badge{% if task.is_overdue %} red{% elif task.priority == 'high' %} yellow{% endif %}">{% if task.is_overdue %}überfällig · {% endif %}{{ task.due_date|date:"d.m.Y" }}</span></div>
+        <form method="post" action="{% url 'sedo:task_toggle' task.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{% url 'sedo:dashboard' %}"><button class="btn small" type="submit">Erledigt</button></form>
+      </li>
+      {% empty %}<li class="empty-state compact"><p class="empty-title">Keine offene Wiedervorlage</p><p>Lege Aufgaben frei oder direkt zu einem Kunden, Angebot oder einer Rechnung an.</p><a class="btn" href="{% url 'sedo:task_list' %}">Aufgabe anlegen</a></li>{% endfor %}
+    </ul>
+  </section>
+
   <section class="work-metrics" aria-label="Geschäftsübersicht">
     <a class="card" href="{% url 'sedo:open_items' %}"><span>Offene Forderungen</span><strong>{{ open_amount_total }} €</strong><span>{{ open_invoices }} offene Rechnung{{ open_invoices|pluralize:"en" }} →</span></a>
     <div class="card"><span>Bezahlte Rechnungen</span><strong>{{ paid_month }} €</strong><span>Rechnungsmonat {{ today|date:"F Y" }} · kein Zahlungseingangsbericht</span></div>
