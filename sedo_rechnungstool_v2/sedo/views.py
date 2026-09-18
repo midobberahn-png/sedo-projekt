@@ -22,7 +22,7 @@ from django.utils import timezone
 from django.http import FileResponse, JsonResponse
 from django.views.decorators.http import require_POST
 
-from .forms import CustomerForm, CustomerObjectForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm
+from .forms import CustomerForm, CustomerObjectForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm
 from .models import Customer, CustomerObject, Invoice, InvoiceItem, Offer, Payment, CashbookEntry, AareonMapping, RecurringInvoiceTemplate, RecurringInvoiceItem, AppSetting, AuditLog, ServiceCatalogItem
 from .audit import AUDIT_ERROR_AT_KEY, AUDIT_ERROR_KEY, AuditWriteError, write_audit
 from .services import (
@@ -47,6 +47,8 @@ from .services.invoice_files import datei_rueckweg
 from .services.invoice_archive import lese_archivdatei, pruefe_archiv
 from .services.workflow_errors import BelegArchivFehler
 from .services.mail import invoice_email_subject_body
+from .services.readiness import MANUAL_CHECKS, is_local_only_mode, readiness_report, transport_security_checks
+from .services.recurring_preview import build_recurring_preview
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
 # dem Nutzer eine freundliche Meldung, protokollieren den echten Fehler aber hier.
@@ -1452,10 +1454,29 @@ def invoice_delete(request, pk):
 @login_required
 def offer_list(request):
     q = request.GET.get('q','').strip()
+    view = request.GET.get('view', 'open')
+    today = timezone.localdate()
     offers = Offer.objects.select_related('customer','obj','linked_invoice').all()
+    counts = {
+        'follow_up': offers.filter(status='offen', follow_up_date__lte=today).count(),
+        'open': offers.filter(status='offen').count(),
+        'expired': offers.filter(status='offen', valid_until__lt=today).count(),
+        'all': offers.count(),
+    }
+    if view == 'open':
+        offers = offers.filter(status='offen')
+    elif view == 'expired':
+        offers = offers.filter(status='offen', valid_until__lt=today)
+    elif view == 'decided':
+        offers = offers.exclude(status='offen')
+    elif view == 'follow_up':
+        offers = offers.filter(status='offen', follow_up_date__lte=today)
+    elif view != 'all':
+        view = 'open'
+        offers = offers.filter(status='offen')
     if q:
         offers = offers.filter(Q(number__icontains=q) | Q(customer__name__icontains=q) | Q(obj__name__icontains=q))
-    return render(request, 'sedo/offer_list.html', {'offers': offers, 'q': q})
+    return render(request, 'sedo/offer_list.html', {'offers': offers, 'q': q, 'view': view, 'counts': counts, 'today': today})
 
 
 @login_required
@@ -1506,7 +1527,29 @@ def offer_create(request):
 @login_required
 def offer_detail(request, pk):
     offer = get_object_or_404(Offer.objects.select_related('customer','obj','linked_invoice'), pk=pk)
-    return render(request, 'sedo/offer_detail.html', {'offer': offer})
+    follow_up_form = OfferFollowUpForm(instance=offer)
+    return render(request, 'sedo/offer_detail.html', {'offer': offer, 'follow_up_form': follow_up_form})
+
+
+@login_required
+@require_POST
+def offer_follow_up(request, pk):
+    offer = get_object_or_404(Offer, pk=pk)
+    if offer.status != 'offen':
+        messages.error(request, 'Eine Wiedervorlage ist nur für offene Angebote möglich.')
+        return redirect('sedo:offer_detail', pk)
+    form = OfferFollowUpForm(request.POST, instance=offer)
+    if not form.is_valid():
+        messages.error(request, 'Bitte Datum und Notiz der Wiedervorlage prüfen.')
+        return render(request, 'sedo/offer_detail.html', {'offer': offer, 'follow_up_form': form}, status=400)
+    changed = form.save(commit=False)
+    action = request.POST.get('action', 'save')
+    if action == 'contacted':
+        changed.last_follow_up_at = timezone.now()
+    changed.save(update_fields=['follow_up_date', 'follow_up_note', 'last_follow_up_at', 'updated_at'])
+    write_audit(request, 'update', changed, 'Angebots-Wiedervorlage aktualisiert' if action == 'save' else 'Nachfassen beim Angebot protokolliert')
+    messages.success(request, 'Wiedervorlage gespeichert.' if action == 'save' else 'Nachfassen protokolliert und nächste Wiedervorlage gespeichert.')
+    return redirect('sedo:offer_detail', pk)
 
 
 @login_required
@@ -1525,7 +1568,9 @@ def offer_status(request, pk, status):
     offer = get_object_or_404(Offer, pk=pk)
     if status in ['offen', 'angenommen', 'abgelehnt']:
         offer.status = status
-        offer.save(update_fields=['status', 'updated_at'])
+        if status != 'offen':
+            offer.follow_up_date = None
+        offer.save(update_fields=['status', 'follow_up_date', 'updated_at'])
         write_audit(request, 'update', offer, f'Angebotsstatus auf {status} gesetzt')
         messages.success(request, 'Angebotsstatus aktualisiert.')
     return redirect('sedo:offer_detail', pk)
@@ -2400,10 +2445,15 @@ def aareon_import(request):
 @login_required
 def recurring_monthly(request):
     today = timezone.localdate()
-    default_month = f"{today.year}-{today.month:02d}"
+    try:
+        preview_date = date.fromisoformat(request.GET.get('preview_date', today.isoformat()))
+    except ValueError:
+        preview_date = today
+    default_month = f"{preview_date.year}-{preview_date.month:02d}"
     context = {
         'default_month': default_month,
-        'default_issue_date': today.isoformat(),
+        'default_issue_date': preview_date.isoformat(),
+        'preview_months': build_recurring_preview(preview_date),
         'recurring_templates': RecurringInvoiceTemplate.objects.select_related('customer','obj').prefetch_related('items').all(),
         'last_recurring_invoices': Invoice.objects.filter(id__in=request.session.get('last_recurring_invoice_ids', [])).select_related('customer','obj').order_by('number') if request.session.get('last_recurring_invoice_ids') else [],
     }
@@ -2802,6 +2852,7 @@ def security_status(request):
     from django.contrib.auth import get_user_model
     admin_user = get_user_model().objects.filter(username='admin').first()
     admin_default_pw = bool(admin_user and admin_user.check_password('sedo1234'))
+    transport_checks = transport_security_checks()
     checks = [
         {
             'label': 'Admin-Standard-Passwort geändert',
@@ -2821,36 +2872,14 @@ def security_status(request):
             'value': ', '.join(getattr(settings, 'ALLOWED_HOSTS', [])),
             'hint': 'Keine Wildcard im Produktivbetrieb.',
         },
-        {
-            'label': 'HTTPS-Redirect aktiv',
-            'ok': bool(getattr(settings, 'SECURE_SSL_REDIRECT', False)),
-            'value': 'aktiv' if getattr(settings, 'SECURE_SSL_REDIRECT', False) else 'nicht aktiv',
-            'hint': 'HTTP sollte auf HTTPS umleiten.',
-        },
-        {
-            'label': 'Sichere Session-Cookies',
-            'ok': bool(getattr(settings, 'SESSION_COOKIE_SECURE', False)),
-            'value': 'aktiv' if getattr(settings, 'SESSION_COOKIE_SECURE', False) else 'nicht aktiv',
-            'hint': 'Session-Cookies nur per HTTPS übertragen.',
-        },
-        {
-            'label': 'Sichere CSRF-Cookies',
-            'ok': bool(getattr(settings, 'CSRF_COOKIE_SECURE', False)),
-            'value': 'aktiv' if getattr(settings, 'CSRF_COOKIE_SECURE', False) else 'nicht aktiv',
-            'hint': 'CSRF-Cookies nur per HTTPS übertragen.',
-        },
+        *transport_checks[:3],
         {
             'label': 'Clickjacking-Schutz',
             'ok': getattr(settings, 'X_FRAME_OPTIONS', '') == 'DENY',
             'value': getattr(settings, 'X_FRAME_OPTIONS', '—'),
             'hint': 'Einbettung in fremde Frames blockieren.',
         },
-        {
-            'label': 'HSTS aktiv',
-            'ok': int(getattr(settings, 'SECURE_HSTS_SECONDS', 0) or 0) > 0,
-            'value': f"{getattr(settings, 'SECURE_HSTS_SECONDS', 0)} Sekunden",
-            'hint': 'Für Produktivbetrieb sinnvoll. IncludeSubDomains/Preload erst aktivieren, wenn alle Subdomains geprüft sind.',
-        },
+        transport_checks[3],
         {
             'label': 'Backup vorhanden',
             'ok': bool(last_backup),
@@ -2898,6 +2927,32 @@ def security_status(request):
         'audit_fehler_at': AppSetting.get(AUDIT_ERROR_AT_KEY, ''),
     }
     return render(request, 'sedo/security_status.html', context)
+
+
+@login_required
+def readiness(request):
+    items = readiness_report()
+    required = [item for item in items if item['group'] in ('Pflicht', 'Abnahme')]
+    return render(request, 'sedo/readiness.html', {
+        'items': items,
+        'ready_count': sum(1 for item in required if item['ok']),
+        'required_count': len(required),
+        'ready': all(item['ok'] for item in required),
+        'local_only': is_local_only_mode(),
+    })
+
+
+@login_required
+@require_POST
+def readiness_toggle(request, key):
+    if key not in MANUAL_CHECKS:
+        messages.error(request, 'Unbekannter Prüfschritt.')
+        return redirect('sedo:readiness')
+    value = '1' if request.POST.get('checked') == '1' else '0'
+    AppSetting.set(f'readiness_{key}', value)
+    write_audit(request, 'update', object_type='Startklar-Prüfung', object_repr=MANUAL_CHECKS[key], message=f"Status auf {'erledigt' if value == '1' else 'offen'} gesetzt")
+    messages.success(request, f"{MANUAL_CHECKS[key]} wurde als {'erledigt' if value == '1' else 'offen'} markiert.")
+    return redirect('sedo:readiness')
 
 
 @login_required

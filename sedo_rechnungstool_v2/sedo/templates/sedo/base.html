@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/sedo/invoice-detail-v2.css?v=1">
   <link rel="stylesheet" href="/static/sedo/accessibility-v2.css?v=1">
   <link rel="stylesheet" href="/static/sedo/theme-light-blue.css?v=1">
+  <link rel="stylesheet" href="/static/sedo/operations-v1.css?v=1">
 </head>
 <body class="app-shell">
 <a class="skip-link" href="#main-content">Zum Inhalt springen</a>
@@ -67,6 +68,7 @@
       <a {% if request.resolver_match.url_name == 'month_close' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:month_close' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-monthclose"/></svg></span><span class="nav-text">Monatsabschluss</span></a>
 
       <div class="drawer-title"><span>System</span></div>
+      <a {% if request.resolver_match.url_name == 'readiness' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:readiness' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></span><span class="nav-text">Startklar</span></a>
       <a {% if 'service_catalog' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:service_catalog_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-catalog"/></svg></span><span class="nav-text">Leistungskatalog</span></a>
       <details class="nav-group"{% if request.resolver_match.url_name == 'settings' or request.resolver_match.url_name == 'backup' or request.resolver_match.url_name == 'security_status' or request.resolver_match.url_name == 'audit_log' %} open{% endif %}>
         <summary><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-text">Administration</span><span class="nav-caret">▾</span></summary>

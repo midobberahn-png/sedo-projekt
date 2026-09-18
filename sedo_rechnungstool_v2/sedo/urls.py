@@ -28,6 +28,7 @@ urlpatterns = [
     path('angebote/<int:pk>/', views.offer_detail, name='offer_detail'),
     path('angebote/<int:pk>/pdf/', views.offer_generate, name='offer_generate'),
     path('angebote/<int:pk>/status/<str:status>/', views.offer_status, name='offer_status'),
+    path('angebote/<int:pk>/wiedervorlage/', views.offer_follow_up, name='offer_follow_up'),
     path('angebote/<int:pk>/rechnung/', views.offer_to_invoice, name='offer_to_invoice'),
     path('angebote/<int:pk>/loeschen/', views.offer_delete, name='offer_delete'),
     path('offene-posten/', views.open_items, name='open_items'),
@@ -63,5 +64,7 @@ urlpatterns = [
     path('leistungskatalog/<int:pk>/loeschen/', views.service_catalog_delete, name='service_catalog_delete'),
     path('einstellungen/', views.settings_page, name='settings'),
     path('sicherheit/', views.security_status, name='security_status'),
+    path('startklar/', views.readiness, name='readiness'),
+    path('startklar/<str:key>/', views.readiness_toggle, name='readiness_toggle'),
     path('audit-log/', views.audit_log_page, name='audit_log'),
 ]

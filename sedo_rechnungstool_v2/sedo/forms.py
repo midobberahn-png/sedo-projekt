@@ -130,6 +130,15 @@ class OfferItemForm(forms.ModelForm):
 
 OfferItemFormSet = inlineformset_factory(Offer, OfferItem, form=OfferItemForm, extra=0, can_delete=True, min_num=1, validate_min=True)
 
+class OfferFollowUpForm(forms.ModelForm):
+    class Meta:
+        model = Offer
+        fields = ['follow_up_date', 'follow_up_note']
+        widgets = {
+            'follow_up_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control form-control-sm'}, format='%Y-%m-%d'),
+            'follow_up_note': forms.Textarea(attrs={'class': 'form-control form-control-sm', 'rows': 3, 'placeholder': 'z. B. Ansprechpartner anrufen, offene Frage klären'}),
+        }
+
 class BankJsonImportForm(forms.Form):
     file = forms.FileField(label='Bank-JSON-Datei', widget=forms.ClearableFileInput(attrs={'class':'form-control'}))
 

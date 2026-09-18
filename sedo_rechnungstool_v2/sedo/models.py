@@ -439,6 +439,9 @@ class Offer(SoftDeleteModel):
     status = models.CharField('Status', max_length=30, choices=STATUS, default='offen')
     pdf_file = models.FileField('PDF', upload_to='offers/pdf/', blank=True)
     linked_invoice = models.ForeignKey(Invoice, on_delete=models.SET_NULL, null=True, blank=True, related_name='source_offer')
+    follow_up_date = models.DateField('Wiedervorlage am', null=True, blank=True, db_index=True)
+    follow_up_note = models.TextField('Wiedervorlage – Notiz', blank=True, default='')
+    last_follow_up_at = models.DateTimeField('Zuletzt nachgefasst', null=True, blank=True)
 
     class Meta:
         ordering = ['-issue_date', '-number']
