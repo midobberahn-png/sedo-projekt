@@ -4,6 +4,7 @@ import sqlite3
 import ssl
 import tempfile
 import uuid
+from contextlib import closing
 from datetime import timedelta
 from email import policy
 from email.message import EmailMessage
@@ -456,15 +457,16 @@ class MailMimeAndSecurityTests(MailFixture):
 
     def test_backup_strips_mail_credentials_disables_sync_and_keeps_live_copy(self):
         path = Path(self.temp.name) / 'source.sqlite3'
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db:
             db.execute('CREATE TABLE sedo_mailaccount (password_encrypted text, enabled integer, lease_token text, lease_until text)')
             db.execute('INSERT INTO sedo_mailaccount VALUES (?, 1, ?, ?)', (self.account.password_encrypted, 'lease', '2026-09-18'))
+            db.commit()
         clean = _sanitized_db_copy(path)
         self.addCleanup(clean.unlink)
-        with sqlite3.connect(clean) as db:
+        with closing(sqlite3.connect(clean)) as db:
             self.assertEqual(db.execute('SELECT * FROM sedo_mailaccount').fetchone(), ('', 0, '', None))
         self.assertNotIn(self.account.password_encrypted.encode(), clean.read_bytes())
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db:
             self.assertEqual(db.execute('SELECT enabled FROM sedo_mailaccount').fetchone()[0], 1)
 
     def test_all_mail_content_and_actions_require_login(self):
