@@ -6,3 +6,4 @@ class SedoConfig(AppConfig):
 
     def ready(self):
         from . import signals  # noqa: F401
+        from . import mail_signals  # noqa: F401

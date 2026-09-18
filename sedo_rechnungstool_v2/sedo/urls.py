@@ -1,8 +1,25 @@
 from django.urls import path
-from . import views
+from . import views, mail_views
 
 app_name = 'sedo'
 urlpatterns = [
+    path('email/', mail_views.inbox, name='mail_inbox'),
+    path('email/nachricht/<int:pk>/', mail_views.inbox, name='mail_message'),
+    path('email/nachricht/<int:pk>/html/', mail_views.html_body, name='mail_html'),
+    path('email/nachricht/<int:pk>/original/', mail_views.download, name='mail_original'),
+    path('email/nachricht/<int:pk>/anhang/<int:index>/', mail_views.download, name='mail_attachment'),
+    path('email/nachricht/<int:pk>/aktion/', mail_views.message_action, name='mail_message_action'),
+    path('email/nachricht/<int:pk>/aufgabe/', mail_views.task_from_message, name='mail_task'),
+    path('email/einstellungen/', mail_views.settings_page, name='mail_settings'),
+    path('email/einstellungen/<int:pk>/', mail_views.settings_page, name='mail_account'),
+    path('email/konto/<int:pk>/aktion/', mail_views.account_action, name='mail_account_action'),
+    path('email/status/', mail_views.status, name='mail_status'),
+    path('email/neu/', mail_views.compose, name='mail_new'),
+    path('email/angebot/<int:pk>/', mail_views.offer_draft, name='mail_offer'),
+    path('email/entwuerfe/', mail_views.drafts, name='mail_drafts'),
+    path('email/entwurf/<int:pk>/', mail_views.compose, name='mail_compose'),
+    path('email/entwurf/<int:pk>/pruefen/', mail_views.review, name='mail_review'),
+    path('email/entwurf/<int:pk>/aktion/', mail_views.draft_action, name='mail_draft_action'),
     path('', views.dashboard, name='dashboard'),
     path('kunden/', views.customer_list, name='customer_list'),
     path('kunden/import/', views.customer_import, name='customer_import'),

@@ -188,8 +188,8 @@ SEDO_BACKUP_DIR = SEDO_HOME / 'backups'
 # die WeeklyBackupMiddleware pro Testklasse ein ZIP im echten backups/-Ordner an
 # (~20 pro Lauf). Beides landet jetzt im Temp-Verzeichnis.
 if 'test' in sys.argv:
-    MEDIA_ROOT = Path(tempfile.gettempdir()) / 'sedo_test_media'
-    SEDO_BACKUP_DIR = Path(tempfile.gettempdir()) / 'sedo_test_backups'
+    MEDIA_ROOT = Path(tempfile.gettempdir()) / f'sedo_test_media_{os.getpid()}'
+    SEDO_BACKUP_DIR = Path(tempfile.gettempdir()) / f'sedo_test_backups_{os.getpid()}'
 
 # Deutsche Zahlformatierung in der Oberfläche: 4.382,20 statt 4382,20.
 # Achtung: Zahlen, die in URLs/JS/Formular-values landen (z. B. {{ obj.pk }}),

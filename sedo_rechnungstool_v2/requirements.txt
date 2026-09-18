@@ -1,6 +1,10 @@
 Django>=5.2,<6.1
 # Statische Dateien bei DEBUG=0 (sicherer Default seit v3.22)
 whitenoise
+# Verschlüsselte Zugangsdaten der integrierten Postfächer; HTML-Mail-Bereinigung.
+cryptography>=46,<51
+certifi
+bleach
 # Echte Kontoanbindung (FinTS, rein lesender Umsatzabruf, seit v2.3)
 fints
 mt-940
