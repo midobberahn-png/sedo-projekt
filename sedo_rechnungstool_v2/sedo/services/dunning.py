@@ -269,7 +269,7 @@ def generate_dunning_document(invoice: Invoice, kind: str = 'reminder', *, reque
                     doc = DunningDocument.objects.create(
                         invoice=current, kind=use_kind, document_date=timezone.localdate(),
                         due_date_new=new_due, amount_open=open_amount,
-                        pdf_file=str(target.relative_to(Path(settings.MEDIA_ROOT).resolve())),
+                        pdf_file=target.relative_to(Path(settings.MEDIA_ROOT).resolve()).as_posix(),
                     )
                     # Zusätzliche Schranke direkt am Status-UPDATE; niemals einen
                     # geschützten Zustand durch 'gemahnt' ersetzen.

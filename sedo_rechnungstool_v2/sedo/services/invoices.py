@@ -323,7 +323,7 @@ def generate_invoice_files(invoice: Invoice, *, erstmalig=False, request=None) -
 
 def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
     recalc_invoice(invoice)
-    media_root = Path(settings.MEDIA_ROOT)
+    media_root = Path(settings.MEDIA_ROOT).resolve()
     media_root.mkdir(parents=True, exist_ok=True)
     targets = zielpfade(invoice)
     pdf_path, xml_path, zf_path = (targets[f] for f in ARCHIV_FELDER)
@@ -365,9 +365,9 @@ def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
             veroeffentliche_neue_datei(tmp_pdf, pdf_path)
             veroeffentliche_neue_datei(tmp_xml, xml_path)
             veroeffentliche_neue_datei(tmp_zf, zf_path)
-            invoice.xml_file.name = str(xml_path.relative_to(settings.MEDIA_ROOT))
-            invoice.zugferd_file.name = str(zf_path.relative_to(settings.MEDIA_ROOT))
-    invoice.pdf_file.name = str(pdf_path.relative_to(settings.MEDIA_ROOT))
+            invoice.xml_file.name = xml_path.relative_to(media_root).as_posix()
+            invoice.zugferd_file.name = zf_path.relative_to(media_root).as_posix()
+    invoice.pdf_file.name = pdf_path.relative_to(media_root).as_posix()
     invoice.save(update_fields=['pdf_file', 'xml_file', 'zugferd_file',
                                 'net_total', 'vat_amount', 'gross_total', 'updated_at'])
     return invoice

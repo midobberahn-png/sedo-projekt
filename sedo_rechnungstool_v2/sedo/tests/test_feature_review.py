@@ -162,6 +162,18 @@ class FeatureReviewTests(TestCase):
         self.assertLessEqual(len(many), len(one) + 1)
         self.assertLessEqual(len(many), 8)
 
+    def test_document_paths_normalize_media_root_and_use_portable_separators(self):
+        media = self.home / 'media'
+        media.mkdir()
+        with override_settings(MEDIA_ROOT=media / '..' / 'media'):
+            inv = self.invoice(quantity='1', price='100')
+            from sedo.services.invoice_archive import lese_archivdatei
+            self.assertTrue(lese_archivdatei(inv).data)
+            for field in ('pdf_file', 'xml_file', 'zugferd_file'):
+                name = getattr(inv, field).name
+                self.assertTrue(name.startswith('generated/'))
+                self.assertNotIn(chr(92), name)
+
     def test_draft_archive_uses_matching_index_without_sorting(self):
         response = self.client.get(reverse('sedo:invoice_list') + '?view=draft')
         plan = response.context['page_obj'].paginator.object_list.explain()

@@ -222,7 +222,7 @@ def generate_offer_pdf(offer):
     chrome.draw_footer(c)
     c.save()
 
-    offer.pdf_file.name = str(pdf_path.relative_to(settings.MEDIA_ROOT))
+    offer.pdf_file.name = pdf_path.resolve().relative_to(Path(settings.MEDIA_ROOT).resolve()).as_posix()
     offer.save(update_fields=['pdf_file', 'net_total', 'vat_amount', 'gross_total', 'updated_at'])
     return offer
 

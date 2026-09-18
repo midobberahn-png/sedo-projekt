@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 from decimal import Decimal
 from pathlib import Path
+from unittest import skipIf
 from unittest.mock import patch
 
 import pandas as pd
@@ -362,6 +363,7 @@ class F03F31F81BackupBereinigungTests(TestCase):
         finally:
             kopie.unlink(missing_ok=True)
 
+    @skipIf(os.name == 'nt', 'POSIX-Dateimodus; Windows verwendet NTFS-ACLs')
     def test_kopie_ist_nicht_weltlesbar(self):
         # copy2 überträgt die 0644 der Live-Datei; copyfile lässt die 0600
         # von mkstemp stehen.

@@ -122,5 +122,5 @@ def create_tax_package(invoices, month: str, *, deleted_numbers=(), user=''):
         temp.unlink(missing_ok=True)
         raise
     manifest['paket_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
-    manifest['paket'] = str(path.relative_to(settings.MEDIA_ROOT))
+    manifest['paket'] = path.relative_to(settings.MEDIA_ROOT).as_posix()
     return path, manifest
