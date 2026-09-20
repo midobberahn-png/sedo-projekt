@@ -9,11 +9,16 @@
   <section aria-labelledby="tasks-heading">
     <h2 id="tasks-heading">Nächste Schritte</h2>
     <div class="work-tasks">
-      <a class="card work-task" href="{% url 'sedo:invoice_list' %}?view=draft"><span class="task-heading"><span class="work-count">{{ draft_invoices }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></span></span><h3>Entwürfe fertigstellen</h3><p>Rechnungen prüfen und zur Ausstellung vorbereiten.</p><span class="work-link">Entwürfe öffnen →</span></a>
+      <a class="card work-task" href="{% if mail_accounts_configured %}{% url 'sedo:mail_inbox' %}?view=unread{% elif request.user.is_staff %}{% url 'sedo:mail_settings' %}{% else %}{% url 'sedo:mail_inbox' %}{% endif %}">
+        <span class="task-heading"><span class="work-count">{% if mail_accounts_configured %}{{ unread_mail_count }}{% else %}—{% endif %}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg></span></span>
+        <h3>Neue E-Mails</h3>
+        {% if mail_accounts_configured %}<p>Ungelesene Nachrichten in allen Posteingängen · Stand des letzten Abrufs.</p><span class="work-link">Ungelesene Mails öffnen →</span>
+        {% else %}<p>Noch kein Postfach eingerichtet. Neue Anfragen erscheinen nach dem ersten Abruf hier.</p><span class="work-link">{% if request.user.is_staff %}Postfächer einrichten{% else %}Zum Posteingang{% endif %} →</span>{% endif %}
+      </a>
       <a class="card work-task" href="{% url 'sedo:open_items' %}?status=overdue"><span class="task-heading"><span class="work-count{% if overdue_invoices %} work-attention{% endif %}">{{ overdue_invoices }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></span></span><h3>Überfällige Rechnungen</h3><p>Zahlungseingänge und den nächsten Schritt prüfen.</p><span class="work-link">Überfällige Posten öffnen →</span></a>
       <a class="card work-task" href="{% url 'sedo:open_items' %}"><span class="task-heading"><span class="work-count{% if dunning_candidates_count %} work-attention{% endif %}">{{ dunning_candidates_count }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></span></span><h3>Mahnstufe prüfen</h3><p>Kandidaten ansehen und nächste Mahnstufen bewusst bestätigen.</p><span class="work-link">Mahnlauf prüfen →</span></a>
     </div>
-    {% if not draft_invoices and not overdue_invoices and not dunning_candidates_count %}<p class="work-clear">Keine Entwürfe oder überfälligen Aufgaben. Aktuell fällige Forderungen findest du bei den offenen Posten.</p>{% endif %}
+    {% if mail_accounts_configured and not unread_mail_count and not overdue_invoices and not dunning_candidates_count %}<p class="work-clear">Im zuletzt abgerufenen Posteingang sind keine ungelesenen E-Mails. Aktuell fällige Forderungen findest du bei den offenen Posten.</p>{% endif %}
   </section>
 
   <section class="card" aria-labelledby="my-tasks-heading">

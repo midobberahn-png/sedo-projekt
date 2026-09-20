@@ -623,6 +623,8 @@ def service_catalog_delete(request, pk):
 
 @login_required
 def dashboard(request):
+    from .models import MailAccount, MailLocation
+
     today = timezone.localdate()
     invoices = Invoice.objects.all()
     dunning_candidates = get_dunning_candidates(days_overdue_threshold=14)
@@ -639,7 +641,11 @@ def dashboard(request):
         'open_amount_total': sum((i.open_amount for i in offene_rechnungen(invoices).prefetch_related('payments')), Decimal('0.00')),
         'overdue_invoices': offene_rechnungen(invoices).filter(due_date__lt=today).count(),
         'paid_month': _sum_decimal(invoices.filter(status='bezahlt', issue_date__year=today.year, issue_date__month=today.month), 'gross_total'),
-        'draft_invoices': invoices.filter(lifecycle='draft').count(),
+        'mail_accounts_configured': MailAccount.objects.exists(),
+        # Match the unread inbox view, including manually refreshed/paused accounts.
+        'unread_mail_count': MailLocation.objects.filter(
+            folder__active=True, folder__selectable=True,
+            folder__role='inbox', seen=False).count(),
         'today': today,
         'open_offers': Offer.objects.filter(status='offen').count(),
         'customers': Customer.objects.count(),
