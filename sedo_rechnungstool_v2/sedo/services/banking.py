@@ -18,11 +18,17 @@ Sicherheits-Zuschnitt:
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
+import re
 import time
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from django.core.cache import cache
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from ..models import AppSetting
 from .payments import import_bank_json
@@ -198,3 +204,82 @@ def fetch_bank_transactions(days: int = 30, pin: str | None = None) -> dict:
     result = import_bank_json(rows)
     result['abgerufen'] = len(rows)
     return result
+
+
+def _balance_identity(cfg):
+    # A cached balance must never appear under a different connection/account.
+    values = [cfg.get(key, '') for key in ('blz', 'endpoint', 'login', 'iban', 'product_id')]
+    return hashlib.sha256(json.dumps(values).encode()).hexdigest()
+
+
+def cached_bank_balance(cfg=None):
+    cfg = cfg or get_banking_config()
+    try:
+        saved = json.loads(AppSetting.get('bank_balance_snapshot', '{}'))
+        if saved['identity'] != _balance_identity(cfg):
+            return None
+        amount = Decimal(saved['amount'])
+        fetched = parse_datetime(saved['fetched_at'])
+        if not amount.is_finite() or fetched is None or not re.fullmatch('[A-Z]{3}', saved['currency']):
+            return None
+        return dict(amount=amount, currency=saved['currency'], fetched_at=fetched,
+                    balance_date=date.fromisoformat(saved['balance_date']),
+                    account_label='Konto …' + saved['iban'][-4:])
+    except (ValueError, TypeError, KeyError, ArithmeticError):
+        return None
+
+
+def fetch_bank_balance(pin=None):
+    """Read the bank's booked balance on explicit request, without importing payments."""
+    cfg = get_banking_config()
+    if not all(cfg[key] for key in ('blz', 'endpoint', 'login')):
+        raise BankingError('Bitte zuerst den Bankzugang unter Einstellungen → Bankkonto einrichten.')
+    use_pin = (pin or '').strip() or cfg['pin']
+    if not use_pin:
+        raise BankingError('Bitte die Online-Banking-PIN für diesen Abruf eingeben.')
+    identity = _balance_identity(cfg)
+    lock_key, token = 'dashboard-balance-' + identity, uuid.uuid4().hex
+    if not cache.add(lock_key, token, timeout=240):
+        raise BankingError('Ein Kontostand-Abruf läuft bereits. Bitte kurz warten.')
+    try:
+        from fints.client import FinTS3PinTanClient
+        kwargs = {'product_id': cfg['product_id']} if cfg['product_id'] else {}
+
+        def resolved(value):
+            if _is_tan_request(value):
+                if not getattr(value, 'decoupled', False):
+                    raise BankingError('Die Bank verlangt eine TAN-Eingabe. Bitte ein Push-Verfahren verwenden.')
+                return _await_decoupled(client, value)
+            return value
+
+        with FinTS3PinTanClient(cfg['blz'], cfg['login'], use_pin, cfg['endpoint'], **kwargs) as client:
+            resolved(getattr(client, 'init_tan_response', None))
+            accounts = resolved(client.get_sepa_accounts())
+            if not accounts:
+                raise BankingError('Die Bank hat keine Konten zurückgemeldet.')
+            wanted = cfg['iban'].replace(' ', '').upper()
+            matches = [a for a in accounts if (a.iban or '').replace(' ', '').upper() == wanted] if wanted else accounts
+            if len(matches) != 1:
+                raise BankingError('Bitte in den Bank-Einstellungen die IBAN des gewünschten Kontos festlegen bzw. prüfen.')
+            account = matches[0]
+            balance = resolved(client.get_balance(account))
+        amount = Decimal(str(balance.amount.amount))
+        currency = str(balance.amount.currency).upper()
+        if not amount.is_finite() or abs(amount) > Decimal('1e18') or not re.fullmatch('[A-Z]{3}', currency):
+            raise BankingError('Die Bank hat keinen gültigen Kontostand geliefert.')
+        balance_date = balance.date.isoformat()
+        date.fromisoformat(balance_date)
+        if _balance_identity(get_banking_config()) != identity:
+            raise BankingError('Der Bankzugang wurde während des Abrufs geändert. Bitte erneut abrufen.')
+        snapshot = {'identity': identity, 'amount': str(amount), 'currency': currency,
+                    'balance_date': balance_date, 'fetched_at': timezone.now().isoformat(), 'iban': account.iban}
+        AppSetting.set('bank_balance_snapshot', json.dumps(snapshot))
+        return cached_bank_balance(cfg)
+    except BankingError:
+        raise
+    except Exception as exc:
+        # Bank responses can contain credentials; do not expose exception text.
+        raise BankingError('Kontostand konnte nicht abgerufen werden. Bitte Bankzugang und Freigabe prüfen.') from exc
+    finally:
+        if cache.get(lock_key) == token:
+            cache.delete(lock_key)

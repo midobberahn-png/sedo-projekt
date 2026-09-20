@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import models
+from django.conf import settings
 from django.utils import timezone
 
 
@@ -666,6 +667,15 @@ class AppSetting(TimeStampedModel):
     @classmethod
     def set(cls, key: str, value: str) -> None:
         cls.objects.update_or_create(key=key, defaults={'value': value or ''})
+
+
+class DashboardPreference(TimeStampedModel):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name='dashboard_preference')
+    widgets = models.JSONField(default=list)
+    weather_country = models.CharField(max_length=2, default='DE')
+    weather_postcode = models.CharField(max_length=5, default='39104')
+    weather_place = models.CharField(max_length=80, default='Magdeburg')
 
 
 class DunningDocument(TimeStampedModel):

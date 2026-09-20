@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, mail_views
+from . import views, mail_views, dashboard_views
 
 app_name = 'sedo'
 urlpatterns = [
@@ -21,6 +21,9 @@ urlpatterns = [
     path('email/entwurf/<int:pk>/pruefen/', mail_views.review, name='mail_review'),
     path('email/entwurf/<int:pk>/aktion/', mail_views.draft_action, name='mail_draft_action'),
     path('', views.dashboard, name='dashboard'),
+    path('dashboard/kacheln/', dashboard_views.save_layout, name='dashboard_layout'),
+    path('dashboard/kontostand/', dashboard_views.refresh_balance, name='dashboard_balance'),
+    path('dashboard/wetter/', dashboard_views.refresh_weather, name='dashboard_weather'),
     path('kunden/', views.customer_list, name='customer_list'),
     path('kunden/import/', views.customer_import, name='customer_import'),
     path('kunden/neu/', views.customer_create, name='customer_create'),

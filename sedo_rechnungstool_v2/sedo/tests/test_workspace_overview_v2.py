@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from sedo.models import Customer, CustomerObject, Invoice, Offer, Payment
+from sedo.models import Customer, CustomerObject, Invoice, Offer, Payment, MailAccount, MailFolder, MailLocation, MailMessage
 
 
 class WorkspaceOverviewV2Tests(TestCase):
@@ -49,7 +49,8 @@ class WorkspaceOverviewV2Tests(TestCase):
         self.assertContains(response, 'Mahnlauf prüfen')
         self.assertNotContains(response, reverse('sedo:bulk_dunning'))
         root = html.fromstring(response.content).xpath('//div[contains(concat(" ", normalize-space(@class), " "), " work-page ")]')[0]
-        self.assertFalse(root.xpath('.//form[@method="post"]'))
+        self.assertEqual([form.get('action') for form in root.xpath('.//form[@method="post"]')],
+                         [reverse('sedo:dashboard_layout')])
         link = root.xpath('.//a[.//h3[text()="Mahnstufe prüfen"]]')[0]
         self.assertEqual(link.get('href'), reverse('sedo:open_items'))
 
@@ -57,12 +58,50 @@ class WorkspaceOverviewV2Tests(TestCase):
         draft = self.invoice(lifecycle='draft', status='erstellt')
         self.invoice('TEST-HIDDEN', lifecycle='draft', deleted_at=timezone.now())
         response = self.client.get(reverse('sedo:dashboard'))
-        self.assertEqual(response.context['draft_invoices'], 1)
-        self.assertContains(response, '?view=draft')
+        self.assertNotContains(response, 'Entwürfe fertigstellen')
         self.assertContains(response, reverse('sedo:invoice_edit', args=[draft.pk]))
         self.assertContains(response, 'Rechnungsmonat')
         self.assertContains(response, 'kein Zahlungseingangsbericht')
         self.assertNotContains(response, 'TEST-HIDDEN')
+
+    def test_dashboard_mail_count_matches_unread_inboxes_and_tracks_read_status(self):
+        for email in ('info@sedo-magdeburg.de', 'rechnung@sedo-magdeburg.de'):
+            account = MailAccount.objects.create(email=email, username=email, enabled=False)
+            message = MailMessage.objects.create(account=account, digest='a' * 64)
+            for name, role, active, selectable, seen in (
+                ('INBOX', 'inbox', True, True, False),
+                ('Archive', 'archive', True, True, False),
+                ('Trash', 'trash', True, True, False),
+                ('Junk', 'junk', True, True, False),
+                ('Sent', 'sent', True, True, False),
+                ('Old Inbox', 'inbox', False, True, False),
+                ('Container', 'inbox', True, False, False),
+            ):
+                folder = MailFolder.objects.create(account=account, remote_name=name,
+                    name=name, role=role, active=active, selectable=selectable, uidvalidity=1)
+                MailLocation.objects.create(folder=folder, message=message, uid=1, uidvalidity=1, seen=seen)
+                if name == 'INBOX':
+                    MailLocation.objects.create(folder=folder, message=message, uid=2, uidvalidity=1, seen=True)
+        response = self.client.get(reverse('sedo:dashboard'))
+        self.assertEqual(response.context['unread_mail_count'], 2)
+        card = html.fromstring(response.content).xpath('//a[.//h3[text()="Neue E-Mails"]]')[0]
+        self.assertEqual(card.get('href'), reverse('sedo:mail_inbox') + '?view=unread')
+        inbox = self.client.get(card.get('href'))
+        self.assertEqual(inbox.context['page_obj'].paginator.count, 2)
+        MailLocation.objects.filter(folder__role='inbox', folder__active=True, folder__selectable=True).update(seen=True)
+        response = self.client.get(reverse('sedo:dashboard'))
+        self.assertEqual(response.context['unread_mail_count'], 0)
+        self.assertContains(response, 'keine ungelesenen E-Mails')
+
+    def test_dashboard_without_mailboxes_offers_setup_only_to_staff(self):
+        for staff in (False, True):
+            self.user.is_staff = staff
+            self.user.save(update_fields=['is_staff'])
+            response = self.client.get(reverse('sedo:dashboard'))
+            self.assertContains(response, 'Noch kein Postfach eingerichtet')
+            self.assertNotContains(response, 'keine ungelesenen E-Mails')
+            card = html.fromstring(response.content).xpath('//a[.//h3[text()="Neue E-Mails"]]')[0]
+            self.assertEqual(card.get('href'), reverse('sedo:mail_settings' if staff else 'sedo:mail_inbox'))
 
     def test_kundenkennzahlen_folgen_aktiven_forderungen_und_zahlungen(self):
         inv = self.invoice(status='bezahlt', due_date=self.today - timedelta(days=1))
