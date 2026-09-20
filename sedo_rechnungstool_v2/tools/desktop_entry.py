@@ -26,8 +26,11 @@ def check() -> int:
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/app.css', timeout=10) as response:
             assets = response.status == 200 and bool(response.read())
+        for name in ('dashboard-widgets.css', 'dashboard-widgets.js'):
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/{name}', timeout=10) as response:
+                assets = assets and response.status == 200 and bool(response.read())
     except OSError:
-        pass
+        assets = False
     from sedo.services import stt_status
     whisper = bool(stt_status().get('available'))
     from django.db import connection

@@ -25,7 +25,7 @@ logger = logging.getLogger('sedo')
 
 # Diese AppSetting-Schlüssel enthalten Secrets und werden aus Backups entfernt
 # (Backups werden kopiert/weitergegeben – Klartext-Keys gehören da nicht hinein).
-SECRET_SETTING_KEYS = ('ai_api_key', 'smtp_password', 'fints_pin')
+SECRET_SETTING_KEYS = ('ai_api_key', 'smtp_password', 'fints_pin', 'weather_api_key')
 
 # Ganze Tabellen, die aus der Backup-Kopie gelöscht werden. django_session
 # enthält gültige Anmelde-Sitzungen: der session_key IST der Cookie-Wert.

@@ -49,7 +49,8 @@ class WorkspaceOverviewV2Tests(TestCase):
         self.assertContains(response, 'Mahnlauf prüfen')
         self.assertNotContains(response, reverse('sedo:bulk_dunning'))
         root = html.fromstring(response.content).xpath('//div[contains(concat(" ", normalize-space(@class), " "), " work-page ")]')[0]
-        self.assertFalse(root.xpath('.//form[@method="post"]'))
+        self.assertEqual([form.get('action') for form in root.xpath('.//form[@method="post"]')],
+                         [reverse('sedo:dashboard_layout')])
         link = root.xpath('.//a[.//h3[text()="Mahnstufe prüfen"]]')[0]
         self.assertEqual(link.get('href'), reverse('sedo:open_items'))
 

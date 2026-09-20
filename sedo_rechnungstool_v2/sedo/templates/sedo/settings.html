@@ -7,6 +7,18 @@
   </div>
 </div>
 
+{% if request.user.is_staff %}
+<section class="card" id="weather-settings" aria-labelledby="weather-settings-heading">
+  <div class="section-head"><div><h2 id="weather-settings-heading">Wetter.com im Dashboard</h2><p class="hint">Den Ort und die Sichtbarkeit der Wetterkachel wählt jeder Benutzer über das Zahnrad im Dashboard.</p></div><span class="badge {% if weather_configured %}green{% else %}amber{% endif %}">{% if weather_configured %}Zugang hinterlegt{% else %}Zugang fehlt{% endif %}</span></div>
+  <p>Benötigt wird ein Wetter.com-/METEONOMIQS-Zugang für die PWA Forecast API v4.0 mit Nowcast per Postleitzahl. <a href="https://www.wetter.com/apps_und_mehr/website/api/" target="_blank" rel="noopener noreferrer">Zugang und Pakete ansehen</a>. SEDO ruft Wetterdaten nur bei eingeblendeter Kachel ab und hält sie zehn Minuten vor.</p>
+  <form method="post" class="stacked-form compact-form">{% csrf_token %}<input type="hidden" name="action" value="save_weather">
+    <div class="form-row"><label for="weather-api-key">Wetter.com-Zugangsschlüssel</label><input id="weather-api-key" name="weather_api_key" type="password" maxlength="512" autocomplete="new-password" placeholder="{% if weather_configured %}Hinterlegt – leer lassen zum Behalten{% else %}Zugangsschlüssel eingeben{% endif %}"></div>
+    <label><input type="checkbox" name="weather_api_key_clear"> Lokal gespeicherten Schlüssel entfernen</label>
+    <p class="hint">Ein über die Systemumgebung eingerichteter Schlüssel hat Vorrang und wird hier nicht geändert.</p>
+    <div class="toolbar"><button class="btn primary" type="submit">Wetterzugang speichern</button><a class="btn" href="{% url 'sedo:dashboard' %}">Zum Dashboard</a></div>
+  </form>
+</section>
+{% endif %}
 <!-- E-Mail / SMTP -->
 <div class="card">
   <div class="section-head">
@@ -65,7 +77,7 @@
 </div>
 
 <!-- Bankkonto (FinTS) -->
-<div class="card">
+<div class="card" id="bank-settings">
   <div class="section-head">
     <div>
       <h2>Bankkonto (FinTS) <span class="info-tip" tabindex="0" aria-label="Hinweis zur Kontoanbindung">i<span class="info-tip-text">Rein lesender Umsatzabruf direkt bei der Bank (FinTS 3.0 PIN/TAN). Die FinTS-Adresse der Bank findest du z. B. unter fints.org oder bei deiner Sparkasse (banking.sparkasse.de-Adresse mit /fints30). PIN-Speicherung ist optional – ohne Speicherung wird sie bei jedem Abruf abgefragt. Für den Dauerbetrieb eine kostenlose DK-Produktregistrierung eintragen.</span></span></h2>

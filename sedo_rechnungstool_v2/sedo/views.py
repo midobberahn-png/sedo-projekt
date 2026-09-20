@@ -19,7 +19,8 @@ from django.db.models.functions import ExtractYear
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.http import FileResponse, JsonResponse, HttpResponseBadRequest
+from django.http import FileResponse, JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_POST
 
 from .forms import CustomerForm, CustomerObjectForm, CustomerNoteForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm, WorkTaskForm
@@ -622,8 +623,16 @@ def service_catalog_delete(request, pk):
     })
 
 @login_required
-def dashboard(request):
+def dashboard(request, layout_form=None):
     from .models import MailAccount, MailLocation
+    from .dashboard_widgets import DashboardLayoutForm, catalogue, layout_for
+    from .services.banking import cached_bank_balance
+    from .services.dashboard_weather import weather_for
+
+    layout = layout_for(request.user)
+    layout_form = layout_form or DashboardLayoutForm(initial=layout)
+    selected = layout_form['widgets'].value() or []
+    bank_cfg = get_banking_config() if 'balance' in layout['widgets'] else {}
 
     today = timezone.localdate()
     invoices = Invoice.objects.all()
@@ -631,6 +640,15 @@ def dashboard(request):
     open_tasks = WorkTask.objects.filter(status='open').select_related(
         'customer', 'offer', 'invoice').order_by('due_date', 'priority', 'pk')
     context = {
+        'dashboard_widgets': [widget for widget in catalogue(layout['widgets']) if widget['selected']],
+        'widget_catalogue': catalogue(selected),
+        'layout_form': layout_form,
+        'weather_place': layout['weather_place'],
+        'weather': weather_for(layout) if 'weather' in layout['widgets'] else None,
+        'bank_balance': cached_bank_balance(bank_cfg) if bank_cfg else None,
+        'banking_configured': all(bank_cfg.get(key) for key in ('blz', 'endpoint', 'login')),
+        'banking_pin_stored': bool(bank_cfg.get('pin')),
+        'draft_invoices': invoices.filter(lifecycle='draft').count(),
         # offene_rechnungen() schließt zusätzlich Entwürfe, durch eine Korrektur
         # ersetzte Originale und Stornobelege aus. Vorher zählte das Dashboard
         # Original UND Korrektur als offene Forderung, und ein Stornobeleg ging
@@ -2733,10 +2751,27 @@ def recurring_monthly_generate(request):
     return redirect('sedo:recurring_monthly')
 
 @login_required
+@sensitive_post_parameters('weather_api_key', 'fints_pin', 'smtp_password', 'ai_api_key')
 def settings_page(request):
     stats = None
     if request.method == 'POST':
         action = request.POST.get('action') or 'save_settings'
+
+        if action == 'save_weather':
+            if not request.user.is_staff:
+                return HttpResponseForbidden('Nur die Administration kann den Wetterzugang ändern.')
+            new_key = request.POST.get('weather_api_key', '').strip()
+            if new_key and (len(new_key) > 512 or any(ord(char) < 33 or ord(char) > 126 for char in new_key)):
+                messages.error(request, 'Bitte einen gültigen Wetter.com-Zugangsschlüssel ohne Leerzeichen eingeben.')
+            else:
+                if request.POST.get('weather_api_key_clear'):
+                    AppSetting.set('weather_api_key', '')
+                elif new_key:
+                    AppSetting.set('weather_api_key', new_key)
+                write_audit(request, 'update', object_type='AppSetting', object_repr='Wetter.com',
+                            message='Wetterzugang gespeichert')
+                messages.success(request, 'Wetterzugang gespeichert. Den Ort wählst du im Dashboard über das Zahnrad.')
+            return redirect(reverse('sedo:settings') + '#weather-settings')
 
         if action == 'import_mapping':
             if not request.FILES.get('file'):
@@ -2820,6 +2855,7 @@ def settings_page(request):
         return redirect('sedo:settings')
 
     smtp_cfg = get_smtp_config()
+    from .services.dashboard_weather import weather_key
     context = {
         'aareon_seller_id': AppSetting.get('aareon_seller_id', ''),
         'aareon_include_seller_assigned_id': AppSetting.get('aareon_include_seller_assigned_id', '0'),
@@ -2828,6 +2864,7 @@ def settings_page(request):
         'service_count': AareonMapping.objects.values('service_id').distinct().count(),
         'mappings': AareonMapping.objects.all()[:50],
         'stats': stats,
+        'weather_configured': bool(weather_key()),
         'smtp_host':      smtp_cfg['host'],
         'smtp_port':      smtp_cfg['port'],
         'smtp_user':      smtp_cfg['user'],
