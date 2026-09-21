@@ -735,5 +735,5 @@ class AuditLog(TimeStampedModel):
 
 
 # Django registriert die Postfachmodelle zusammen mit den Geschäftsmodellen.
-from .mail_models import MailAccount, MailFolder, MailMessage, MailLocation, MailDraft, MailDraftAttachment  # noqa: E402,F401
+from .mail_models import MailAccount, MailFolder, MailMessage, MailLocation, MailDraft, MailDraftAttachment, MailSpamRule, MailSpamMove  # noqa: E402,F401
 from .incoming_models import IncomingInvoice, IncomingInvoiceSource, IncomingInvoicePackage  # noqa: E402,F401

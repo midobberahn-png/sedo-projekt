@@ -32,6 +32,7 @@ def _integer(value):
 
 
 def _shell(request):
+    from .services.mail_spam import spam_messages
     account_id = _integer(request.GET.get('account'))
     folder_id = _integer(request.GET.get('folder'))
     accounts = list(MailAccount.objects.defer('password_encrypted').all())
@@ -40,13 +41,17 @@ def _shell(request):
     if account_id:
         folders = folders.filter(account_id=account_id)
     return {'accounts': accounts, 'folders': folders, 'account_id': account_id, 'folder_id': folder_id,
+            'spam_count': spam_messages().filter(locations__seen=False, locations__folder__active=True,
+                locations__folder__selectable=True, locations__folder__role__in=['inbox', 'junk']).count(),
             'draft_count': MailDraft.objects.filter(author=request.user, state='draft').count()}
 
 
 def _reader_context(message):
+    from .services.mail_spam import blocked
     matches = Customer.objects.filter(email__iexact=message.sender_email) if message.sender_email else Customer.objects.none()
     suggested = matches.first() if matches.count() == 1 else None
     return {'selected': message, 'locations': message.locations.select_related('folder__account'),
+            'spam_blocked': blocked(message), 'spam_moves': message.spam_moves.exclude(state='done')[:3],
             'message_offers': message.offers.filter(deleted_at__isnull=True).select_related('linked_invoice'),
             'message_tasks': message.tasks.all(), 'suggested_customer': suggested,
             'customers': Customer.objects.order_by('name').only('id', 'name', 'customer_no'),
@@ -56,11 +61,15 @@ def _reader_context(message):
 @login_required
 @never_cache
 def inbox(request, pk=None):
+    from .services.mail_spam import spam_messages, confirmed_spam_messages
     context = _shell(request)
+    is_spam = request.GET.get('section') == 'spam'
     items = MailLocation.objects.filter(folder__active=True, folder__selectable=True)
     if context['account_id']:
         items = items.filter(folder__account_id=context['account_id'])
-    if context['folder_id']:
+    if is_spam:
+        items = items.filter(message__in=spam_messages(), folder__role__in=['inbox', 'junk'])
+    elif context['folder_id']:
         folder = get_object_or_404(context['folders'], pk=context['folder_id'])
         items = items.filter(folder=folder)
         context['current_folder'] = folder
@@ -76,13 +85,19 @@ def inbox(request, pk=None):
                 items = items.filter(folder__account_id=context['account_id'])
         items = items.filter(Q(message__subject__icontains=q) | Q(message__sender__icontains=q) |
                              Q(message__recipients__icontains=q) | Q(message__body__icontains=q))
+        if is_spam:
+            items = items.filter(message__in=spam_messages(), folder__role__in=['inbox', 'junk'])
     if view == 'unread':
         items = items.filter(seen=False)
+        if not is_spam and not context['folder_id'] and request.GET.get('scope') != 'all':
+            items = items.exclude(message__in=confirmed_spam_messages())
     elif view == 'flagged':
         items = items.filter(flagged=True)
+    elif view == 'suspect':
+        items = items.filter(message__spam_state='suspect')
     items = items.select_related('message', 'folder__account').defer('message__raw', 'message__body', 'folder__account__password_encrypted').order_by('-message__sent_at', '-pk')
     context.update({'page_obj': Paginator(items, 30).get_page(request.GET.get('page')), 'q': q, 'view': view,
-                    'scope': request.GET.get('scope', ''), 'is_inbox': True})
+                    'scope': request.GET.get('scope', ''), 'is_inbox': True, 'is_spam': is_spam})
     query = request.GET.copy()
     query.pop('page', None)
     context['page_query'] = query.urlencode()
@@ -400,6 +415,8 @@ def task_from_message(request, pk):
         task = form.save(commit=False)
         task.source_mail, task.customer, task.created_by = message, message.customer, request.user
         try:
+            from .services.mail_spam import require_business_clear
+            require_business_clear(message)
             task.save()
             messages.success(request, 'Aufgabe zur E-Mail angelegt. Die Nachricht bleibt als Quelle verknüpft.')
             return redirect('sedo:task_update', task.pk)

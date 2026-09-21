@@ -6,7 +6,8 @@
 <header class="mail-heading"><div><div class="mail-eyebrow">KORRESPONDENZ</div><h1>Dein Postfach.</h1><p data-help>Anfragen lesen. Antworten schreiben. Direkt weiterarbeiten.</p></div><div class="mail-heading-actions"><a class="btn primary" href="{% url 'sedo:mail_new' %}">Neue E-Mail</a>{% if request.user.is_staff %}<a class="settings-icon" aria-label="Postfächer verwalten" href="{% url 'sedo:mail_settings' %}"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg></a>{% endif %}</div></header>
 <div class="mail-workspace">
 <aside class="mail-folders" aria-label="Postfächer und Ordner"><a class="mail-folder-link" href="{% url 'sedo:incoming_index' %}">Eingangsrechnungen</a>
-  <a class="mail-folder-link {% if is_inbox and not folder_id and not account_id %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}">Alle Posteingänge</a>
+  <a class="mail-folder-link {% if is_inbox and not is_spam and not folder_id and not account_id %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}">Alle Posteingänge</a>
+  <a class="mail-folder-link {% if is_spam %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}?section=spam">Spam prüfen <span>{{ spam_count }}</span></a>
   <a class="mail-folder-link" href="{% url 'sedo:mail_drafts' %}">Meine Entwürfe &amp; Versand <span>{{ draft_count }}</span></a>
   {% for account in accounts %}
   <section class="mail-account"><h2><a href="{% url 'sedo:mail_inbox' %}?account={{ account.pk }}">{{ account.email }}</a></h2>

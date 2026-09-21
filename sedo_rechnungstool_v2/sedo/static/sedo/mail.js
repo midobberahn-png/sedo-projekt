@@ -1,5 +1,25 @@
 (() => {
   'use strict';
+  document.querySelectorAll('[data-spam-mode], [data-spam-rule]').forEach(form => {
+    const select = form.querySelector('select');
+    const confirm = form.querySelector('[data-spam-confirm]');
+    const refresh = () => {
+      confirm.hidden = select.value !== (form.hasAttribute('data-spam-mode') ? 'auto' : 'domain');
+    };
+    select.addEventListener('change', refresh);
+    refresh();
+  });
+  const selection = document.querySelector('[data-mail-selection]');
+  if (selection) {
+    const boxes = [...document.querySelectorAll('input[form="spam-selection"]')];
+    const update = () => {
+      const count = boxes.filter(box => box.checked).length;
+      selection.hidden = count === 0;
+      selection.querySelector('[data-mail-selection-count]').textContent = `${count} ausgewählt`;
+    };
+    boxes.forEach(box => box.addEventListener('change', update));
+    update();
+  }
   document.querySelectorAll('[data-mail-confirm]').forEach(button => {
     button.addEventListener('click', event => {
       if (!window.confirm(button.dataset.mailConfirm)) event.preventDefault();

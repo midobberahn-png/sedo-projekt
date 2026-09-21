@@ -28,6 +28,11 @@ class MailAccount(models.Model):
     lease_token = models.CharField(max_length=36, blank=True, editable=False)
     lease_until = models.DateTimeField(null=True, editable=False)
     created_at = models.DateTimeField(default=timezone.now)
+    spam_mode = models.CharField(max_length=8, default='mark', choices=[
+        ('off', 'Aus'), ('mark', 'Nur markieren'), ('auto', 'Nach Regeln sortieren')])
+    spam_revision = models.PositiveIntegerField(default=1)
+    spam_started_at = models.DateTimeField(default=timezone.now)
+    spam_auto_since = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['email']
@@ -49,6 +54,9 @@ class MailFolder(models.Model):
     uidvalidity = models.PositiveBigIntegerField(default=0)
     total_count = models.PositiveIntegerField(default=0)
     cached_count = models.PositiveIntegerField(default=0)
+    spam_baseline_revision = models.PositiveIntegerField(default=0)
+    spam_baseline_validity = models.PositiveBigIntegerField(default=0)
+    spam_baseline_uid = models.PositiveBigIntegerField(default=0)
 
     class Meta:
         ordering = ['account__email', 'name']
@@ -79,6 +87,13 @@ class MailMessage(models.Model):
     content_error = models.CharField(max_length=300, blank=True)
     invoice_scan_done = models.BooleanField(default=False, editable=False)
     invoice_scan_error = models.CharField(max_length=240, blank=True, editable=False)
+    spam_state = models.CharField(max_length=8, default='unknown', choices=[
+        ('unknown', 'Noch nicht geprüft'), ('clear', 'Kein Spamhinweis'),
+        ('suspect', 'Spamverdacht'), ('spam', 'Spam')])
+    spam_reason = models.CharField(max_length=300, blank=True)
+    spam_manual = models.CharField(max_length=4, blank=True, choices=[('spam', 'Spam'), ('ham', 'Kein Spam')])
+    spam_revision = models.PositiveIntegerField(default=0)
+    spam_checked_at = models.DateTimeField(null=True, blank=True)
     customer = models.ForeignKey('sedo.Customer', null=True, blank=True, on_delete=models.PROTECT, related_name='mail_messages')
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -135,3 +150,32 @@ class MailDraftAttachment(models.Model):
     content_type = models.CharField(max_length=150, default='application/octet-stream')
     data = models.BinaryField(editable=False)
     size = models.PositiveIntegerField()
+
+
+class MailSpamRule(models.Model):
+    account = models.ForeignKey(MailAccount, on_delete=models.CASCADE, related_name='spam_rules')
+    kind = models.CharField(max_length=7, choices=[('address', 'Absenderadresse'), ('domain', 'Genaue Domain')])
+    value = models.CharField(max_length=254)
+    action = models.CharField(max_length=5, choices=[('block', 'Als Spam behandeln'), ('allow', 'Zulassen')])
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['kind', 'value']
+        constraints = [models.UniqueConstraint(fields=['account', 'kind', 'value'], name='mail_spam_rule_unique')]
+
+
+class MailSpamMove(models.Model):
+    # Written BEFORE MOVE. An interrupted/uncertain operation is never replayed.
+    message = models.ForeignKey(MailMessage, on_delete=models.CASCADE, related_name='spam_moves')
+    source = models.ForeignKey(MailFolder, on_delete=models.PROTECT, related_name='+')
+    destination = models.ForeignKey(MailFolder, on_delete=models.PROTECT, related_name='+')
+    uid = models.PositiveBigIntegerField()
+    uidvalidity = models.PositiveBigIntegerField()
+    state = models.CharField(max_length=8, default='unknown', choices=[
+        ('unknown', 'Serverstand prüfen'), ('done', 'Verschoben'), ('failed', 'Nicht verschoben')])
+    automatic = models.BooleanField(default=False)
+    note = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']

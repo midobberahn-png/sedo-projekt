@@ -34,6 +34,8 @@
         {% if mail_accounts_configured %}<p>{% if unread_mail_count %}Ungelesene Nachrichten in allen Posteingängen.{% else %}Aktuell keine ungelesenen E-Mails in den Posteingängen.{% endif %} Stand des letzten Abrufs.</p><span class="work-link">Ungelesene Mails öffnen →</span>
         {% else %}<p>Noch kein Postfach eingerichtet. Neue Anfragen erscheinen nach dem ersten Abruf hier.</p><span class="work-link">{% if request.user.is_staff %}Postfächer einrichten{% else %}Zum Posteingang{% endif %} →</span>{% endif %}
       </a>
+    {% elif widget.key == 'spam' %}
+      <a class="card work-task" data-widget="spam" href="{% url 'sedo:mail_inbox' %}?section=spam&amp;view=unread"><span class="work-count">{{ unread_spam_count }}</span><h3>Spam prüfen</h3><p>Ungelesene Spam- und Verdachtsfälle.</p><span class="work-link">Nachrichten prüfen →</span></a>
     {% elif widget.key == 'balance' %}
       <section class="card work-task" data-widget="balance" aria-labelledby="balance-heading">
         <div class="task-heading"><h3 id="balance-heading">Kontostand</h3><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-payment"/></svg></span></div>
