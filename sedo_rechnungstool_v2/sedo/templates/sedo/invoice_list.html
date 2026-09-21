@@ -6,7 +6,7 @@
     <div>
       <div class="eyebrow">Verkauf</div>
       <h1 class="h1">Rechnungsarchiv</h1>
-      <div class="sub" data-help>Belege finden, Entwürfe weiterbearbeiten und Originale nachschlagen.</div>
+
     </div>
     <div class="toolbar">
       <a class="btn" href="{% url 'sedo:open_items' %}">Offene Posten</a>
@@ -56,7 +56,7 @@
       <button class="btn" type="submit">Filtern</button>
       {% if has_filters %}<a class="btn ghost" href="{% url 'sedo:invoice_list' %}">Filter zurücksetzen</a>{% endif %}
     </form>
-    {% if legacy_status_label %}<p class="muted">Übernommener Statusfilter: <strong>{{ legacy_status_label }}</strong>. Eine Belegansicht oben wählen, um ihn aufzuheben.</p>{% endif %}
+    {% if legacy_status_label %}<p class="muted">Übernommener Statusfilter: <strong>{{ legacy_status_label }}</strong></p>{% endif %}
   </div>
 
   <section class="card archive-results" aria-labelledby="archive-heading">

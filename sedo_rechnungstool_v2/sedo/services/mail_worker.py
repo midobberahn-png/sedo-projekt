@@ -16,6 +16,7 @@ _guard = threading.Lock()
 _active = set()
 _worker = None
 _wake = threading.Event()
+POLL_SECONDS = 300
 
 
 def recover_interrupted_sends():
@@ -37,7 +38,7 @@ def _sync(pk):
     except Exception:
         # No exception text/traceback: an IMAP response could contain credentials.
         logger.error('Postfachabgleich konnte nicht abgeschlossen werden (Konto %s).', pk)
-        MailAccount.objects.filter(pk=pk).update(last_error='Der Abgleich wurde unterbrochen. Bitte erneut abrufen.')
+        MailAccount.objects.filter(pk=pk).update(last_error='Der Abgleich wurde unterbrochen. Der nächste Versuch erfolgt automatisch.')
     finally:
         close_old_connections()
         with _guard:
@@ -68,7 +69,7 @@ def start_mail_worker():
                 logger.error('E-Mail-Hintergrundabruf pausiert; bitte Datenbank prüfen.')
             finally:
                 close_old_connections()
-            _wake.wait(60)
+            _wake.wait(POLL_SECONDS)
             _wake.clear()
     _worker = threading.Thread(target=loop, name='sedo-mail-poll', daemon=True)
     _worker.start()

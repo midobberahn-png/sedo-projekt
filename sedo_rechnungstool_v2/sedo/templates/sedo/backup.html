@@ -5,7 +5,7 @@
   <div>
     <div class="eyebrow">System</div>
     <h1 class="h1">Backup</h1>
-    <div class="sub" data-help>Automatische Sicherung – ohne API-Key, SMTP-Passwort, Bank-PIN und aktive Anmelde-Sitzungen.</div>
+
   </div>
 </div>
 
@@ -47,7 +47,7 @@
 
 <div class="card">
   <div class="section-head"><h2>Automatische Backups</h2></div>
-  <p class="sub" data-help>Die App prüft beim Start/Seitenaufruf, ob das letzte automatische Backup älter als 7 Tage ist. Falls ja, wird automatisch ein ZIP-Backup erzeugt.</p>
+
   <dl class="detail-grid">
     <div><dt>Status</dt><dd>{% if auto_weekly_backup_enabled == '1' %}aktiv{% else %}deaktiviert{% endif %}</dd></div>
     <div><dt>Letzter Backup-Pfad</dt><dd>{{ last_backup_path|default:'—' }}</dd></div>
@@ -66,17 +66,11 @@
 
 <div class="card">
   <div class="section-head"><h2>Was wird gesichert?</h2></div>
-  <ul class="clean-list" data-help>
-    <li>Datenbank mit Kunden, Rechnungen, Angeboten, Zahlungen und Kassenbuch</li>
-    <li>Medienordner mit erzeugten PDFs, XML-Dateien, ZUGFeRD-Dateien und E-Mail-Entwürfen</li>
-    <li>Backup-Infodatei mit Zeitpunkt und Grund der Sicherung</li>
-    <li><strong>Nicht enthalten:</strong> .env, Secret Key, alte KI-API-Schlüssel, SMTP-Passwort, Bank-PIN und aktive Anmelde-Sitzungen. Die Datenbankkopie wird neu aufgebaut, damit auch keine Rest-Bytes übrig bleiben.</li>
-    <li><strong>Enthalten und schützenswert:</strong> alle Kunden-, Rechnungs- und Zahlungsdaten sowie die Bank-Stammdaten ohne PIN (Anmeldename, IBAN, BLZ, FinTS-Adresse) und der SMTP-Benutzername. Ein Backup gehört deshalb nicht ungeschützt weitergegeben.</li>
-  </ul>
+
 </div>
 
 <div class="card">
-  <div class="section-head"><div><h2>Backup wiederherstellen</h2><p class="sub" data-help>Dreistufig: auswählen, vollständig prüfen, kontrolliert beim nächsten App-Start einspielen.</p></div></div>
+  <div class="section-head"><div><h2>Backup wiederherstellen</h2></div></div>
   <form method="post" class="compact-form">
     {% csrf_token %}
     <label>Sicherung auswählen
@@ -96,7 +90,7 @@
       <div><span>Inhalt</span><strong>{{ restore_report.counts.Kunden }} Kunden · {{ restore_report.counts.Rechnungen }} Rechnungen</strong></div>
       <div><span>Dateien</span><strong>{{ restore_report.media_files }} Medien · {{ restore_report.size|filesizeformat }}</strong></div>
     </dl>
-    <p class="hint" data-help>Vor dem Einspielen erstellt SEDO automatisch eine Sicherung des aktuellen Stands. SMTP-Passwort, KI-Schlüssel und Bank-PIN müssen danach neu hinterlegt werden. Das SEDO-Anmeldepasswort entspricht dem Stand der Sicherung; aktive Sitzungen werden nicht übernommen.</p>
+
     <form method="post" class="compact-form" onsubmit="return confirm('Geprüftes Backup für den nächsten App-Start vormerken?');">
       {% csrf_token %}<input type="hidden" name="backup" value="{{ restore_report.name }}">
       <input type="hidden" name="review_sha256" value="{{ restore_report.archive_sha256 }}">

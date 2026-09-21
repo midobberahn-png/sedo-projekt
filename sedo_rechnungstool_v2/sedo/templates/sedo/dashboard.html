@@ -4,16 +4,16 @@
 <link rel="stylesheet" href="{% static 'sedo/dashboard-widgets.css' %}?v=1">
 <div class="work-page dashboard-page">
   <div class="topbar">
-    <div><div class="eyebrow">Arbeitszentrale · {{ today|date:"d.m.Y" }}</div><h1 class="h1 welcome-heading"><span class="sr-only">Dashboard · </span>Willkommen bei SEDO.</h1><p class="sub" data-help>Dein Arbeitstag. Dein Überblick.</p></div>
+    <div><div class="eyebrow">Arbeitszentrale · {{ today|date:"d.m.Y" }}</div><h1 class="h1 welcome-heading"><span class="sr-only">Dashboard · </span>Willkommen bei SEDO.</h1></div>
     <div class="page-actions"><a class="btn primary" href="{% url 'sedo:invoice_create' %}">Rechnung erstellen</a><a class="btn" href="{% url 'sedo:offer_create' %}">Angebot erstellen</a>
       <details class="dashboard-customizer" id="dashboard-customizer"{% if layout_form.errors %} open{% endif %}>
         <summary class="btn dashboard-gear" aria-label="Dashboard anpassen" title="Dashboard anpassen"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg><span class="sr-only">Dashboard anpassen</span></summary>
         <div class="dashboard-menu">
-          <div class="widget-menu-heading"><h2>Deine Kacheln</h2><button type="button" class="widget-menu-close" aria-label="Kachelauswahl schließen" hidden>×</button></div><p class="muted">Wähle, was du hier sehen möchtest. Die Auswahl gilt nur für deinen Benutzer.</p>
+          <div class="widget-menu-heading"><h2>Deine Kacheln</h2><button type="button" class="widget-menu-close" aria-label="Kachelauswahl schließen" hidden>×</button></div>
           <form method="post" action="{% url 'sedo:dashboard_layout' %}">{% csrf_token %}
             {{ layout_form.non_field_errors }}{{ layout_form.widgets.errors }}
             <fieldset class="widget-options"><legend class="sr-only">Sichtbare Kacheln</legend>
-              {% for widget in widget_catalogue %}<label class="widget-option" for="widget-{{ widget.key }}"><input type="checkbox" id="widget-{{ widget.key }}" name="widgets" value="{{ widget.key }}"{% if widget.selected %} checked{% endif %}><span><strong>{{ widget.label }}</strong><small>{{ widget.description }}</small></span></label>{% endfor %}
+              {% for widget in widget_catalogue %}<label class="widget-option" for="widget-{{ widget.key }}"><input type="checkbox" id="widget-{{ widget.key }}" name="widgets" value="{{ widget.key }}"{% if widget.selected %} checked{% endif %}><span><strong>{{ widget.label }}</strong></span></label>{% endfor %}
             </fieldset>
             <fieldset class="widget-weather-location"><legend>Dein Wetterort</legend>
               <div><label for="{{ layout_form.weather_place.id_for_label }}">Ortsname</label>{{ layout_form.weather_place }}{{ layout_form.weather_place.errors }}</div>
@@ -32,11 +32,11 @@
       <a class="card work-task" data-widget="mail" href="{% if mail_accounts_configured %}{% url 'sedo:mail_inbox' %}?view=unread{% elif request.user.is_staff %}{% url 'sedo:mail_settings' %}{% else %}{% url 'sedo:mail_inbox' %}{% endif %}">
         <span class="task-heading"><span class="work-count">{% if mail_accounts_configured %}{{ unread_mail_count }}{% else %}—{% endif %}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg></span></span>
         <h3>Neue E-Mails</h3>
-        {% if mail_accounts_configured %}<p>{% if unread_mail_count %}Ungelesene Nachrichten in allen Posteingängen.{% else %}Aktuell keine ungelesenen E-Mails in den Posteingängen.{% endif %} Stand des letzten Abrufs.</p><span class="work-link">Ungelesene Mails öffnen →</span>
-        {% else %}<p>Noch kein Postfach eingerichtet. Neue Anfragen erscheinen nach dem ersten Abruf hier.</p><span class="work-link">{% if request.user.is_staff %}Postfächer einrichten{% else %}Zum Posteingang{% endif %} →</span>{% endif %}
+        {% if mail_accounts_configured %}<span class="work-link">Ungelesene Mails öffnen →</span>
+        {% else %}<p>Noch kein Postfach eingerichtet.</p><span class="work-link">{% if request.user.is_staff %}Postfächer einrichten{% else %}Zum Posteingang{% endif %} →</span>{% endif %}
       </a>
     {% elif widget.key == 'spam' %}
-      <a class="card work-task" data-widget="spam" href="{% url 'sedo:mail_inbox' %}?section=spam&amp;view=unread"><span class="work-count">{{ unread_spam_count }}</span><h3>Spam prüfen</h3><p>Ungelesene Spam- und Verdachtsfälle.</p><span class="work-link">Nachrichten prüfen →</span></a>
+      <a class="card work-task" data-widget="spam" href="{% url 'sedo:mail_inbox' %}?section=spam&amp;view=unread"><span class="work-count">{{ unread_spam_count }}</span><h3>Spam prüfen</h3><span class="work-link">Nachrichten prüfen →</span></a>
     {% elif widget.key == 'balance' %}
       <section class="card work-task" data-widget="balance" aria-labelledby="balance-heading">
         <div class="task-heading"><h3 id="balance-heading">Kontostand</h3><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-payment"/></svg></span></div>
@@ -44,35 +44,35 @@
         {% if banking_configured %}
         <form method="post" action="{% url 'sedo:dashboard_balance' %}" class="widget-bank-form">{% csrf_token %}
           {% if not banking_pin_stored %}<label for="balance-pin">Online-Banking-PIN für diesen Abruf</label><input id="balance-pin" type="password" name="fints_pin_once" autocomplete="off" required>{% endif %}
-          <p>Beim Abruf kann deine Bank eine Freigabe in der Banking-App verlangen.</p><button class="btn small" type="submit">Kontostand abrufen</button>
+          <button class="btn small" type="submit">Kontostand abrufen</button>
         </form>
-        {% elif request.user.is_staff %}<a class="work-link" href="{% url 'sedo:settings' %}#bank-settings">Bankzugang einrichten →</a>{% else %}<p>Bitte die Administration um Einrichtung des Bankzugangs bitten.</p>{% endif %}
+        {% elif request.user.is_staff %}<a class="work-link" href="{% url 'sedo:settings' %}#bank-settings">Bankzugang einrichten →</a>{% else %}{% endif %}
       </section>
     {% elif widget.key == 'weather' %}
       <section class="card work-task widget-weather" data-widget="weather" data-weather-state="{{ weather.state }}" aria-labelledby="weather-heading">
         <div class="task-heading"><h3 id="weather-heading">Wetter · {{ weather_place }}</h3><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-sun"/></svg></span></div>
         <div aria-live="polite" aria-atomic="true"><strong class="work-count" data-weather-temperature>{% if weather.state == 'ready' %}{{ weather.temperature }} °C{% else %}—{% endif %}</strong><p data-weather-description>{{ weather.description }}</p><p data-weather-message>{{ weather.message }}</p><p data-weather-time>{% if weather.observed_at %}Stand: {{ weather.observed_at }}{% endif %}</p></div>
-        {% if weather.state == 'setup' %}{% if request.user.is_staff %}<a class="work-link" href="{% url 'sedo:settings' %}#weather-settings">Zugang einrichten →</a>{% else %}<p>Bitte die Administration um Einrichtung des Wetterzugangs bitten.</p>{% endif %}
+        {% if weather.state == 'setup' %}{% if request.user.is_staff %}<a class="work-link" href="{% url 'sedo:settings' %}#weather-settings">Zugang einrichten →</a>{% else %}{% endif %}
         {% else %}<form action="{% url 'sedo:dashboard_weather' %}" method="post" class="widget-weather-form" hidden>{% csrf_token %}<button class="btn small" type="submit">Wetter aktualisieren</button></form><noscript><p>Für den Wetterabruf bitte JavaScript aktivieren.</p></noscript>{% endif %}
         <a class="widget-source" href="https://www.wetter.com/apps_und_mehr/website/api/" target="_blank" rel="noopener noreferrer">Wetterdaten: wetter.com / METEONOMIQS</a>
       </section>
     {% elif widget.key == 'drafts' %}
-      <a class="card work-task" data-widget="drafts" href="{% url 'sedo:invoice_list' %}?view=draft"><span class="work-count">{{ draft_invoices }}</span><h3>Rechnungsentwürfe</h3><p>Gespeicherte Entwürfe weiterbearbeiten.</p><span class="work-link">Entwürfe öffnen →</span></a>
+      <a class="card work-task" data-widget="drafts" href="{% url 'sedo:invoice_list' %}?view=draft"><span class="work-count">{{ draft_invoices }}</span><h3>Rechnungsentwürfe</h3><span class="work-link">Entwürfe öffnen →</span></a>
     {% elif widget.key == 'overdue' %}
-      <a class="card work-task" data-widget="overdue" href="{% url 'sedo:open_items' %}?status=overdue"><span class="task-heading"><span class="work-count{% if overdue_invoices %} work-attention{% endif %}">{{ overdue_invoices }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></span></span><h3>Überfällige Rechnungen</h3><p>Zahlungseingänge und den nächsten Schritt prüfen.</p><span class="work-link">Überfällige Posten öffnen →</span></a>
+      <a class="card work-task" data-widget="overdue" href="{% url 'sedo:open_items' %}?status=overdue"><span class="task-heading"><span class="work-count{% if overdue_invoices %} work-attention{% endif %}">{{ overdue_invoices }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></span></span><h3>Überfällige Rechnungen</h3><span class="work-link">Überfällige Posten öffnen →</span></a>
     {% elif widget.key == 'dunning' %}
-      <a class="card work-task" data-widget="dunning" href="{% url 'sedo:open_items' %}"><span class="task-heading"><span class="work-count{% if dunning_candidates_count %} work-attention{% endif %}">{{ dunning_candidates_count }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></span></span><h3>Mahnstufe prüfen</h3><p>Kandidaten ansehen und nächste Mahnstufen bewusst bestätigen.</p><span class="work-link">Mahnlauf prüfen →</span></a>
+      <a class="card work-task" data-widget="dunning" href="{% url 'sedo:open_items' %}"><span class="task-heading"><span class="work-count{% if dunning_candidates_count %} work-attention{% endif %}">{{ dunning_candidates_count }}</span><span class="task-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></span></span><h3>Mahnstufe prüfen</h3><span class="work-link">Mahnlauf prüfen →</span></a>
     {% elif widget.key == 'receivables' %}
       <a class="card work-task" data-widget="receivables" href="{% url 'sedo:open_items' %}"><h3>Offene Forderungen</h3><strong class="work-count">{{ open_amount_total }} €</strong><p>{{ open_invoices }} offene Rechnung{{ open_invoices|pluralize:"en" }}</p><span class="work-link">Offene Posten öffnen →</span></a>
     {% elif widget.key == 'paid' %}
-      <section class="card work-task" data-widget="paid" aria-labelledby="paid-heading"><h3 id="paid-heading">Bezahlte Rechnungen</h3><strong class="work-count">{{ paid_month }} €</strong><p>Rechnungsmonat {{ today|date:"F Y" }} · kein Zahlungseingangsbericht</p></section>
+      <section class="card work-task" data-widget="paid" aria-labelledby="paid-heading"><h3 id="paid-heading">Bezahlte Rechnungen</h3><strong class="work-count">{{ paid_month }} €</strong><p>Rechnungsmonat {{ today|date:"F Y" }}</p></section>
     {% elif widget.key == 'offers' %}
       <a class="card work-task" data-widget="offers" href="{% url 'sedo:offer_list' %}"><h3>Offene Angebote</h3><strong class="work-count">{{ open_offers }}</strong><span class="work-link">Angebote öffnen →</span></a>
     {% elif widget.key == 'calendar' %}
       <section class="card dashboard-wide" data-widget="calendar" aria-labelledby="calendar-widget-heading"><div class="work-section-head"><h2 id="calendar-widget-heading">Deine nächsten Termine</h2><a class="btn" href="{% url 'sedo:calendar_index' %}">Kalender öffnen</a></div>{% for error in calendar_errors %}<p role="status">{{ error }}</p>{% endfor %}{% include 'sedo/calendar/entries.html' with entries=calendar_entries %}<a class="btn small" href="{% url 'sedo:calendar_create' %}">Termin anlegen</a></section>
     {% elif widget.key == 'tasks' %}
   <section class="card dashboard-wide" data-widget="tasks" aria-labelledby="my-tasks-heading">
-    <div class="work-section-head"><div><h2 id="my-tasks-heading">Meine Wiedervorlagen</h2><p class="muted">Fällige Gespräche und nächste Schritte an einer Stelle.</p></div><a class="btn" href="{% url 'sedo:task_list' %}">Alle Aufgaben{% if open_tasks_count %} · {{ open_tasks_count }}{% endif %}</a></div>
+    <div class="work-section-head"><div><h2 id="my-tasks-heading">Meine Wiedervorlagen</h2></div><a class="btn" href="{% url 'sedo:task_list' %}">Alle Aufgaben{% if open_tasks_count %} · {{ open_tasks_count }}{% endif %}</a></div>
     <ul class="work-records">
       {% for task in open_tasks %}
       <li class="work-record task-record{% if task.is_overdue %} task-overdue{% endif %}">
@@ -80,13 +80,13 @@
         <div><span class="badge{% if task.is_overdue %} red{% elif task.priority == 'high' %} yellow{% endif %}">{% if task.is_overdue %}überfällig · {% endif %}{{ task.due_date|date:"d.m.Y" }}</span></div>
         <form method="post" action="{% url 'sedo:task_toggle' task.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{% url 'sedo:dashboard' %}"><button class="btn small" type="submit">Erledigt</button></form>
       </li>
-      {% empty %}<li class="empty-state compact"><p class="empty-title">Keine offene Wiedervorlage</p><p>Lege Aufgaben frei oder direkt zu einem Kunden, Angebot oder einer Rechnung an.</p><a class="btn" href="{% url 'sedo:task_list' %}">Aufgabe anlegen</a></li>{% endfor %}
+      {% empty %}<li class="empty-state compact"><p class="empty-title">Keine offene Wiedervorlage</p><a class="btn" href="{% url 'sedo:task_list' %}">Aufgabe anlegen</a></li>{% endfor %}
     </ul>
   </section>
 
     {% elif widget.key == 'invoices' %}
   <section class="card dashboard-wide" data-widget="invoices" aria-labelledby="recent-heading">
-    <div class="work-section-head"><div><h2 id="recent-heading">Letzte Rechnungen</h2><p class="muted">Die acht neuesten Belege nach Rechnungsdatum.</p></div><a class="btn" href="{% url 'sedo:invoice_list' %}">Rechnungsarchiv</a></div>
+    <div class="work-section-head"><div><h2 id="recent-heading">Letzte Rechnungen</h2></div><a class="btn" href="{% url 'sedo:invoice_list' %}">Rechnungsarchiv</a></div>
     <ul class="work-records">
       {% for r in latest_invoices %}
       <li class="work-record">
@@ -95,19 +95,19 @@
         <div>{% include 'sedo/_invoice_state_stack.html' with invoice=r compact=1 %}</div>
         <div>{% if r.lifecycle == 'draft' %}<a class="btn small" href="{% url 'sedo:invoice_edit' r.pk %}" aria-label="Entwurf {{ r.number }} weiterbearbeiten">Weiterbearbeiten</a>{% else %}<a class="btn small" href="{% url 'sedo:invoice_detail' r.pk %}" aria-label="Rechnung {{ r.number }} öffnen">Öffnen</a>{% endif %}</div>
       </li>
-      {% empty %}<li class="empty-state"><p class="empty-title">Noch keine Rechnungen</p><p>Beginne mit einer neuen Rechnung. Gespeicherte Entwürfe findest du anschließend hier.</p><a class="btn" href="{% url 'sedo:invoice_create' %}">Erste Rechnung erstellen</a></li>{% endfor %}
+      {% empty %}<li class="empty-state"><p class="empty-title">Noch keine Rechnungen</p><a class="btn" href="{% url 'sedo:invoice_create' %}">Erste Rechnung erstellen</a></li>{% endfor %}
     </ul>
   </section>
 
     {% elif widget.key == 'customers' %}
-      <a class="card work-task" data-widget="customers" href="{% url 'sedo:customer_list' %}"><h3>Kunden & Objekte</h3><p>{{ customers }} Kunden · Stammdaten und Kundenakten</p><span class="work-link">Kunden öffnen →</span></a>
+      <a class="card work-task" data-widget="customers" href="{% url 'sedo:customer_list' %}"><h3>Kunden & Objekte</h3><p>{{ customers }} Kunden</p><span class="work-link">Kunden öffnen →</span></a>
     {% elif widget.key == 'gwg' %}
-      <a class="card work-task" data-widget="gwg" href="{% url 'sedo:aareon_monthly' %}"><h3>GWG-Abrechnung</h3><p>Mapping und Monatslauf</p><span class="work-link">GWG öffnen →</span></a>
+      <a class="card work-task" data-widget="gwg" href="{% url 'sedo:aareon_monthly' %}"><h3>GWG-Abrechnung</h3><span class="work-link">GWG öffnen →</span></a>
     {% elif widget.key == 'backup' %}
-      <a class="card work-task" data-widget="backup" href="{% url 'sedo:backup' %}"><h3>Backup & Sicherung</h3><p>Datensicherung und Wiederherstellung</p><span class="work-link">Datensicherung öffnen →</span></a>
+      <a class="card work-task" data-widget="backup" href="{% url 'sedo:backup' %}"><h3>Backup & Sicherung</h3><span class="work-link">Datensicherung öffnen →</span></a>
     {% endif %}
   {% empty %}
-    <div class="card empty-state dashboard-wide"><p class="empty-title">Platz für deinen Überblick</p><p>Öffne das Zahnrad oben rechts und wähle deine Kacheln aus.</p></div>
+    <div class="card empty-state dashboard-wide"><p class="empty-title">Platz für deinen Überblick</p></div>
   {% endfor %}
   </div>
 </div>

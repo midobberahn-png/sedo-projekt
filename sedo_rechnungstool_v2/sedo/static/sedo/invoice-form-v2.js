@@ -86,7 +86,6 @@
     // Ungültige gebundene Auswahl sichtbar lassen, damit sie korrigiert werden kann.
     if (keep && !objects.some(o => String(o.id) === keep) && previous) objSel.add(previous);
     objSel.value = keep;
-    setText('obj-hint', objects.length ? objects.length + ' Objekte für diesen Kunden verfügbar.' : 'Kein Objekt ausgewählt. Leistungsort bei Bedarf direkt eingeben.');
   }
 
   function clearObject() {

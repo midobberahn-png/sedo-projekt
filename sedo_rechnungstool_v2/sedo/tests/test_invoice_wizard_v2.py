@@ -56,7 +56,7 @@ class InvoiceWizardV2Tests(TestCase):
             self.assertFalse(el.xpath('ancestor::*[@hidden]'))
         for step in doc.xpath('//*[@data-wizard-step]'):
             self.assertNotIn('hidden', step.attrib)
-        self.assertContains(response, 'Ohne JavaScript:')
+        self.assertNotContains(response, 'Ohne JavaScript:')
 
     def test_post_fehler_erhaelt_manuelle_daten_und_abo_auswahl(self):
         response = self.client.post(self.url, self.data(issue_date='', name='TEST Eingabe',

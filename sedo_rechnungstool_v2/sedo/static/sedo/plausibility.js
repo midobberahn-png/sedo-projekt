@@ -26,11 +26,7 @@
   var panel = document.createElement('div');
   panel.className = 'form-card plausi-panel';
   panel.innerHTML =
-    '<div class="form-card-title">Plausibilitäts-Check' +
-    ' <span class="info-tip" tabindex="0" aria-label="Hinweis zum KI-Check">i<span class="info-tip-text">' +
-    'Die lokale Prüfung (Historie, Dubletten, Nullwerte) läuft automatisch auf diesem Rechner. ' +
-    'Der KI-Check prüft nur die Leistungsdaten – Kunden- und Objektdaten werden nie übertragen.' +
-    '</span></span></div>' +
+    '<div class="form-card-title">Plausibilitäts-Check</div>' +
     '<div id="plausi-local" class="plausi-results" aria-live="polite"></div>' +
     '<div class="toolbar" style="margin-top:10px">' +
     '  <button type="button" class="btn" id="plausi-ki-btn">' +

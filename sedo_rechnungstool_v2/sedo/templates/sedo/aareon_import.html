@@ -3,11 +3,11 @@
 <div class="topbar">
   <div>
     <div class="eyebrow">Verkauf</div><h1 class="h1">Monatsrechnung</h1>
-    <div class="sub" data-help>GWG-Mapping importieren, Leistungen wählen und Monatsrechnungen erzeugen.</div>
+
   </div>
   <div class="page-actions"><a class="btn" href="{% url 'sedo:invoice_list' %}">Rechnungsarchiv</a></div>
 </div>
-<div class="page-help" data-help><strong>Hauptprozess:</strong> Entweder GWG-Abrechnung mit Mapping oder normale Abo-/Monatsrechnungen für andere Kunden erzeugen.</div>
+
 
 <div class="tabs-bar">
   <a class="tab-chip active" href="#aareon-block">GWG-Abrechnung</a>
@@ -19,7 +19,7 @@
 <div class="grid two-col">
   <div class="card" data-settings-section id="mapping-upload">
     <h2>1. Mapping-Datei importieren</h2>
-    <p class="hint" data-help>Erwartet wird <strong>Mapping SEDO GWG.xlsx</strong>. Die echte Fachkopfzeile wird automatisch erkannt.</p>
+
     <form method="post" enctype="multipart/form-data" class="stacked-form">
       {% csrf_token %}<input type="hidden" name="action" value="import">
       <label for="aareon_import-field-1">Mapping-Datei (.xlsx)</label><input id="aareon_import-field-1" type="file" name="file" accept=".xlsx,.xls" required>
@@ -37,7 +37,7 @@
     <form method="post" class="stacked-form compact-form">
       {% csrf_token %}<input type="hidden" name="action" value="generate">
       <div class="form-grid compact-grid">
-        <div class="form-row full"><label for="aareon_import-field-2">Rechnungsempfänger / Kunde</label><select id="aareon_import-field-2" name="customer" required><option value="">Bitte wählen</option>{% for c in customers %}<option value="{{ c.id|unlocalize }}">{{ c.name }}{% if c.customer_no %} · {{ c.customer_no }}{% endif %}</option>{% endfor %}</select><div class="hint" data-help>Dieser Kunde erscheint im Rechnungskopf. Die Abrechnungseinheit kommt aus der Mapping-Datei.</div></div>
+        <div class="form-row full"><label for="aareon_import-field-2">Rechnungsempfänger / Kunde</label><select id="aareon_import-field-2" name="customer" required><option value="">Bitte wählen</option>{% for c in customers %}<option value="{{ c.id|unlocalize }}">{{ c.name }}{% if c.customer_no %} · {{ c.customer_no }}{% endif %}</option>{% endfor %}</select></div>
         <div class="form-row"><label for="aareon_import-field-3">Abrechnungsmonat</label><input id="aareon_import-field-3" type="month" name="month" value="{{ default_month }}" required></div>
         <div class="form-row"><label for="aareon_import-field-4">Rechnungsdatum</label><input id="aareon_import-field-4" type="date" name="issue_date" value="{{ default_issue_date }}" required></div>
         <div class="form-row"><label for="aareon_import-field-5">Zahlungsziel Tage</label><input id="aareon_import-field-5" type="number" name="payment_days" value="14" min="0"></div>
@@ -45,7 +45,7 @@
       </div>
 
       <h2 class="work-section-title">Leistungen für diesen Lauf</h2>
-      <p class="hint" data-help>Eine, mehrere oder alle Leistungen möglich. Pro Abrechnungseinheit wird eine Rechnung erzeugt; ausgewählte Leistungen werden als Positionen zusammengefasst.</p>
+
       <div class="monthly-services">
         <div class="service-row"><label class="service-check"><input type="checkbox" name="use_Reinigung" checked> Reinigung</label><label>Positionstext · Reinigung<input name="desc_Reinigung" value="Reinigung" placeholder="Positionstext"></label><label>Menge · Reinigung<input name="qty_Reinigung" value="1" placeholder="Menge"></label><label>Einheit · Reinigung<input name="unit_Reinigung" value="Stk." placeholder="Einheit"></label><label>Einzelpreis netto · Reinigung<input name="price_Reinigung" value="10.00" placeholder="Einzelpreis netto"></label></div>
         <div class="service-row"><label class="service-check"><input type="checkbox" name="use_Winterdienst" checked> Winterdienst</label><label>Positionstext · Winterdienst<input name="desc_Winterdienst" value="Winterdienst" placeholder="Positionstext"></label><label>Menge · Winterdienst<input name="qty_Winterdienst" value="1" placeholder="Menge"></label><label>Einheit · Winterdienst<input name="unit_Winterdienst" value="Stk." placeholder="Einheit"></label><label>Einzelpreis netto · Winterdienst<input name="price_Winterdienst" value="10.00" placeholder="Einzelpreis netto"></label></div>
@@ -73,7 +73,7 @@
 
 
 <div class="card" id="normal-block">
-  <div class="section-head"><div><h2>Monatsrechnungen / Abo-Rechnungen</h2><p class="hint" data-help>Für Kunden ohne GWG-Mapping. Vorlagen entstehen entweder über „Neue Rechnung“ mit Haken „als Abo-/Monatsrechnungsvorlage speichern“ oder direkt hier über „Vorlage anlegen“.</p></div><a class="btn primary" href="{% url 'sedo:recurring_create' %}">+ Vorlage anlegen</a></div>
+  <div class="section-head"><div><h2>Monatsrechnungen / Abo-Rechnungen</h2></div><a class="btn primary" href="{% url 'sedo:recurring_create' %}">+ Vorlage anlegen</a></div>
   <form method="post" action="{% url 'sedo:recurring_generate' %}" class="stacked-form compact-form">
     {% csrf_token %}
     <div class="form-grid compact-grid">

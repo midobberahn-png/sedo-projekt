@@ -7,7 +7,9 @@
   const toggle = document.getElementById('sidebar-toggle');
   const closeButton = document.getElementById('sidebar-close');
   const mobile = window.matchMedia('(max-width: 1050px)');
-  let collapsed = false;
+  let collapsed = true;
+  let pointerInside = false;
+  let keyboardNavigation = false;
   let opened = false;
   if (sidebar && toggle && main) {
     body.classList.add('shell-enhanced');
@@ -58,9 +60,29 @@
     mobile.addEventListener('change', () => {
       const wasInside = sidebar.contains(document.activeElement);
       opened = false;
+      pointerInside = !mobile.matches && sidebar.matches(':hover');
+      collapsed = !pointerInside;
       sync();
       if (wasInside) toggle.focus();
     });
+    sidebar.addEventListener('pointerenter', () => {
+      if (!mobile.matches) { pointerInside = true; collapsed = false; sync(); }
+    });
+    sidebar.addEventListener('pointerleave', () => {
+      pointerInside = false;
+      if (!mobile.matches && !(keyboardNavigation && sidebar.contains(document.activeElement))) { collapsed = true; sync(); }
+    });
+    document.addEventListener('pointerdown', event => {
+      keyboardNavigation = false;
+      if (!mobile.matches && !sidebar.contains(event.target) && !toggle.contains(event.target)) { collapsed = true; sync(); }
+    });
+    document.addEventListener('keydown', event => { if (event.key === 'Tab') keyboardNavigation = true; });
+    sidebar.addEventListener('focusin', () => { if (!mobile.matches && keyboardNavigation) { collapsed = false; sync(); } });
+    sidebar.addEventListener('focusout', event => {
+      if (!mobile.matches && !pointerInside && !sidebar.contains(event.relatedTarget)) { collapsed = true; sync(); }
+    });
+    pointerInside = !mobile.matches && sidebar.matches(':hover');
+    collapsed = !pointerInside;
     sync();
   }
 
@@ -86,18 +108,6 @@
     table.classList.add('records-ready');
   });
 
-  document.querySelectorAll('.info-tip').forEach((tip, index) => {
-    const text = tip.querySelector('.info-tip-text');
-    if (!text) return;
-    text.id = text.id || 'info-tip-' + index;
-    tip.setAttribute('aria-describedby', text.id);
-    tip.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { e.stopPropagation(); tip.classList.add('tip-dismissed'); }
-    });
-    tip.addEventListener('blur', () => tip.classList.remove('tip-dismissed'));
-    tip.addEventListener('mouseleave', () => tip.classList.remove('tip-dismissed'));
-  });
-
   // Serverseitige Fehler auch bei individuell gerenderten Feldern verknüpfen.
   document.querySelectorAll('.errorlist[id]').forEach(error => {
     const id = error.id.replace(/_error$/, '');
@@ -111,6 +121,7 @@
 
   // Dynamische Meldungen verwenden ausschließlich Text; keine Zeitbegrenzung.
   window.showToast = function (text, tags) {
+    if (!/error|warning/.test(tags || '')) return;
     const container = document.getElementById('toast-container');
     if (!container) return;
     const toast = document.createElement('div');

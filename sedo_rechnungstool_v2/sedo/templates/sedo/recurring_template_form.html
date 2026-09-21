@@ -2,7 +2,7 @@
 <form method="post">{% csrf_token %}{{ form.non_field_errors }}{{ form.non_field_errors.errors }}{{ formset.non_form_errors }}
 <div class="work-dialog invoice-flow">
   <div class="work-dialog-header">
-    <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></div><div><h1>{{ title }}</h1><div class="sub" data-help>Monatsrechnung ohne GWG-Mapping anlegen oder bearbeiten.</div></div></div>
+    <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></div><div><h1>{{ title }}</h1></div></div>
     <a class="work-close" aria-label="Abbrechen und zurück" href="{% url 'sedo:recurring_monthly' %}">×</a>
   </div>
   <div class="work-body">
@@ -18,7 +18,7 @@
       </div>
     </div>
     <div class="form-card"><div class="form-card-title">Positionen</div>
-      <div class="section-head"><p class="hint" data-help>Eine Position ist vorbereitet. Weitere Positionen kannst du mit dem Plus-Button ergänzen.</p><button type="button" class="btn small" id="add-position">+ Position hinzufügen</button></div>
+      <div class="section-head"><button type="button" class="btn small" id="add-position">+ Position hinzufügen</button></div>
       {{ formset.management_form }}
       <div id="position-list">
       {% for f in formset %}

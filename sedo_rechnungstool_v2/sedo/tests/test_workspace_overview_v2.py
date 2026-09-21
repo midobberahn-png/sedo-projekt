@@ -61,7 +61,7 @@ class WorkspaceOverviewV2Tests(TestCase):
         self.assertNotContains(response, 'Entwürfe fertigstellen')
         self.assertContains(response, reverse('sedo:invoice_edit', args=[draft.pk]))
         self.assertContains(response, 'Rechnungsmonat')
-        self.assertContains(response, 'kein Zahlungseingangsbericht')
+        self.assertNotContains(response, 'kein Zahlungseingangsbericht')
         self.assertNotContains(response, 'TEST-HIDDEN')
 
     def test_dashboard_mail_count_matches_unread_inboxes_and_tracks_read_status(self):
@@ -94,7 +94,8 @@ class WorkspaceOverviewV2Tests(TestCase):
         MailLocation.objects.filter(folder__role='inbox', folder__active=True, folder__selectable=True).update(seen=True)
         response = self.client.get(reverse('sedo:dashboard'))
         self.assertEqual(response.context['unread_mail_count'], 0)
-        self.assertContains(response, 'keine ungelesenen E-Mails')
+        card = html.fromstring(response.content).xpath('//a[.//h3[text()="Neue E-Mails"]]')[0]
+        self.assertEqual(card.xpath('.//span[@class="work-count"]/text()'), ['0'])
 
     def test_dashboard_without_mailboxes_offers_setup_only_to_staff(self):
         for staff in (False, True):

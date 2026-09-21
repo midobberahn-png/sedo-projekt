@@ -863,7 +863,8 @@ class F11F66BatchMahnungNurMitAuswahlTests(TestCase):
         Invoice.all_objects.all().update(status='bezahlt', due_date=timezone.localdate())
         antwort = self.client.post(reverse('sedo:bulk_dunning'), {'kind': 'auto'}, follow=True)
         self.assertEqual(self._mahnungen(), 0)
-        self.assertContains(antwort, 'Kein Mahnlauf nötig')
+        self.assertNotContains(antwort, 'Kein Mahnlauf nötig')
+        self.assertTrue(any('Kein Mahnlauf nötig' in str(message) for message in antwort.context['messages']))
 
     # --- F-11: das Markup --------------------------------------------------------
     def test_offene_posten_hat_keine_verschachtelten_formulare(self):

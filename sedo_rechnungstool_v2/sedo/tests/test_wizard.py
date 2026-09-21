@@ -464,4 +464,7 @@ class KalkulationsangabenTests(TestCase):
         get_user_model().objects.create_user('tester2', password='geheim123')
         self.client.login(username='tester2', password='geheim123')
         html = self.client.get(reverse('sedo:offer_create')).content.decode('utf-8')
-        self.assertIn('Kalkulationsangaben', html)
+        from pathlib import Path
+        from django.conf import settings
+        self.assertNotIn('Kalkulationsangaben', html)
+        self.assertIn('Kalkulationsangaben', (Path(settings.BASE_DIR) / 'BEDIENHINWEISE.md').read_text())

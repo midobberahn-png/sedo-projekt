@@ -182,8 +182,20 @@ def account_action(request, pk):
 @login_required
 @never_cache
 def status(request):
-    return JsonResponse({'accounts': list(MailAccount.objects.values('id', 'email', 'last_sync', 'last_error', 'lease_until')),
-                         'count': MailLocation.objects.filter(folder__active=True).count()})
+    from .services.mail_progress import snapshot
+    accounts = list(MailAccount.objects.values('id', 'email', 'enabled', 'last_sync', 'last_error'))
+    folder_counts = {}
+    for folder in MailFolder.objects.filter(active=True, selectable=True).values('id', 'account_id', 'cached_count', 'total_count'):
+        folder_counts.setdefault(folder['account_id'], {})[folder['id']] = (folder['cached_count'], folder['total_count'])
+    for account in accounts:
+        progress = snapshot(account['id'])
+        counts = folder_counts.get(account['id'], {})
+        if progress is not None:
+            counts.update(progress)
+        account.update(running=progress is not None,
+                       loaded=sum(min(cached, total) for cached, total in counts.values()),
+                       total=sum(total for _, total in counts.values()))
+    return JsonResponse({'accounts': accounts, 'count': MailLocation.objects.filter(folder__active=True).count()})
 
 
 @login_required

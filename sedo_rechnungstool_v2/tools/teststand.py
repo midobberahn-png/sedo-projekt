@@ -28,7 +28,8 @@ INPUTS = ('requirements.txt', 'requirements_desktop.txt',
           'requirements-release.in', 'requirements-release-constraints.txt')
 ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'desktop.py',
               'manage.py', 'sedo_desktop.spec', 'build_mac.command', 'BUILD_WINDOWS.bat',
-              'TESTSTAND.md', '.env.example', '.gitattributes'}
+              'TESTSTAND.md', 'BEDIENHINWEISE.md', 'UX_ARBEITSOBERFLAECHE.md',
+              '.env.example', '.gitattributes'}
 SUFFIXES = {'.py', '.html', '.css', '.js', '.svg', '.png', '.jpg', '.jpeg',
             '.ico', '.icns', '.xsd', '.xsl', '.xslt', '.sch', '.json', '.md', '.txt'}
 
