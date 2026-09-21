@@ -1,8 +1,8 @@
 {% extends 'sedo/base.html' %}{% block content %}
-<div class="topbar"><div><div class="eyebrow">Finanzen</div><h1 class="h1">Zahlungskontrolle</h1><div class="sub">Bankumsätze importieren, automatisch zuordnen, offene Fälle prüfen</div></div></div>
+<div class="topbar"><div><div class="eyebrow">Finanzen</div><h1 class="h1">Zahlungskontrolle</h1><div class="sub" data-help>Bankumsätze importieren, automatisch zuordnen, offene Fälle prüfen</div></div></div>
 
 <div class="card">
-  <h2>Kontoumsätze abrufen (FinTS) <span class="info-tip" tabindex="0" aria-label="Hinweis zum Bankabruf">i<span class="info-tip-text">Rein lesender Abruf der Umsätze direkt bei der Bank. Je nach Bank ist eine Freigabe in der Banking-App nötig (pushTAN) – Freigabe bestätigen, SEDO wartet bis zu 90 Sekunden. Zugang einrichten unter Einstellungen → Bankkonto. Rechnungsnummern im Verwendungszweck werden automatisch zugeordnet.</span></span></h2>
+  <a class="settings-icon" href="{% url 'sedo:settings' %}#bank-settings" aria-label="Bankzugang einrichten"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg></a><h2>Kontoumsätze abrufen (FinTS) <span class="info-tip" tabindex="0" aria-label="Hinweis zum Bankabruf">i<span class="info-tip-text">Rein lesender Abruf der Umsätze direkt bei der Bank. Je nach Bank ist eine Freigabe in der Banking-App nötig (pushTAN) – Freigabe bestätigen, SEDO wartet bis zu 90 Sekunden. Zugang einrichten unter Einstellungen → Bankkonto. Rechnungsnummern im Verwendungszweck werden automatisch zugeordnet.</span></span></h2>
   {% if banking_configured %}
   <form method="post" class="toolbar" style="gap:10px;flex-wrap:wrap;align-items:end">{% csrf_token %}
     <input type="hidden" name="action" value="fints_fetch">
@@ -15,7 +15,7 @@
     <button class="btn primary" type="submit"><svg class="ico" aria-hidden="true"><use href="#i-payment"/></svg> Umsätze abrufen</button>
   </form>
   {% else %}
-  <p class="hint">Noch kein Bankzugang hinterlegt. <a href="{% url 'sedo:settings' %}">Einstellungen → Bankkonto</a> ausfüllen, dann erscheint hier der Abruf-Knopf.</p>
+  <p class="hint" data-help>Noch kein Bankzugang hinterlegt. <a href="{% url 'sedo:settings' %}">Einstellungen → Bankkonto</a> ausfüllen, dann erscheint hier der Abruf-Knopf.</p>
   {% endif %}
   <h2 style="margin-top:18px">Alternativ: Bank-Datei importieren <span class="info-tip" tabindex="0" aria-label="Hinweis zum Dateiimport">i<span class="info-tip-text">JSON-Datei mit Umsätzen einlesen. Nach dem Import werden Rechnungsnummer und Betrag geprüft; unklare Buchungen lassen sich manuell zuordnen.</span></span></h2>
   <form method="post" enctype="multipart/form-data" class="toolbar">{% csrf_token %}<label for="{{ form.file.id_for_label }}">Bank-Datei (JSON)</label>{{ form.file }}{{ form.file.errors }}{{ form.non_field_errors }}<button class="btn" type="submit">Importieren & zuordnen</button></form>

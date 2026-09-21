@@ -1,7 +1,7 @@
 {% extends 'sedo/base.html' %}
 {% block title %}Aufgaben & Wiedervorlagen{% endblock %}
 {% block content %}
-<div class="topbar"><div><div class="eyebrow">Tägliche Arbeit</div><h1 class="h1">Aufgaben & Wiedervorlagen</h1><p class="sub">Freie Aufgaben und nächste Schritte zu Kunden, Angeboten oder Rechnungen.</p></div></div>
+<div class="topbar"><div><div class="eyebrow">Tägliche Arbeit</div><h1 class="h1">Aufgaben & Wiedervorlagen</h1><p class="sub" data-help>Freie Aufgaben und nächste Schritte zu Kunden, Angeboten oder Rechnungen.</p></div></div>
 <div class="detail-grid">
   <div class="card">
     <div class="section-head"><h2>{% if edit_task %}Aufgabe bearbeiten{% else %}Neue Aufgabe{% endif %}</h2></div>
@@ -11,7 +11,7 @@
       <label>Aufgabe{{ form.title }}</label>
       <div class="grid two"><label>Fällig am{{ form.due_date }}</label><label>Priorität{{ form.priority }}</label></div>
       <label>Notiz{{ form.note }}</label>
-      <details><summary>Optional mit Vorgang verknüpfen</summary><div class="grid three mt-3"><label>Kunde{{ form.customer }}</label><label>Angebot{{ form.offer }}</label><label>Rechnung{{ form.invoice }}</label></div><p class="hint">Bitte höchstens einen Bezug auswählen.</p></details>
+      <details><summary>Optional mit Vorgang verknüpfen</summary><div class="grid three mt-3"><label>Kunde{{ form.customer }}</label><label>Angebot{{ form.offer }}</label><label>Rechnung{{ form.invoice }}</label></div><p class="hint" data-help>Bitte höchstens einen Bezug auswählen.</p></details>
       {% for field in form %}{% for error in field.errors %}<p class="form-error">{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
       <div class="toolbar mt-3"><button class="btn primary" type="submit">Speichern</button>{% if edit_task %}<a class="btn" href="{% url 'sedo:task_list' %}">Abbrechen</a>{% endif %}</div>
     </form>

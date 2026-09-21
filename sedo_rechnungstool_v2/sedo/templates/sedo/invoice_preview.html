@@ -1,5 +1,5 @@
 {% extends 'sedo/base.html' %}{% block content %}
-<div class="topbar"><div><div class="h1">{{ preview.title }}</div><div class="sub">Diese Ansicht speichert nichts. Zurück im Browser bringt dich wieder zur Eingabe.</div></div></div>
+<div class="topbar"><div><div class="h1">{{ preview.title }}</div><div class="sub" data-help>Diese Ansicht speichert nichts. Zurück im Browser bringt dich wieder zur Eingabe.</div></div></div>
 <div class="document-preview card">
   <div class="doc-head"><div><strong>Sedo Objektdienstleistungen GmbH</strong><br><span>Kirschweg 47 · 39118 Magdeburg</span></div><div class="doc-title">{% if is_offer %}Angebot{% else %}Rechnung{% endif %} · Entwurf</div></div>
   <hr>

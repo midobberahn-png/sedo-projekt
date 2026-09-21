@@ -3,7 +3,7 @@
 <link rel="stylesheet" href="{% static 'sedo/dashboard-widgets.css' %}?v=1">
 <div class="work-page dashboard-page">
   <div class="topbar">
-    <div><div class="eyebrow">Arbeitszentrale · {{ today|date:"d.m.Y" }}</div><h1 class="h1 welcome-heading"><span class="sr-only">Dashboard · </span>Willkommen bei SEDO.</h1><p class="sub">Dein Arbeitstag. Dein Überblick.</p></div>
+    <div><div class="eyebrow">Arbeitszentrale · {{ today|date:"d.m.Y" }}</div><h1 class="h1 welcome-heading"><span class="sr-only">Dashboard · </span>Willkommen bei SEDO.</h1><p class="sub" data-help>Dein Arbeitstag. Dein Überblick.</p></div>
     <div class="page-actions"><a class="btn primary" href="{% url 'sedo:invoice_create' %}">Rechnung erstellen</a><a class="btn" href="{% url 'sedo:offer_create' %}">Angebot erstellen</a>
       <details class="dashboard-customizer" id="dashboard-customizer"{% if layout_form.errors %} open{% endif %}>
         <summary class="btn dashboard-gear" aria-label="Dashboard anpassen" title="Dashboard anpassen"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg><span class="sr-only">Dashboard anpassen</span></summary>

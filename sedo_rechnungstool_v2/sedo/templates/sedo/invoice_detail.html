@@ -72,7 +72,7 @@
     <div class="sum-row"><span>Netto</span><strong>{{ invoice.net_total }} €</strong></div>
     <div class="sum-row"><span>USt {{ invoice.vat_rate }} %</span><strong>{{ invoice.vat_amount }} €</strong></div>
     <div class="sum-row total"><span>Brutto</span><strong>{{ invoice.gross_total }} €</strong></div>
-    <div class="hint">Archiv: Dateien öffnen, Zahlungen erfassen, korrigieren, mahnen oder stornieren.</div>
+    <div class="hint" data-help>Archiv: Dateien öffnen, Zahlungen erfassen, korrigieren, mahnen oder stornieren.</div>
     {% if invoice.open_amount > 0 and invoice.lifecycle != 'draft' and invoice.lifecycle != 'corrected' and invoice.lifecycle != 'cancelled' %}<form method="post" action="{% url 'sedo:invoice_mark_paid' invoice.pk %}" class="mt-3">{% csrf_token %}<button class="btn primary-context-action" type="submit">Restbetrag als bezahlt markieren</button></form>{% endif %}
   </div>
 </div>
@@ -104,7 +104,7 @@ eines Entwurfs über diesen Weg offen.
 {% if invoice.lifecycle != 'draft' %}
 <div class="card" id="ai-cover-card">
   <div class="section-head"><h2>E-Mail mit KI-Begleittext</h2><span class="muted">optional – der Standardtext bleibt verfügbar</span></div>
-  <p class="hint">Erzeugt einen individuellen Begleittext mit neutraler Anrede. An Bonsai gehen nur Rechnungs-Eckdaten und Positionsbezeichnungen – keine Kunden- oder Objektdaten.</p>
+  <p class="hint" data-help>Erzeugt einen individuellen Begleittext mit neutraler Anrede. An Bonsai gehen nur Rechnungs-Eckdaten und Positionsbezeichnungen – keine Kunden- oder Objektdaten.</p>
   <label for="ai-cover-hint">Hinweis an die KI (optional, z. B. Anlass oder Ton)</label>
   <input id="ai-cover-hint" placeholder="z. B. freundlich auf die kurzfristigen Zusatzarbeiten eingehen">
   <div class="toolbar" style="margin:10px 0">

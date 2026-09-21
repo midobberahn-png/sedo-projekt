@@ -287,6 +287,8 @@ def sync_account(account_id):
                     remaining -= sync_folder(client, folder, min(SYNC_FOLDER_BATCH, max(0, remaining)), deadline,
                                              heartbeat=lambda: renew(account, token))
             MailAccount.objects.filter(pk=account_id).update(last_sync=timezone.now(), last_error='')
+            from .incoming_invoices import collect_account
+            collect_account(account_id)
         except MailError as exc:
             MailAccount.objects.filter(pk=account_id).update(last_error=str(exc)[:400])
             raise

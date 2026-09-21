@@ -21,7 +21,7 @@ import teststand
 
 APP = Path(__file__).resolve().parents[1]
 PROBES = ('entwurf', 'belegketten', 'indizes', 'belegarchiv', 'mahnwaechter',
-          'abo_zahlungsziel', 'bedienrisiken', 'teststand', 'mail')
+          'abo_zahlungsziel', 'bedienrisiken', 'teststand', 'mail', 'incoming')
 
 
 def isolated_env(home: Path) -> dict:

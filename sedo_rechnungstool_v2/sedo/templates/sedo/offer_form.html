@@ -1,10 +1,10 @@
 {% extends 'sedo/base.html' %}{% load static l10n %}{% block content %}
 <link rel="stylesheet" href="{% static 'sedo/invoice-wizard-v2.css' %}?v=1">
 <form method="post" id="offer-form">{% csrf_token %}
-{% if source_mail %}<input type="hidden" name="source_mail" value="{{ source_mail.pk|unlocalize }}"><div class="card"><strong>Angebot aus einer E-Mail</strong><p><a href="{% url 'sedo:mail_message' source_mail.pk %}">{{ source_mail.subject }}</a> · {{ source_mail.sender }}</p><p class="hint">Kundenvorschlag und Leistungsumfang bitte prüfen. Die Nachricht bleibt mit dem gespeicherten Angebot verknüpft.</p><details><summary>Anfrage nachlesen</summary><p style="white-space:pre-wrap">{{ source_mail.body|truncatechars:6000 }}</p></details></div>{% endif %}
+{% if source_mail %}<input type="hidden" name="source_mail" value="{{ source_mail.pk|unlocalize }}"><div class="card"><strong>Angebot aus einer E-Mail</strong><p><a href="{% url 'sedo:mail_message' source_mail.pk %}">{{ source_mail.subject }}</a> · {{ source_mail.sender }}</p><p class="hint" data-help>Kundenvorschlag und Leistungsumfang bitte prüfen. Die Nachricht bleibt mit dem gespeicherten Angebot verknüpft.</p><details><summary>Anfrage nachlesen</summary><p style="white-space:pre-wrap">{{ source_mail.body|truncatechars:6000 }}</p></details></div>{% endif %}
 <div class="work-dialog invoice-flow">
   <div class="work-dialog-header">
-    <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg></div><div><h1>Neues Angebot</h1><div class="sub">In sechs Schritten zum fertigen Angebot – die KI übernimmt die Positionen.</div></div></div>
+    <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg></div><div><h1>Neues Angebot</h1><div class="sub" data-help>In sechs Schritten zum fertigen Angebot – die KI übernimmt die Positionen.</div></div></div>
     <a class="work-close" aria-label="Abbrechen und zurück" href="{% url 'sedo:offer_list' %}" title="Abbrechen">×</a>
   </div>
 
@@ -17,7 +17,7 @@
     <section class="wizard-step" id="step-kunde" data-wizard-step data-step-label="Kunde">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></div>
-        <div><h2>Wer bekommt das Angebot?</h2><div class="sub">Kunden auswählen – alle Felder werden automatisch befüllt und können geprüft werden.</div></div>
+        <div><h2>Wer bekommt das Angebot?</h2><div class="sub" data-help>Kunden auswählen – alle Felder werden automatisch befüllt und können geprüft werden.</div></div>
       </div>
       <div class="form-card" id="section-customer">
         <div class="form-card-title">
@@ -31,7 +31,7 @@
             <label for="customer-search">Kunden suchen</label><input type="search" id="customer-search" placeholder="Kunden suchen…" autocomplete="off">
           </div>
           {{ form.customer }}{{ form.customer.errors }}
-          <div class="hint">Kunden auswählen → alle Felder werden sofort automatisch befüllt.</div>
+          <div class="hint" data-help>Kunden auswählen → alle Felder werden sofort automatisch befüllt.</div>
 
           <div class="customer-selected-pill" id="customer-pill">
             <strong id="pill-name">—</strong>
@@ -62,7 +62,7 @@
     <section class="wizard-step" id="step-objekt" data-wizard-step data-step-label="Objekt">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></div>
-        <div><h2>Wo wird gearbeitet?</h2><div class="sub">Leistungsort – erscheint im Angebot und später in der Rechnung.</div></div>
+        <div><h2>Wo wird gearbeitet?</h2><div class="sub" data-help>Leistungsort – erscheint im Angebot und später in der Rechnung.</div></div>
       </div>
       <div class="form-card" id="section-object">
         <div class="form-card-title">
@@ -88,7 +88,7 @@
     <section class="wizard-step" id="step-angebotsdaten" data-wizard-step data-step-label="Angebotsdaten">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></div>
-        <div><h2>Datum, Gültigkeit, Steuer</h2><div class="sub">Das heutige Datum ist bereits eingetragen – nur bei Bedarf ändern.</div></div>
+        <div><h2>Datum, Gültigkeit, Steuer</h2><div class="sub" data-help>Das heutige Datum ist bereits eingetragen – nur bei Bedarf ändern.</div></div>
       </div>
       <div class="form-card">
         <div class="work-grid compact-form">
@@ -106,7 +106,7 @@
     <section class="wizard-step" id="step-ki" data-wizard-step data-step-label="KI-Assistent">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg></div>
-        <div><h2>Was soll gemacht werden? <span class="info-tip" tabindex="0" aria-label="Hinweise zum KI-Diktat">i<span class="info-tip-text">Beispiele: „Beräumung Reihenhaus mit Entsorgung, 1200 Euro“ · „monatliche Treppenhausreinigung, 4 Etagen“. Bitte <strong>keine Namen oder Adressen</strong> ansagen – nur die Leistung. Annahmen und geschätzte Preise werden markiert. Kalkulationsangaben wie „3 Mann, 2 Tage“ helfen der KI beim Preis, erscheinen aber <strong>nicht</strong> im Angebot. Lokales Whisper verarbeitet Audio auf dem SEDO-Rechner. Bonsai verarbeitet den eingegebenen Text und Katalogdaten lokal auf diesem Rechner. Es gibt keinen Cloud-Fallback. Freitext wird nicht automatisch anonymisiert. Kein Diktat nötig? Einfach auf <strong>Weiter</strong> klicken und die Positionen selbst eintragen.</span></span></h2><div class="sub">Einfach grob ansagen – die KI baut daraus die Positionen samt Leistungstexten.</div></div>
+        <div><h2>Was soll gemacht werden? <span class="info-tip" tabindex="0" aria-label="Hinweise zum KI-Diktat">i<span class="info-tip-text">Beispiele: „Beräumung Reihenhaus mit Entsorgung, 1200 Euro“ · „monatliche Treppenhausreinigung, 4 Etagen“. Bitte <strong>keine Namen oder Adressen</strong> ansagen – nur die Leistung. Annahmen und geschätzte Preise werden markiert. Kalkulationsangaben wie „3 Mann, 2 Tage“ helfen der KI beim Preis, erscheinen aber <strong>nicht</strong> im Angebot. Lokales Whisper verarbeitet Audio auf dem SEDO-Rechner. Bonsai verarbeitet den eingegebenen Text und Katalogdaten lokal auf diesem Rechner. Es gibt keinen Cloud-Fallback. Freitext wird nicht automatisch anonymisiert. Kein Diktat nötig? Einfach auf <strong>Weiter</strong> klicken und die Positionen selbst eintragen.</span></span></h2><div class="sub" data-help>Einfach grob ansagen – die KI baut daraus die Positionen samt Leistungstexten.</div></div>
       </div>
       <div class="form-card" id="ai-assist-card">
         <div class="toolbar" style="gap:8px;flex-wrap:wrap;align-items:center">
@@ -128,7 +128,7 @@
     <section class="wizard-step" id="step-positionen" data-wizard-step data-step-label="Positionen">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg></div>
-        <div><h2>Positionen prüfen <span class="info-tip" tabindex="0" aria-label="Hinweis zu den Positionen">i<span class="info-tip-text">Bezeichnung, Menge und Einzelpreis eingeben – Gesamtbeträge werden automatisch berechnet. Von der KI vorbefüllte Texte und Preise lassen sich frei anpassen.</span></span></h2><div class="sub">Von der KI vorbefüllt – Texte und Preise lassen sich frei anpassen.</div></div>
+        <div><h2>Positionen prüfen <span class="info-tip" tabindex="0" aria-label="Hinweis zu den Positionen">i<span class="info-tip-text">Bezeichnung, Menge und Einzelpreis eingeben – Gesamtbeträge werden automatisch berechnet. Von der KI vorbefüllte Texte und Preise lassen sich frei anpassen.</span></span></h2><div class="sub" data-help>Von der KI vorbefüllt – Texte und Preise lassen sich frei anpassen.</div></div>
       </div>
       <div class="form-card">
         {% if formset.non_form_errors %}<div class="card warning-card wizard-step-error" style="margin-bottom:12px">{{ formset.non_form_errors }}</div>{% endif %}
@@ -182,7 +182,7 @@
     <section class="wizard-step" id="step-pruefen" data-wizard-step data-step-label="Prüfen">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></div>
-        <div><h2>Alles auf einen Blick <span class="info-tip" tabindex="0" aria-label="Hinweis zu Vorschau und Erstellen">i<span class="info-tip-text">„Vorschau“ zeigt das Angebot, ohne zu speichern. „Angebot erstellen“ speichert es und erzeugt direkt das PDF.</span></span></h2><div class="sub">Passt alles? Dann Angebot erstellen – das PDF wird sofort erzeugt.</div></div>
+        <div><h2>Alles auf einen Blick <span class="info-tip" tabindex="0" aria-label="Hinweis zu Vorschau und Erstellen">i<span class="info-tip-text">„Vorschau“ zeigt das Angebot, ohne zu speichern. „Angebot erstellen“ speichert es und erzeugt direkt das PDF.</span></span></h2><div class="sub" data-help>Passt alles? Dann Angebot erstellen – das PDF wird sofort erzeugt.</div></div>
       </div>
       <div class="form-card">
         <div class="info-list two">

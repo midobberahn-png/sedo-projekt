@@ -1,8 +1,17 @@
 from django.urls import path
-from . import views, mail_views, dashboard_views
+from . import views, mail_views, dashboard_views, incoming_views
 
 app_name = 'sedo'
 urlpatterns = [
+    path('eingangsrechnungen/', incoming_views.index, name='incoming_index'),
+    path('eingangsrechnungen/einstellungen/', incoming_views.settings_save, name='incoming_settings'),
+    path('eingangsrechnungen/sammlung/', incoming_views.batch, name='incoming_batch'),
+    path('eingangsrechnungen/mail/<int:pk>/', incoming_views.collect, name='incoming_collect'),
+    path('eingangsrechnungen/beleg/<int:pk>/', incoming_views.detail, name='incoming_detail'),
+    path('eingangsrechnungen/beleg/<int:pk>/original/', incoming_views.original, name='incoming_original'),
+    path('eingangsrechnungen/paket/<int:pk>/', incoming_views.package_detail, name='incoming_package'),
+    path('eingangsrechnungen/paket/<int:pk>/download/', incoming_views.package_download, name='incoming_package_download'),
+    path('eingangsrechnungen/paket/<int:pk>/email/', incoming_views.package_email, name='incoming_package_email'),
     path('email/', mail_views.inbox, name='mail_inbox'),
     path('email/nachricht/<int:pk>/', mail_views.inbox, name='mail_message'),
     path('email/nachricht/<int:pk>/html/', mail_views.html_body, name='mail_html'),

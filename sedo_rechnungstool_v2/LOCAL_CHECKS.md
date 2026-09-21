@@ -38,8 +38,8 @@ die installierte SEDO-App oder ihre Datenbank.
 
 - Zwei bytegleiche Quellpakete ausschließlich aus versionierten Programmdateien.
 - Gesamte Testsuite unter Django 5.2 und 6.0.
-- Alle neun Gegenprobenketten: Entwurf, Belegketten, Indizes, Belegarchiv,
-  Mahnwächter, Abo-Zahlungsziel, Bedienrisiken, Buildvertrag und E-Mail.
+- Alle zehn Gegenprobenketten: Entwurf, Belegketten, Indizes, Belegarchiv,
+  Mahnwächter, Abo-Zahlungsziel, Bedienrisiken, Buildvertrag, E-Mail und Eingangsbelege.
 - Koordinierte SQLite-Parallelitätsfälle und synthetischer 50.000-Beleg-Indexvergleich.
 - Fehlende Modellmigrationen.
 - macOS/Windows: nativer Build mit Release-Lock, erneute Gesamtsuite und echter

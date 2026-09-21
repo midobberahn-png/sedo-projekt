@@ -1,4 +1,4 @@
 {% extends 'sedo/base.html' %}{% block content %}
-<div class="topbar"><div><h1 class="h1">{{ title }}</h1><div class="sub">Kassenbuchung erfassen</div></div></div>
+<div class="topbar"><div><h1 class="h1">{{ title }}</h1><div class="sub" data-help>Kassenbuchung erfassen</div></div></div>
 <div class="card"><form method="post" class="stacked-form compact-form">{% csrf_token %}{{ form.as_p }}<div class="toolbar"><button class="btn primary" type="submit">Speichern</button><a class="btn" href="{% url 'sedo:cashbook_list' %}">Abbrechen</a></div></form></div>
 {% endblock %}

@@ -239,7 +239,7 @@ def message_action(request, pk):
                     raise MailError('Bitte das endgültige Löschen im Papierkorb ausdrücklich bestätigen.')
                 delete_permanently(location)
                 # Retain a business source, otherwise remove the locally cached message too.
-                if not message.customer_id and not message.locations.exists() and not message.offers.exists() and not message.tasks.exists() and not message.replies.exists() and not MailDraft.objects.filter(sent_message=message).exists():
+                if not message.customer_id and not message.locations.exists() and not message.offers.exists() and not message.tasks.exists() and not message.replies.exists() and not message.incoming_sources.exists() and not MailDraft.objects.filter(sent_message=message).exists():
                     remove_cached(message)
                     message.delete()
                 messages.success(request, 'Die Nachricht wurde vom Server gelöscht. Verknüpfte Geschäftsquellen bleiben in SEDO erhalten.')

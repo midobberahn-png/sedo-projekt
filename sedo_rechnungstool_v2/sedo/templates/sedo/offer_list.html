@@ -1,5 +1,5 @@
 {% extends 'sedo/base.html' %}{% block content %}
-<div class="topbar"><div><div class="eyebrow">Verkauf · Arbeitsliste</div><h1 class="h1">Angebote</h1><div class="sub">Offene Entscheidungen und fällige Wiedervorlagen im Blick behalten.</div></div><a class="btn primary" href="{% url 'sedo:offer_create' %}">Neues Angebot</a></div>
+<div class="topbar"><div><div class="eyebrow">Verkauf · Arbeitsliste</div><h1 class="h1">Angebote</h1><div class="sub" data-help>Offene Entscheidungen und fällige Wiedervorlagen im Blick behalten.</div></div><a class="btn primary" href="{% url 'sedo:offer_create' %}">Neues Angebot</a></div>
 <div class="cards compact-cards">
   <a class="card task-metric {% if view == 'follow_up' %}active-card{% endif %}" href="?view=follow_up"><span class="metric">{{ counts.follow_up }}</span><span class="metric-label">Heute nachfassen</span></a>
   <a class="card task-metric {% if view == 'open' %}active-card{% endif %}" href="?view=open"><span class="metric">{{ counts.open }}</span><span class="metric-label">Offene Angebote</span></a>
