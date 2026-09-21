@@ -1,8 +1,15 @@
 from django.urls import path
-from . import views, mail_views, dashboard_views, incoming_views, mail_spam_views
+from . import views, mail_views, dashboard_views, incoming_views, mail_spam_views, calendar_views
 
 app_name = 'sedo'
 urlpatterns = [
+    path('kalender/', calendar_views.index, name='calendar_index'),
+    path('kalender/einstellungen/', calendar_views.settings_page, name='calendar_settings'),
+    path('kalender/abgleichen/', calendar_views.sync_now, name='calendar_sync'),
+    path('kalender/neu/', calendar_views.edit, name='calendar_create'),
+    path('kalender/termin/<int:pk>/', calendar_views.detail, name='calendar_detail'),
+    path('kalender/termin/<int:pk>/bearbeiten/', calendar_views.edit, name='calendar_edit'),
+    path('kalender/termin/<int:pk>/aktion/', calendar_views.event_action, name='calendar_action'),
     path('eingangsrechnungen/', incoming_views.index, name='incoming_index'),
     path('eingangsrechnungen/einstellungen/', incoming_views.settings_save, name='incoming_settings'),
     path('eingangsrechnungen/sammlung/', incoming_views.batch, name='incoming_batch'),

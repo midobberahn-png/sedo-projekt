@@ -346,6 +346,13 @@ def _sanitized_db_copy(db_path: Path) -> Path:
                     raise BackupError('Postfach-Zugangsdaten konnten nicht aus der Sicherung entfernt werden.')
             if 'sedo_mailfolder' in tabellen:
                 con.execute('UPDATE sedo_mailfolder SET cached_count=0')
+            if 'sedo_calendarconnection' in tabellen:
+                con.execute("UPDATE sedo_calendarconnection SET password_encrypted='', enabled=0, lease_token='', lease_until=NULL")
+                if con.execute("SELECT COUNT(*) FROM sedo_calendarconnection WHERE password_encrypted != ''").fetchone()[0]:
+                    raise BackupError('Kalender-Zugangsdaten konnten nicht aus der Sicherung entfernt werden.')
+            if 'sedo_calendarevent' in tabellen:
+                # An old backup must not replay queued writes into a newer iCloud calendar.
+                con.execute("UPDATE sedo_calendarevent SET state='conflict', pending_operation='', pending_ical='', error='Wiederhergestellte Änderung: zuerst mit iCloud abgleichen.' WHERE state IN ('pending','deleting') OR pending_operation != ''")
 
             for tabelle in PURGED_BACKUP_TABLES:
                 if tabelle in tabellen:

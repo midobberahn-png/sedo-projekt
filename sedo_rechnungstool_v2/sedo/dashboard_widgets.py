@@ -8,6 +8,7 @@ from .models import DashboardPreference
 
 WIDGETS = (
     ('mail', 'Neue E-Mails', 'Ungelesene Nachrichten aus allen Posteingängen', 'i-mail', False),
+    ('calendar', 'Kalender', 'Deine nächsten Termine aus SEDO und iCloud', 'i-calendar', True),
     ('spam', 'Spam prüfen', 'Ungelesene Spam- und Verdachtsfälle', 'i-mail', False),
     ('balance', 'Kontostand', 'Zuletzt von der Bank abgerufener Saldo', 'i-payment', False),
     ('weather', 'Wetter', 'Wetter.com für deinen gewählten Ort', 'i-sun', False),
@@ -24,7 +25,7 @@ WIDGETS = (
     ('backup', 'Backup & Sicherung', 'Datensicherung öffnen', 'i-backup', False),
 )
 WIDGET_KEYS = tuple(row[0] for row in WIDGETS)
-DEFAULT_WIDGETS = tuple(key for key in WIDGET_KEYS if key not in ('balance', 'weather', 'drafts', 'spam'))
+DEFAULT_WIDGETS = tuple(key for key in WIDGET_KEYS if key not in ('balance', 'weather', 'drafts', 'spam', 'calendar'))
 
 
 def layout_for(user):

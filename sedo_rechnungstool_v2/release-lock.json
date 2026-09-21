@@ -3,9 +3,9 @@
   "python": "3.13.15",
   "resolver": "uv 0.12.5",
   "label": "h2.1",
-  "lock_sha256": "7a9d43965d33f2d0d1121559070ead8056191cabdd281234e65e8d9970227853",
+  "lock_sha256": "55df5f29eadf915a0020fbe707ec9370800e6e11b4b697543a9a29b5a58b0cfd",
   "inputs": {
-    "requirements.txt": "683550ff5e8dfd7b7fc66f6dd4a24113e7e630ba26fcaeef1ba02bbae0acc191",
+    "requirements.txt": "679b774d1c57db6097fba997a43fcfaf05560f06eaf7f685702150eeff6b64fb",
     "requirements_desktop.txt": "b926996b6cf6890382389efc03b32e919f588acb71663b7e98bd6242970aa184",
     "requirements-release.in": "bf04c7fe38e116fa3ca4ad31d724b59fac29cd9c8aa4a249696b84a624c5f22b",
     "requirements-release-constraints.txt": "5907c52f92a4533f52b417c04a7378920fc5e71d3fe19db7562878ac13210f35"

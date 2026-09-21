@@ -16,6 +16,9 @@ lxml
 # Ausführung der offiziellen EN-16931-CII-Schematron-Regeln (XPath 2.0)
 elementpath>=5.1,<6
 python-dateutil
+# Kalenderdaten einschließlich Zeitzonen, Serien und Serienausnahmen.
+icalendar>=7.3,<8
+recurring-ical-events>=3.8,<4
 qrcode[pil]
 # Lokale Spracherkennung für das KI-Diktat (optional – ohne bleibt die
 # Texteingabe verfügbar; kein Cloud-Fallback). Erstes Diktat lädt

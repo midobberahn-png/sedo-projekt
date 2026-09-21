@@ -629,6 +629,7 @@ def dashboard(request, layout_form=None):
     from .dashboard_widgets import DashboardLayoutForm, catalogue, layout_for
     from .services.banking import cached_bank_balance
     from .services.dashboard_weather import weather_for
+    from .services.calendar_data import agenda
 
     layout = layout_for(request.user)
     layout_form = layout_form or DashboardLayoutForm(initial=layout)
@@ -640,7 +641,10 @@ def dashboard(request, layout_form=None):
     dunning_candidates = get_dunning_candidates(days_overdue_threshold=14)
     open_tasks = WorkTask.objects.filter(status='open').select_related(
         'customer', 'offer', 'invoice').order_by('due_date', 'priority', 'pk')
+    calendar_entries, calendar_errors = agenda(request.user, timezone.now(), timezone.now() + timedelta(days=30), limit=6) if 'calendar' in layout['widgets'] else ([], [])
     context = {
+        'calendar_entries': calendar_entries,
+        'calendar_errors': calendar_errors,
         'dashboard_widgets': [widget for widget in catalogue(layout['widgets']) if widget['selected']],
         'widget_catalogue': catalogue(selected),
         'layout_form': layout_form,

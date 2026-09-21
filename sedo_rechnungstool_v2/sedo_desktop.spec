@@ -27,7 +27,14 @@ hiddenimports = (
        'waitress', 'fints', 'mt940']
 )
 
-datas = django_datas + whisper_datas + [
+calendar_datas, calendar_hidden = [], []
+for _pkg in ('icalendar', 'recurring_ical_events', 'x_wr_timezone', 'tzdata'):
+    _d, _b, _h = collect_all(_pkg)
+    calendar_datas += _d
+    calendar_hidden += _h
+hiddenimports += calendar_hidden
+
+datas = django_datas + whisper_datas + calendar_datas + [
     ('sedo/templates', 'sedo/templates'),
     ('sedo/static', 'sedo/static'),
     ('sedo/validation', 'sedo/validation'),
