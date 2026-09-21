@@ -1,4 +1,5 @@
 {% extends 'sedo/base.html' %}{% load static %}{% block content %}
+<link rel="stylesheet" href="{% static 'sedo/calendar.css' %}?v=1">
 <link rel="stylesheet" href="{% static 'sedo/workspace-overview-v2.css' %}?v=1">
 <link rel="stylesheet" href="{% static 'sedo/dashboard-widgets.css' %}?v=1">
 <div class="work-page dashboard-page">
@@ -67,6 +68,8 @@
       <section class="card work-task" data-widget="paid" aria-labelledby="paid-heading"><h3 id="paid-heading">Bezahlte Rechnungen</h3><strong class="work-count">{{ paid_month }} €</strong><p>Rechnungsmonat {{ today|date:"F Y" }} · kein Zahlungseingangsbericht</p></section>
     {% elif widget.key == 'offers' %}
       <a class="card work-task" data-widget="offers" href="{% url 'sedo:offer_list' %}"><h3>Offene Angebote</h3><strong class="work-count">{{ open_offers }}</strong><span class="work-link">Angebote öffnen →</span></a>
+    {% elif widget.key == 'calendar' %}
+      <section class="card dashboard-wide" data-widget="calendar" aria-labelledby="calendar-widget-heading"><div class="work-section-head"><h2 id="calendar-widget-heading">Deine nächsten Termine</h2><a class="btn" href="{% url 'sedo:calendar_index' %}">Kalender öffnen</a></div>{% for error in calendar_errors %}<p role="status">{{ error }}</p>{% endfor %}{% include 'sedo/calendar/entries.html' with entries=calendar_entries %}<a class="btn small" href="{% url 'sedo:calendar_create' %}">Termin anlegen</a></section>
     {% elif widget.key == 'tasks' %}
   <section class="card dashboard-wide" data-widget="tasks" aria-labelledby="my-tasks-heading">
     <div class="work-section-head"><div><h2 id="my-tasks-heading">Meine Wiedervorlagen</h2><p class="muted">Fällige Gespräche und nächste Schritte an einer Stelle.</p></div><a class="btn" href="{% url 'sedo:task_list' %}">Alle Aufgaben{% if open_tasks_count %} · {{ open_tasks_count }}{% endif %}</a></div>

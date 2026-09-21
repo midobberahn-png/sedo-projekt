@@ -341,7 +341,9 @@ charset-normalizer==3.5.1 \
 click==8.5.0 \
     --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
     --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
-    # via huggingface-hub
+    # via
+    #   huggingface-hub
+    #   x-wr-timezone
 clr-loader==0.3.1 ; sys_platform == 'win32' \
     --hash=sha256:2e073e9aaf49d1ae2f56ecba27987ad5fb68be4bcd9dd34a5bed8f0e4e128366 \
     --hash=sha256:cbad189de20d202a7d621956b0fc38049e13c9bf7ca2923441eff725cd121aa1
@@ -519,6 +521,13 @@ huggingface-hub==1.31.0 \
     # via
     #   faster-whisper
     #   tokenizers
+icalendar==7.3.0 \
+    --hash=sha256:7bd001c8e648205e1bde5c6a5b77096598e8d0893dcf57755c6c597635620132 \
+    --hash=sha256:8355acfe17be81b368f0b1e3740817cea9b56ea889931f8f1a87c62f2d28db0b
+    # via
+    #   -r requirements.txt
+    #   recurring-ical-events
+    #   x-wr-timezone
 idna==3.19 \
     --hash=sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15 \
     --hash=sha256:815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4
@@ -1066,7 +1075,9 @@ python-dateutil==2.9.0.post0 \
     # via
     #   -c requirements-release-constraints.txt
     #   -r requirements.txt
+    #   icalendar
     #   pandas
+    #   recurring-ical-events
 pythonnet==3.1.0 ; sys_platform == 'win32' \
     --hash=sha256:698dd88edc198819ad63b624a6ebe76208c7b46e4fe13626f65e484f0358d6ba \
     --hash=sha256:7b34c382905d10a371509ffafd64cae0416305c28817738a9cd138336f4e9991 \
@@ -1167,6 +1178,10 @@ qtpy==2.4.3 ; sys_platform == 'openbsd6' \
     --hash=sha256:72095afe13673e017946cc258b8d5da43314197b741ed2890e563cf384b51aa1 \
     --hash=sha256:db744f7832e6d3da90568ba6ccbca3ee2b3b4a890c3d6fbbc63142f6e4cdf5bb
     # via pywebview
+recurring-ical-events==3.8.2 \
+    --hash=sha256:9ad605e27b4fbeb70ee1c66205ade32550be15a57cedc579606522f1c67aef6d \
+    --hash=sha256:e731af31d0b7dec5cd47a1defacd8549e2f36fab1c1995e8b9f042822a0acf8e
+    # via -r requirements.txt
 reportlab==5.0.1 \
     --hash=sha256:1c36e6bb0e71780c72331eba60da7f602e8d4389a8723825af71342e49d791e8 \
     --hash=sha256:ebd13154be1c8515e665de70bd2d303ae9ddc3ef47e44afd5116441ca0283a26
@@ -1243,12 +1258,15 @@ typing-extensions==4.16.0 \
     #   enum-tools
     #   huggingface-hub
     #   pywebview
-tzdata==2026.3 ; sys_platform == 'emscripten' or sys_platform == 'win32' \
+tzdata==2026.3 \
     --hash=sha256:4a1518b8993086a7982523e071643f3c0e5f213e75b21318e78bcabfff9d1415 \
     --hash=sha256:dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931
     # via
     #   django
+    #   icalendar
     #   pandas
+    #   recurring-ical-events
+    #   x-wr-timezone
 urllib3==2.7.0 \
     --hash=sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c \
     --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897
@@ -1275,6 +1293,10 @@ whitenoise==6.12.0 \
     # via
     #   -c requirements-release-constraints.txt
     #   -r requirements.txt
+x-wr-timezone==2.0.1 \
+    --hash=sha256:9166c40e6ffd4c0edebabc354e1a1e2cffc1bb473f88007694793757685cc8c3 \
+    --hash=sha256:e74a53b9f4f7def8138455c240e65e47c224778bce3c024fcd6da2cbe91ca038
+    # via recurring-ical-events
 xmlschema==4.3.2 \
     --hash=sha256:cf5c970a30f6ebcb3da35260e694704cc0b6794d8ace46125bb2a95e38ed9307 \
     --hash=sha256:f3b33a21a2b2cdc404ddc3fb599d8bc1dee90b155d547370672e6e684746b8d6

@@ -26,7 +26,7 @@ def check() -> int:
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/app.css', timeout=10) as response:
             assets = response.status == 200 and bool(response.read())
-        for name in ('dashboard-widgets.css', 'dashboard-widgets.js'):
+        for name in ('dashboard-widgets.css', 'dashboard-widgets.js', 'calendar.css'):
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/{name}', timeout=10) as response:
                 assets = assets and response.status == 200 and bool(response.read())
     except OSError:
@@ -54,6 +54,22 @@ def check() -> int:
             mail_available = mail_available and response.status == 200 and bool(response.read())
     except OSError:
         mail_available = False
+    from datetime import date
+    from types import SimpleNamespace
+    from sedo.models import CalendarConnection
+    from sedo.services.calendar_sync import encrypt, client_for
+    from sedo.services.calendar_data import fields, occurrences, aware
+    calendar_probe = CalendarConnection(user_id=1, username='calendar@example.invalid')
+    calendar_probe.password_encrypted = encrypt(calendar_probe, 'isolierter-kalender-test')
+    raw_calendar = ('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:build-check\r\n'
+                    'DTSTART:20260923T080000Z\r\nDTEND:20260923T090000Z\r\n'
+                    'SUMMARY:Buildtest\r\nRRULE:FREQ=DAILY;COUNT=2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+    calendar_values = fields(raw_calendar)
+    calendar_rows, calendar_errors = occurrences(
+        [SimpleNamespace(raw_ical=raw_calendar, recurring=True, title='Buildtest', pk=0)],
+        aware(date(2026, 9, 23)), aware(date(2026, 9, 26)))
+    calendar_available = bool(client_for(calendar_probe).authorization and calendar_values['recurring']
+                              and len(calendar_rows) == 2 and not calendar_errors)
     # Die ausgelieferte App muss die Prüfschemata tatsächlich öffnen können.
     from sedo.services.zugferd_validation import _official_rules, _profile_schema
     validator = sum(len(assertions) for _, assertions in _official_rules()) == 806
@@ -70,11 +86,12 @@ def check() -> int:
         hardlinks = linked.samefile(original)
     except OSError:
         pass
-    result = {'ok': bool(http and assets and whisper and migrated and hardlinks and validator and restoration and mail_available),
+    result = {'ok': bool(http and assets and whisper and migrated and hardlinks and validator and restoration and mail_available and calendar_available),
               'http_login': http, 'static_assets': assets, 'whisper_available': whisper,
               'migrations_complete': migrated, 'hardlinks': hardlinks,
               'invoice_validator_available': validator, 'restore_simulation': restoration,
               'mail_available': bool(mail_available),
+              'calendar_available': calendar_available,
               'frozen': bool(getattr(sys, 'frozen', False)),
               'python': '.'.join(map(str, sys.version_info[:3]))}
     report = os.environ.get('SEDO_CHECK_REPORT')
