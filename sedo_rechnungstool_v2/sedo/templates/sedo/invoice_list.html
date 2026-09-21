@@ -56,7 +56,7 @@
       <button class="btn" type="submit">Filtern</button>
       {% if has_filters %}<a class="btn ghost" href="{% url 'sedo:invoice_list' %}">Filter zurücksetzen</a>{% endif %}
     </form>
-    {% if legacy_status_label %}<p class="muted">Statusfilter: <strong>{{ legacy_status_label }}</strong></p>{% endif %}
+    {% if legacy_status_label %}<p class="muted">Übernommener Statusfilter: <strong>{{ legacy_status_label }}</strong></p>{% endif %}
   </div>
 
   <section class="card archive-results" aria-labelledby="archive-heading">
