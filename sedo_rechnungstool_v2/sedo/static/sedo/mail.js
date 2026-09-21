@@ -56,14 +56,16 @@
         });
         const key = JSON.stringify([state.count, state.accounts.map(account => account.last_sync)]);
         const list = document.querySelector('.mail-message-list');
-        const interacting = document.querySelector('input[form="spam-selection"]:checked') || list?.contains(document.activeElement);
-        if (previous !== null && key !== previous && list && !interacting) {
+        const interacting = () => document.querySelector('input[form="spam-selection"]:checked') || list?.contains(document.activeElement);
+        if (previous !== null && key !== previous && list && !interacting()) {
           // Replace only the list: never discard a composed message, selection or reader state.
           const page = await fetch(location.href, {cache:'no-store'});
           if (!page.ok) throw new Error('list');
           const parsed = new DOMParser().parseFromString(await page.text(), 'text/html');
           const fresh = parsed.querySelector('.mail-message-list');
           if (!fresh) throw new Error('list');
+          // Selection or keyboard focus may have changed while the request was in flight.
+          if (document.hidden || !list.isConnected || interacting()) return;
           const scroll = list.scrollTop;
           list.replaceChildren(...fresh.childNodes);
           list.scrollTop = scroll;

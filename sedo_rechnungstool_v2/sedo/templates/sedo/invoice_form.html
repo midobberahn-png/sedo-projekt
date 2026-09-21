@@ -95,7 +95,7 @@
           <div class="field-wide">
             <label for="id_obj">Gespeichertes Objekt</label>
             {{ form.obj }}{{ form.obj.errors }}
-            <div class="hint obj-hint" id="obj-hint">Wähle zuerst einen Kunden – dann erscheinen hier nur dessen Objekte.</div>
+
           </div>
         </div>
         <div class="wizard-address-card" id="object-summary" hidden><strong id="object-summary-name"></strong><span id="object-summary-address"></span><span class="hint">Gespeicherter Leistungsort</span></div>
@@ -262,7 +262,7 @@
 </div><!-- /work-dialog -->
 </form>
 
-<script src="{% static 'sedo/invoice-form-v2.js' %}?v=1"></script>
+<script src="{% static 'sedo/invoice-form-v2.js' %}?v=2"></script>
 <script>window.__sedoMagicUrls={polish:"{% url 'sedo:ai_polish_text' %}"};</script>
 <script src="/static/sedo/magic_tone.js?v=3_23"></script>
 <script>window.__sedoPlausiUrls={check:"{% url 'sedo:ai_plausibility' %}"};</script>

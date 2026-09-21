@@ -420,3 +420,12 @@ Bitte höchstens einen Bezug auswählen.
 „Bezahlte Rechnungen“ summiert bezahlte Belege des angezeigten Rechnungsmonats;
 dies ist kein Bericht über Zahlungseingänge in diesem Monat.
 Rechnungsentwürfe können über ihre Kachel weiterbearbeitet werden.
+
+## Weitere Bedienhinweise
+
+- E-Mail: Postfächer werden nach der Einrichtung automatisch abgeglichen. Ein leerer Ordner enthält derzeit keine geladenen Nachrichten; über die Ordnerauswahl lässt sich der Bereich wechseln.
+- Die formatierte Mailansicht blockiert externe Bilder weiterhin. Eine Anfrage oder ein Auftrag lässt sich aus der Nachricht als Angebot weiterbearbeiten. Die Absenderadresse kann zu einem vorhandenen Kunden passen; die Zuordnung wird vor dem Speichern geprüft.
+- Rechnungen und Angebote: Nach Auswahl eines Kunden stehen nur dessen Objekte zur Auswahl. Ohne Objekt kann der Leistungsort direkt angegeben werden.
+- Monatsabschluss: Später ausgeblendete Rechnungsnummern werden getrennt aufgeführt und sind nicht Teil des Exports. Die Aufstellung erklärt die Lücke im Nummernkreis.
+- Ein übernommener Statusfilter in der Rechnungsliste wird durch die Wahl einer Belegansicht aufgehoben.
+- Altbelege ohne ursprünglichen Prüfsummennachweis werden unverändert verwendet. Ihre ursprüngliche Echtheit ist damit nicht nachträglich bestätigt.
