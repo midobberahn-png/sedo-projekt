@@ -39,7 +39,6 @@ from .services import (
     get_dunning_candidates, send_bulk_dunning, ensure_dunning_allowed, mahn_hindernis,
     fetch_bank_transactions, get_banking_config, banking_is_configured, BankingError,
     get_ai_config, ai_is_configured, generate_offer_from_text, AIError,
-    AI_DEFAULT_TEXT_MODEL,
     transcribe_audio, stt_status, TranscriptionUnavailable,
     polish_service_text, generate_cover_letter_text,
     ai_review_positions, check_positions_local,
@@ -54,6 +53,7 @@ from .services.reports import build_reports
 from .services.recurring_preview import build_recurring_preview
 from .services.zugferd_validation import validate_invoice_zugferd
 from .services.tax_export import create_tax_package, parse_month
+from .services.ai_local import check_local_model, validate_local_base_url, validate_local_model
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
 # dem Nutzer eine freundliche Meldung, protokollieren den echten Fehler aber hier.
@@ -386,11 +386,11 @@ def ai_generate_offer(request):
     """KI-Assistent: grobe Ansage in einen vollständigen Angebotsentwurf umwandeln.
 
     Datenschutz: Es wird ausschließlich der diktierte Text der Leistungs-
-    beschreibung an Claude übertragen – keine Kunden- oder Objektdaten.
+    beschreibung an Bonsai übertragen – keine Kunden- oder Objektdaten.
     Nebenwirkung: neue Leistungen werden in den Leistungskatalog übernommen.
     """
     if not ai_is_configured():
-        return JsonResponse({'ok': False, 'error': 'Kein Claude-API-Key hinterlegt. Bitte unter Einstellungen → KI-Assistent eintragen.'}, status=400)
+        return JsonResponse({'ok': False, 'error': 'Der lokale KI-Assistent ist deaktiviert. Bitte in den Einstellungen aktivieren.'}, status=400)
     if len(request.body) > MAX_AI_REQUEST_BYTES:
         return JsonResponse({'ok': False, 'error': 'Der Text ist zu lang. Bitte kürzen.'}, status=400)
     try:
@@ -422,8 +422,7 @@ def ai_transcribe(request):
 
     Datenschutz: Das Audio bleibt auf dem eigenen Server (kein Cloud-Upload)
     und wird nach der Transkription sofort gelöscht. Ist faster-whisper nicht
-    installiert, antwortet der Endpoint mit 503 – die Oberfläche fällt dann
-    automatisch auf die Browser-Spracherkennung zurück.
+    installiert, antwortet der Endpoint mit 503 – Texteingabe bleibt verfügbar.
     """
     audio = request.FILES.get('audio')
     if not audio:
@@ -462,10 +461,10 @@ def ai_polish_text(request):
     """Magic-Tone: lose/emotionale Ansage → professionelle Leistungsbeschreibung.
 
     Datenschutz: Es wird ausschließlich der eingegebene Text übertragen; der
-    System-Prompt weist Claude an, Namen/Adressen ersatzlos wegzulassen.
+    System-Prompt weist Bonsai an, Namen/Adressen ersatzlos wegzulassen.
     """
     if not ai_is_configured():
-        return JsonResponse({'ok': False, 'error': 'Kein Claude-API-Key hinterlegt. Bitte unter Einstellungen → KI-Assistent eintragen.'}, status=400)
+        return JsonResponse({'ok': False, 'error': 'Der lokale KI-Assistent ist deaktiviert. Bitte in den Einstellungen aktivieren.'}, status=400)
     data = _read_json_body(request)
     if data is None:
         return JsonResponse({'ok': False, 'error': 'Ungültige Anfrage.'}, status=400)
@@ -512,7 +511,7 @@ def ai_cover_letter(request):
     Leistungsdaten (Nummer, Betrag, Fälligkeit, Positionsbezeichnungen).
     """
     if not ai_is_configured():
-        return JsonResponse({'ok': False, 'error': 'Kein Claude-API-Key hinterlegt. Bitte unter Einstellungen → KI-Assistent eintragen.'}, status=400)
+        return JsonResponse({'ok': False, 'error': 'Der lokale KI-Assistent ist deaktiviert. Bitte in den Einstellungen aktivieren.'}, status=400)
     data = _read_json_body(request)
     if data is None:
         return JsonResponse({'ok': False, 'error': 'Ungültige Anfrage.'}, status=400)
@@ -538,7 +537,7 @@ def ai_plausibility(request):
 
     Zweistufig: Der LOKALE Teil (Preis-Ausreißer gegen die eigene Kunden-
     historie, Dubletten, Nullwerte) läuft komplett auf diesem Server – die
-    Kundennummer wird dafür NICHT an Claude übertragen. Der optionale KI-Teil
+    Kundennummer wird dafür NICHT an Bonsai übertragen. Der optionale KI-Teil
     prüft ausschließlich die Leistungsdaten (Bezeichnung/Menge/Einheit/Preis).
     """
     data = _read_json_body(request)
@@ -557,7 +556,7 @@ def ai_plausibility(request):
     ki_error = ''
     if mode in ('ki', 'beides'):
         if not ai_is_configured():
-            ki_error = 'Kein Claude-API-Key hinterlegt. Bitte unter Einstellungen → KI-Assistent eintragen.'
+            ki_error = 'Der lokale KI-Assistent ist deaktiviert. Bitte in den Einstellungen aktivieren.'
         else:
             try:
                 ki = ai_review_positions(positions)
@@ -672,8 +671,6 @@ def dashboard(request, layout_form=None):
         'dunning_candidates_count': len(dunning_candidates),
         'smtp_configured': smtp_is_configured(),
         'ai_configured': ai_is_configured(),
-        'ai_text_model': AppSetting.get('ai_text_model', ''),
-        'ai_default_text_model': AI_DEFAULT_TEXT_MODEL,
         'open_tasks': open_tasks[:6],
         'open_tasks_count': open_tasks.count(),
         'overdue_tasks_count': open_tasks.filter(due_date__lt=today).count(),
@@ -1650,7 +1647,7 @@ def offer_create(request):
         'form': form,
         'formset': formset,
         # Lokales Whisper verfügbar? Steuert, ob das Diktat über den Server
-        # transkribiert wird oder die Browser-Spracherkennung nutzt.
+        # transkribiert werden kann. Sonst bleibt die Texteingabe.
         'stt_available': stt_status()['available'],
         'source_mail': source_mail,
     })
@@ -2785,17 +2782,31 @@ def settings_page(request):
                     messages.error(request, f'Mapping-Import fehlgeschlagen: {e}')
             return redirect('sedo:settings')
 
+        if action == 'test_ai':
+            if not request.user.is_staff:
+                return HttpResponseForbidden('Nur die Administration kann den KI-Zugang prüfen.')
+            try:
+                model = check_local_model()
+                messages.success(request, f'Lokales Modell erreichbar: {Path(model).name}. Es wurden keine Geschäftsdaten übertragen.')
+            except AIError as exc:
+                messages.error(request, str(exc))
+            return redirect('sedo:settings')
+
         if action == 'save_ai':
-            # API-Key nur speichern, wenn neu eingegeben (leer = unverändert)
-            new_key = request.POST.get('ai_api_key', '').strip()
-            if request.POST.get('ai_api_key_clear'):
-                AppSetting.set('ai_api_key', '')
-            elif new_key:
-                AppSetting.set('ai_api_key', new_key)
-            AppSetting.set('ai_text_model', request.POST.get('ai_text_model', '').strip())
+            if not request.user.is_staff:
+                return HttpResponseForbidden('Nur die Administration kann den KI-Zugang ändern.')
+            try:
+                base_url = validate_local_base_url(request.POST.get('ai_local_base_url', ''))
+                model = validate_local_model(request.POST.get('ai_local_model', ''))
+            except AIError as exc:
+                messages.error(request, str(exc))
+                return redirect('sedo:settings')
+            AppSetting.set('ai_local_base_url', base_url)
+            AppSetting.set('ai_local_model', model)
+            AppSetting.set('ai_local_enabled', '1' if request.POST.get('ai_local_enabled') else '0')
             write_audit(request, 'update', object_type='AppSetting', object_repr='KI-Assistent',
-                        message='KI-Einstellungen gespeichert')
-            messages.success(request, 'KI-Einstellungen gespeichert.')
+                        message='Lokale Bonsai-Einstellungen gespeichert')
+            messages.success(request, 'Lokale KI-Einstellungen gespeichert.')
             return redirect('sedo:settings')
 
         if action == 'save_smtp':
@@ -2864,6 +2875,8 @@ def settings_page(request):
         'service_count': AareonMapping.objects.values('service_id').distinct().count(),
         'mappings': AareonMapping.objects.all()[:50],
         'stats': stats,
+        'ai_cfg': get_ai_config(),
+        'ai_configured': ai_is_configured(),
         'weather_configured': bool(weather_key()),
         'smtp_host':      smtp_cfg['host'],
         'smtp_port':      smtp_cfg['port'],

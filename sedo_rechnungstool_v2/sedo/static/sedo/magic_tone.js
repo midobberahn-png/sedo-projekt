@@ -1,8 +1,8 @@
 /* SEDO Magic-Tone (v3.21.0)
  * (a) "Formulieren"-Knopf an jedem Leistungstext-Feld: lose/emotionale Ansage
- *     wird per Claude in eine professionelle Leistungsbeschreibung umformuliert.
+ *     wird per Bonsai in eine professionelle Leistungsbeschreibung umformuliert.
  * (b) KI-Begleittext für den Rechnungsversand (Karte auf der Rechnungsseite).
- * Datenschutz: Es geht ausschließlich der jeweilige TEXT an Claude; der
+ * Datenschutz: Es geht ausschließlich der jeweilige TEXT an Bonsai; der
  * System-Prompt entfernt Namen/Adressen. Kunden-/Objektdaten bleiben lokal. */
 (function () {
   'use strict';

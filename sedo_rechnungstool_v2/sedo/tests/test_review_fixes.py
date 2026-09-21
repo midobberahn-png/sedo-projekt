@@ -87,10 +87,10 @@ class AtomicInvoiceCreationTests(TestCase):
 
 
 class SecretHandlingTests(TestCase):
-    def test_ai_key_env_hat_vorrang_vor_appsetting(self):
+    def test_alter_ai_key_wird_nicht_mehr_verwendet(self):
         os.environ['SEDO_AI_API_KEY'] = 'sk-aus-env'
         try:
-            self.assertEqual(get_ai_config()['api_key'], 'sk-aus-env')
+            self.assertNotIn('api_key', get_ai_config())
         finally:
             os.environ.pop('SEDO_AI_API_KEY', None)
 

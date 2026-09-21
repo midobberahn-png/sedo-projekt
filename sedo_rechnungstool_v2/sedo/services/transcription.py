@@ -5,8 +5,8 @@ dort lokal transkribiert – es verlässt nie den Rechner (kein Cloud-Upload).
 Nach der Transkription wird die Audiodatei sofort gelöscht.
 
 faster-whisper ist eine optionale Abhängigkeit: Ist sie nicht installiert,
-meldet ``stt_status()`` das sauber und die Oberfläche fällt automatisch auf
-die Browser-Spracherkennung (Web Speech API) zurück.
+meldet ``stt_status()`` das sauber. Die Oberfläche bietet dann Texteingabe;
+es gibt keinen Wechsel zu externer Browser-Spracherkennung.
 
 Beim ersten Aufruf lädt faster-whisper das Modell einmalig herunter
 (Standard „small“, ~460 MB) und cached es lokal; danach läuft alles offline.

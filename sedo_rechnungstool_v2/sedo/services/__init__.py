@@ -12,7 +12,7 @@ Module:
 - ``dunning``    – Mahnwesen
 - ``payments``   – Bank-JSON-Import
 - ``mail``       – E-Mail-Entwürfe und SMTP-Versand
-- ``ai``         – KI-Angebotsassistent (Anthropic Claude)
+- ``ai``         – KI-Angebotsassistent (lokales Bonsai)
 - ``formatting`` – Formatierungshelfer
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ from .ai import (
     AI_MAX_TEXT_CHARS,
     AIError,
     _AI_SYSTEM_PROMPT_BASE,
-    _ai_generate_via_tool_use,
+    _ai_generate_offer,
     _ai_normalize_unit,
     _ai_to_decimal,
     _service_catalog_prompt_block,
@@ -136,5 +136,5 @@ __all__ = [
     'ai_review_positions', 'check_positions_local',
     'apply_and_learn_service_catalog',
     '_ai_to_decimal', '_ai_normalize_unit', '_service_catalog_prompt_block',
-    '_ai_generate_via_tool_use', '_AI_SYSTEM_PROMPT_BASE',
+    '_ai_generate_offer', '_AI_SYSTEM_PROMPT_BASE',
 ]

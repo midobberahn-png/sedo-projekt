@@ -1,15 +1,5 @@
-/* SEDO KI-Angebotsassistent (v3.21.0)
- * Grobe Ansage (Diktat) → Claude erzeugt einen vollständigen Angebotsentwurf
- * mit logischen Positionen und Leistungstexten.
- *
- * Spracherkennung, zweistufig:
- *  1. Bevorzugt: Aufnahme via MediaRecorder → lokale Whisper-Transkription auf
- *     dem EIGENEN Server (/api/ki/transkription/). Kein Cloud-Upload.
- *  2. Fallback: Browser-Spracherkennung (Web Speech API), wenn Whisper nicht
- *     installiert ist oder die Aufnahme nicht möglich ist.
- *
- * Datenschutz: An Claude gehen Freitext und Katalogdaten, keine Kundenfelder.
- * Freitext wird nicht anonymisiert. Der Browser-Fallback kann Audio hochladen. */
+/* SEDO: Rohtext oder lokales Whisper-Diktat → lokaler Bonsai-Entwurf.
+ * Kein automatischer Wechsel zu Cloud- oder Browser-Spracherkennung. */
 (function () {
   'use strict';
 
@@ -48,7 +38,7 @@
   function setBusy(state, label) {
     busy = state;
     extractBtn.disabled = state;
-    recordBtn.disabled = state && !recording;
+    recordBtn.disabled = !whisperAvailable || (state && !recording);
     if (state) setStatus(label || 'Bitte warten …');
   }
 
@@ -242,90 +232,18 @@
         setBusy(false);
         if (err && err.code === 'stt_unavailable') {
           whisperAvailable = false;
-          notify('Lokales Whisper ist nicht installiert – ab jetzt wird die Browser-Spracherkennung genutzt.', 'warning');
+          recordBtn.disabled = true;
+          notify('Lokales Diktat ist nicht verfügbar – bitte Text eingeben. Die Aufnahme wurde nicht an einen Cloud-Dienst gesendet.', 'warning');
         } else {
           notify((err && err.message) || 'Transkription fehlgeschlagen. Bitte erneut versuchen.', 'error');
         }
       });
   }
 
-  /* ══ Aufnahme-Weg 2 (Fallback): Web Speech API im Browser ═══════════ */
-  var SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var canWebSpeech = !!SpeechRecognitionImpl;
-  var recognition = null;
-  var baseText = '';
-  var stoppedByUser = false;
-
-  if (!whisperAvailable && !canWebSpeech) {
+  if (!whisperAvailable) {
     recordBtn.disabled = true;
-    recordBtn.title = 'Spracherkennung wird von diesem Browser nicht unterstützt (am besten Chrome verwenden)';
-    setStatus('Spracherkennung nicht verfügbar – bitte Text unten eintippen.');
-  }
-
-  function currentTranscriptWithSeparator() {
-    var t = baseText.trim();
-    return t ? t + '\n' : '';
-  }
-
-  function startWebSpeechRecording() {
-    if (!canWebSpeech) {
-      notify('Spracherkennung nicht verfügbar – bitte Text unten eintippen.', 'warning');
-      return;
-    }
-    baseText = transcript.value;
-    recognition = new SpeechRecognitionImpl();
-    recognition.lang = 'de-DE';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    stoppedByUser = false;
-
-    recognition.onresult = function (event) {
-      var finalText = '';
-      var interimText = '';
-      for (var i = 0; i < event.results.length; i++) {
-        var res = event.results[i];
-        if (res.isFinal) finalText += res[0].transcript;
-        else interimText += res[0].transcript;
-      }
-      transcript.value = currentTranscriptWithSeparator() + finalText + interimText;
-    };
-
-    recognition.onerror = function (event) {
-      if (event.error === 'no-speech') return;
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        notify('Mikrofonzugriff wurde verweigert. Bitte in den Browser-Einstellungen erlauben.', 'error');
-        stoppedByUser = true;
-      } else if (event.error === 'network') {
-        notify('Netzwerkfehler bei der Spracherkennung. Bitte erneut versuchen.', 'error');
-      } else if (event.error === 'aborted') {
-        // expliziter Stopp – keine Meldung
-      } else {
-        notify('Spracherkennung fehlgeschlagen (' + event.error + '). Bitte erneut versuchen.', 'error');
-      }
-    };
-
-    recognition.onend = function () {
-      if (recording && !stoppedByUser) {
-        baseText = transcript.value;
-        try { recognition.start(); return; } catch (e) { /* fällt durch */ }
-      }
-      if (stoppedByUser) {
-        resetRecordBtn();
-        setStatus('');
-        transcript.value = normalizeDictation(transcript.value);
-        var text = transcript.value.trim();
-        if (text.length >= 5) runGeneration();
-      }
-    };
-
-    try {
-      recognition.start();
-    } catch (e) {
-      notify('Aufnahme konnte nicht gestartet werden. Bitte Text unten eintippen.', 'error');
-      return;
-    }
-    markRecording();
-    setStatus('Grob ansagen, was gemacht werden soll – die KI baut daraus das Angebot.');
+    recordBtn.title = 'Lokales Diktat nicht verfügbar – bitte Text eingeben.';
+    setStatus('Lokales Diktat nicht verfügbar – bitte Text unten eintippen.');
   }
 
   /* ── Aufnahme-Button: startet/stoppt den jeweils aktiven Weg ──────── */
@@ -333,7 +251,7 @@
     if (busy) return;
     if (!recording) {
       if (whisperAvailable) startWhisperRecording();
-      else startWebSpeechRecording();
+      else notify('Lokales Diktat nicht verfügbar – bitte Text eingeben.', 'warning');
       return;
     }
     // Stopp
@@ -343,11 +261,6 @@
       mediaRecorder.stop();
       return;
     }
-    stoppedByUser = true;
-    recording = false;
-    if (recognition) { try { recognition.stop(); } catch (e) { /* ignorieren */ } }
-    hideRecIndicator();
-    setStatus('Aufnahme wird verarbeitet …');
   });
 
   /* ── Angebot erzeugen ─────────────────────────────────────────────── */
@@ -363,8 +276,8 @@
       notify('Bitte zuerst diktieren oder einen Text eingeben.', 'warning');
       return;
     }
-    setBusy(true, 'Claude erstellt den Angebotsentwurf …');
-    showSkeleton('Claude erstellt Positionen, Leistungstexte und Preise …');
+    setBusy(true, 'Bonsai erstellt den Angebotsentwurf …');
+    showSkeleton('Bonsai erstellt Positionen, Leistungstexte und Preise …');
     fetch(urls.extract, {
       method: 'POST',
       headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
@@ -562,7 +475,6 @@
 
   /* Seite verlassen während Aufnahme → alles sauber stoppen */
   window.addEventListener('beforeunload', function () {
-    if (recognition) { stoppedByUser = true; try { recognition.stop(); } catch (e) { /* ignorieren */ } }
     if (mediaRecorder && mediaRecorder.state === 'recording') { try { mediaRecorder.stop(); } catch (e) { /* ignorieren */ } }
     if (mediaStream) { mediaStream.getTracks().forEach(function (t) { t.stop(); }); }
     hideRecIndicator();

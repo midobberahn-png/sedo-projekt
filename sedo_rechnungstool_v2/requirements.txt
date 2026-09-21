@@ -17,7 +17,7 @@ lxml
 elementpath>=5.1,<6
 python-dateutil
 qrcode[pil]
-# Lokale Spracherkennung für das KI-Diktat (optional – ohne fällt die App
-# automatisch auf die Browser-Spracherkennung zurück). Erstes Diktat lädt
+# Lokale Spracherkennung für das KI-Diktat (optional – ohne bleibt die
+# Texteingabe verfügbar; kein Cloud-Fallback). Erstes Diktat lädt
 # das Whisper-Modell (~460 MB) einmalig herunter, danach offline.
 faster-whisper

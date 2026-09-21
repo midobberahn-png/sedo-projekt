@@ -2,9 +2,9 @@
  * Läuft im Prüfen-Schritt von Angebot und Rechnung, zweistufig:
  *  1. LOKAL (automatisch, kostenlos): Preis-Ausreißer gegen die eigene
  *     Kundenhistorie, Dubletten, Nullwerte – rein auf dem eigenen Server.
- *  2. KI-CHECK (per Knopf): Claude prüft NUR die Leistungsdaten
+ *  2. KI-CHECK (per Knopf): Bonsai prüft NUR die Leistungsdaten
  *     (Bezeichnung/Menge/Einheit/Preis) auf kaufmännische Plausibilität.
- * Kunden-/Objektdaten gehen nie an Claude. */
+ * Kunden-/Objektdaten gehen nie an Bonsai. */
 (function () {
   'use strict';
 
@@ -143,7 +143,7 @@
   /* ── KI-Check per Knopf ───────────────────────────────────────────── */
   kiBtn.addEventListener('click', function () {
     kiBtn.disabled = true;
-    kiBox.innerHTML = '<div class="ai-skeleton"><div class="ai-skeleton-label">Claude prüft die Positionen …</div><span style="width:86%"></span><span style="width:70%"></span></div>';
+    kiBox.innerHTML = '<div class="ai-skeleton"><div class="ai-skeleton-label">Bonsai prüft die Positionen …</div><span style="width:86%"></span><span style="width:70%"></span></div>';
     postCheck('ki').then(function (data) {
       if (data.ki_error) {
         kiBox.innerHTML = '';

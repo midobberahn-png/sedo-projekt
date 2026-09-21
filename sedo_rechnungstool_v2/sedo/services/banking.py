@@ -8,7 +8,7 @@ die Bank-Referenz als ``external_id`` und automatischer Rechnungszuordnung.
 
 Sicherheits-Zuschnitt:
 - Die PIN wird bevorzugt NUR für den Moment des Abrufs eingegeben. Optional
-  kann sie – wie SMTP-Passwort und Claude-Key – lokal gespeichert werden;
+  kann sie – wie SMTP-Passwort und alte KI-Schlüssel – lokal gespeichert werden;
   Backups bereinigen sie dann (``SECRET_SETTING_KEYS``), und die
   Env-Variable ``SEDO_FINTS_PIN`` hat Vorrang vor der Datenbank.
 - PSD2: Je nach Bank verlangt der Abruf eine TAN-Freigabe (z. B. pushTAN in
