@@ -160,4 +160,3 @@ class StartupSettingsTests(TestCase):
         with patch('sedo.views.start_bonsai_background') as start:
             self.assertEqual(self.client.post(reverse('sedo:settings'),{'action':'start_ai'}).status_code,403)
         start.assert_not_called()
-
