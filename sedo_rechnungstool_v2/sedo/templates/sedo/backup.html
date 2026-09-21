@@ -5,7 +5,7 @@
   <div>
     <div class="eyebrow">System</div>
     <h1 class="h1">Backup</h1>
-    <div class="sub">Automatische Sicherung – ohne API-Key, SMTP-Passwort, Bank-PIN und aktive Anmelde-Sitzungen.</div>
+    <div class="sub" data-help>Automatische Sicherung – ohne API-Key, SMTP-Passwort, Bank-PIN und aktive Anmelde-Sitzungen.</div>
   </div>
 </div>
 
@@ -47,7 +47,7 @@
 
 <div class="card">
   <div class="section-head"><h2>Automatische Backups</h2></div>
-  <p class="sub">Die App prüft beim Start/Seitenaufruf, ob das letzte automatische Backup älter als 7 Tage ist. Falls ja, wird automatisch ein ZIP-Backup erzeugt.</p>
+  <p class="sub" data-help>Die App prüft beim Start/Seitenaufruf, ob das letzte automatische Backup älter als 7 Tage ist. Falls ja, wird automatisch ein ZIP-Backup erzeugt.</p>
   <dl class="detail-grid">
     <div><dt>Status</dt><dd>{% if auto_weekly_backup_enabled == '1' %}aktiv{% else %}deaktiviert{% endif %}</dd></div>
     <div><dt>Letzter Backup-Pfad</dt><dd>{{ last_backup_path|default:'—' }}</dd></div>
@@ -56,17 +56,17 @@
   <form method="post" class="toolbar mt-3">
     {% csrf_token %}
     <button class="btn primary" type="submit" name="action" value="backup_now"><svg class="ico" aria-hidden="true"><use href="#i-backup"/></svg> Backup jetzt erstellen</button>
-    {% if auto_weekly_backup_enabled == '1' %}
+<details class="settings-panel"><summary aria-label="Automatische Backups einstellen"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg></summary><div class="settings-body">    {% if auto_weekly_backup_enabled == '1' %}
       <button class="btn" type="submit" name="action" value="disable_weekly">Automatisches Wochenbackup deaktivieren</button>
     {% else %}
       <button class="btn success" type="submit" name="action" value="enable_weekly">Automatisches Wochenbackup aktivieren</button>
-    {% endif %}
+    {% endif %}</div></details>
   </form>
 </div>
 
 <div class="card">
   <div class="section-head"><h2>Was wird gesichert?</h2></div>
-  <ul class="clean-list">
+  <ul class="clean-list" data-help>
     <li>Datenbank mit Kunden, Rechnungen, Angeboten, Zahlungen und Kassenbuch</li>
     <li>Medienordner mit erzeugten PDFs, XML-Dateien, ZUGFeRD-Dateien und E-Mail-Entwürfen</li>
     <li>Backup-Infodatei mit Zeitpunkt und Grund der Sicherung</li>
@@ -76,7 +76,7 @@
 </div>
 
 <div class="card">
-  <div class="section-head"><div><h2>Backup wiederherstellen</h2><p class="sub">Dreistufig: auswählen, vollständig prüfen, kontrolliert beim nächsten App-Start einspielen.</p></div></div>
+  <div class="section-head"><div><h2>Backup wiederherstellen</h2><p class="sub" data-help>Dreistufig: auswählen, vollständig prüfen, kontrolliert beim nächsten App-Start einspielen.</p></div></div>
   <form method="post" class="compact-form">
     {% csrf_token %}
     <label>Sicherung auswählen
@@ -96,7 +96,7 @@
       <div><span>Inhalt</span><strong>{{ restore_report.counts.Kunden }} Kunden · {{ restore_report.counts.Rechnungen }} Rechnungen</strong></div>
       <div><span>Dateien</span><strong>{{ restore_report.media_files }} Medien · {{ restore_report.size|filesizeformat }}</strong></div>
     </dl>
-    <p class="hint">Vor dem Einspielen erstellt SEDO automatisch eine Sicherung des aktuellen Stands. SMTP-Passwort, KI-Schlüssel und Bank-PIN müssen danach neu hinterlegt werden. Das SEDO-Anmeldepasswort entspricht dem Stand der Sicherung; aktive Sitzungen werden nicht übernommen.</p>
+    <p class="hint" data-help>Vor dem Einspielen erstellt SEDO automatisch eine Sicherung des aktuellen Stands. SMTP-Passwort, KI-Schlüssel und Bank-PIN müssen danach neu hinterlegt werden. Das SEDO-Anmeldepasswort entspricht dem Stand der Sicherung; aktive Sitzungen werden nicht übernommen.</p>
     <form method="post" class="compact-form" onsubmit="return confirm('Geprüftes Backup für den nächsten App-Start vormerken?');">
       {% csrf_token %}<input type="hidden" name="backup" value="{{ restore_report.name }}">
       <input type="hidden" name="review_sha256" value="{{ restore_report.archive_sha256 }}">

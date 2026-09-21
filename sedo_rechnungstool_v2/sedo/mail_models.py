@@ -77,6 +77,8 @@ class MailMessage(models.Model):
     attachments = models.JSONField(default=list)
     size = models.PositiveBigIntegerField(default=0)
     content_error = models.CharField(max_length=300, blank=True)
+    invoice_scan_done = models.BooleanField(default=False, editable=False)
+    invoice_scan_error = models.CharField(max_length=240, blank=True, editable=False)
     customer = models.ForeignKey('sedo.Customer', null=True, blank=True, on_delete=models.PROTECT, related_name='mail_messages')
     created_at = models.DateTimeField(default=timezone.now)
 

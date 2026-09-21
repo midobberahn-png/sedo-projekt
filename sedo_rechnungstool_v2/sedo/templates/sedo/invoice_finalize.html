@@ -35,7 +35,7 @@
       <strong>Das Rechnungsdatum liegt in einem Vormonat.</strong>
       <p>Ohne Häkchen bestätigst du das bestehende Datum {{ invoice.issue_date|date:'d.m.Y' }}. Es wird nicht automatisch geändert.</p>
       <label class="check-line" for="datum-heute"><input type="checkbox" id="datum-heute" name="datum_heute" value="1"> Rechnungsdatum auf heute setzen ({{ heute|date:'d.m.Y' }})</label>
-      <p class="hint">Dabei verschiebt sich die Fälligkeit um denselben Zeitraum. Das vereinbarte Zahlungsziel und der Leistungszeitraum bleiben erhalten.</p>
+      <p class="hint" data-help>Dabei verschiebt sich die Fälligkeit um denselben Zeitraum. Das vereinbarte Zahlungsziel und der Leistungszeitraum bleiben erhalten.</p>
     </div>
     {% endif %}
     <div class="toolbar mt-3">

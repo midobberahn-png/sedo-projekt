@@ -5,7 +5,7 @@
   <div>
     <div class="eyebrow">System · Sicherheit</div>
     <h1 class="h1">Sicherheitsstatus</h1>
-    <div class="sub">Kompakte Kontrollseite für Produktivbetrieb, Backups und spätere Bankanbindung.</div>
+    <div class="sub" data-help>Kompakte Kontrollseite für Produktivbetrieb, Backups und spätere Bankanbindung.</div>
   </div>
   <div class="toolbar"><a class="btn" href="{% url 'sedo:audit_log' %}">Audit-Log öffnen</a></div>
 </div>
@@ -40,7 +40,7 @@
         <td>{% if c.ok %}<span class="badge success">OK</span>{% else %}<span class="badge danger">Prüfen</span>{% endif %}</td>
         <td><strong>{{ c.label }}</strong></td>
         <td>{{ c.value }}</td>
-        <td class="muted">{{ c.hint }}</td>
+        <td><span class="info-tip" tabindex="0" aria-label="Erläuterung zur Prüfung">i<span class="info-tip-text">{{ c.hint }}</span></span></td>
       </tr>
       {% endfor %}
     </table></div>
@@ -48,7 +48,7 @@
 </div>
 
 <div class="card">
-  <div class="section-head"><div><h2>Letzte Audit-Ereignisse</h2><p class="hint">Auszug der letzten sicherheitsrelevanten Aktionen.</p></div><a class="btn" href="{% url 'sedo:audit_log' %}">Alle anzeigen</a></div>
+  <div class="section-head"><div><h2>Letzte Audit-Ereignisse</h2><p class="hint" data-help>Auszug der letzten sicherheitsrelevanten Aktionen.</p></div><a class="btn" href="{% url 'sedo:audit_log' %}">Alle anzeigen</a></div>
   <div class="table-wrap">
     <div class="responsive-table" tabindex="0" role="region" aria-label="Sicherheitsstatus – Tabelle"><table class="table responsive-records table-modern">
       <tr><th scope="col">Zeit</th><th scope="col">Benutzer</th><th scope="col">Aktion</th><th scope="col">Objekt</th><th scope="col">Hinweis</th></tr>
@@ -61,8 +61,8 @@
 
 <div class="card">
   <h2>Belegketten prüfen</h2>
-  <p>Die Prüfung oben liest nur den Bestand. Sie verändert keine Rechnungen und keine Dateien.</p>
-  <p class="hint">Der Befehl <code>python manage.py belegketten_pruefen</code> zeigt den ausführlichen Trockenlauf.
+  <p data-help>Die Prüfung oben liest nur den Bestand. Sie verändert keine Rechnungen und keine Dateien.</p>
+  <p class="hint" data-help>Der Befehl <code>python manage.py belegketten_pruefen</code> zeigt den ausführlichen Trockenlauf.
     Erst <code>--reparieren</code> übernimmt belegbare Statuskorrekturen mit Pflicht-Protokoll.
     Vorher die App beenden und eine Sicherung erstellen. Entwurfs-XML-Verweise und Entwürfe älter als
     30 Tage werden nur gemeldet; widersprüchliche Folgebelege bleiben ein manueller Prüfauftrag.</p>
@@ -70,6 +70,6 @@
 
 <div class="card warn-card">
   <h2>Bankanbindung: Mindeststandard</h2>
-  <p>Vor echter Bankanbindung sollten Rollen/Rechte, Audit-Log, externe verschlüsselte Backups und eine sichere Ablage für Zugangsdaten aktiv sein. Bank-PINs dürfen nicht im Klartext in der Datenbank, in ZIP-Backups oder in Logs landen.</p>
+  <p data-help>Vor echter Bankanbindung sollten Rollen/Rechte, Audit-Log, externe verschlüsselte Backups und eine sichere Ablage für Zugangsdaten aktiv sein. Bank-PINs dürfen nicht im Klartext in der Datenbank, in ZIP-Backups oder in Logs landen.</p>
 </div>
 {% endblock %}

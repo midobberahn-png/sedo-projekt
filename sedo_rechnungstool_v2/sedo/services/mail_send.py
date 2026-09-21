@@ -86,6 +86,8 @@ def forward_attachments(draft, source):
 
 
 def prepare(draft):
+    from .incoming_invoices import check_package_attachment
+    check_package_attachment(draft)
     recipients = list({address.lower(): address for address in addresses(draft.to) + addresses(draft.cc) + addresses(draft.bcc)}.values())
     if not recipients:
         raise MailError('Bitte mindestens einen Empfänger angeben.')

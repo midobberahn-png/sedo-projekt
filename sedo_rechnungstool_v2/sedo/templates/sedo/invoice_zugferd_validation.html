@@ -1,7 +1,7 @@
 {% extends 'sedo/base.html' %}
 {% block title %}ZUGFeRD-Prüfung {{ invoice.number }}{% endblock %}
 {% block content %}
-<div class="topbar"><div><div class="eyebrow">Rechnung {{ invoice.number }}</div><h1 class="h1">ZUGFeRD-Prüfung</h1><p class="sub">Offline-Prüfung des versiegelten Originals vor dem Versand.</p></div><a class="btn" href="{% url 'sedo:invoice_detail' invoice.pk %}">Zur Rechnung</a></div>
+<div class="topbar"><div><div class="eyebrow">Rechnung {{ invoice.number }}</div><h1 class="h1">ZUGFeRD-Prüfung</h1><p class="sub" data-help>Offline-Prüfung des versiegelten Originals vor dem Versand.</p></div><a class="btn" href="{% url 'sedo:invoice_detail' invoice.pk %}">Zur Rechnung</a></div>
 <div class="card {% if not validation.ok %}warning-card{% endif %}">
   <div class="section-head"><h2>{% if validation.ok %}XML-Geschäftsregeln und Einbettung bestanden{% else %}Versand derzeit gesperrt{% endif %}</h2><span class="badge {% if validation.ok %}green{% else %}red{% endif %}">{% if validation.ok %}Teilprüfung bestanden{% else %}{{ validation.errors|length }} Fehler{% endif %}</span></div>
   {% if validation.profile %}<p class="hint">Profil: {{ validation.profile }}</p>{% endif %}
