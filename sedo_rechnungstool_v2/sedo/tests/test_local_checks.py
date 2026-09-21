@@ -22,7 +22,7 @@ class LocalChecksTests(unittest.TestCase):
                                     'DJANGO_SECRET_KEY': 'real-secret', 'PYTHONPATH': '/injection',
                                     'SEDO_MAIL_WORKER': '1'}):
             env = checks.isolated_env(Path('/isolated'))
-        self.assertEqual(env['SEDO_HOME'], '/isolated')
+        self.assertEqual(env['SEDO_HOME'], str(Path('/isolated')))
         self.assertNotEqual(env['DJANGO_SECRET_KEY'], 'real-secret')
         for key in ('SEDO_AI_API_KEY', 'PYTHONPATH', 'SEDO_MAIL_WORKER'):
             self.assertNotIn(key, env)
