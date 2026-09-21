@@ -1,5 +1,10 @@
 # SEDO Teststand h2.1
 
+**Entwicklungsbetrieb seit 21.09.2026:** Die vollständigen Prüfungen können ohne
+GitHub-Actions-Kontingent lokal ausgeführt werden. Einstieg, Ergebnisbericht und
+Abgrenzung zwischen lokaler Entwicklung und Windows-Auslieferung stehen in
+[LOCAL_CHECKS.md](LOCAL_CHECKS.md). Der unten beschriebene Buildvertrag bleibt erhalten.
+
 Dieser Teststand ist Teil des freigegebenen Härtungsplans. Keine Produktivfreigabe,
 kein signierter Installer, keine Abnahme von Papas Rechner. Dieser Rechner ist
 frühestens am **19.09.2026** verfügbar. UI/UX folgt nach technischer Härtung.
@@ -8,7 +13,7 @@ frühestens am **19.09.2026** verfügbar. UI/UX folgt nach technischer Härtung.
 
 - Build-Python: **3.13.15**; Releaseprofil: Django **5.2.17**. Die zusätzliche
   Django-6.0-Kompatibilitätsprüfung bleibt in der regulären Regression erhalten.
-- `requirements-release.lock` sperrt alle 76 plattformabhängigen Paketanforderungen
+- `requirements-release.lock` sperrt alle plattformabhängigen Paketanforderungen
   samt SHA-256 der zugelassenen Distributionen. Auf einem einzelnen Betriebssystem
   werden nur die zutreffenden Plattformmarker installiert.
 - `release-lock.json` bindet Lock, Python und vier Eingabedateien an ihre Prüfsummen.
