@@ -331,9 +331,11 @@ class SeitenTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'KI-Assistent (Bonsai · lokal)')
 
-    def test_navigation_enthaelt_katalog(self):
+    def test_catalogue_is_reachable_through_settings(self):
         resp = self.client.get(reverse('sedo:dashboard'))
-        self.assertContains(resp, 'Leistungskatalog')
+        self.assertContains(resp, 'Einstellungen')
+        self.assertNotContains(resp, 'Leistungskatalog')
+        self.assertContains(self.client.get(reverse('sedo:settings')), reverse('sedo:service_catalog_list'))
 
     def test_angebots_pdf_mit_leistungstext(self):
         customer = Customer.objects.create(name='Testkunde GmbH')

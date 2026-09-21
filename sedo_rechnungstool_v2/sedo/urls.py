@@ -16,6 +16,7 @@ urlpatterns = [
     path('eingangsrechnungen/mail/<int:pk>/', incoming_views.collect, name='incoming_collect'),
     path('eingangsrechnungen/beleg/<int:pk>/', incoming_views.detail, name='incoming_detail'),
     path('eingangsrechnungen/beleg/<int:pk>/original/', incoming_views.original, name='incoming_original'),
+    path('eingangsrechnungen/beleg/<int:pk>/ansehen/', incoming_views.preview, name='incoming_preview'),
     path('eingangsrechnungen/paket/<int:pk>/', incoming_views.package_detail, name='incoming_package'),
     path('eingangsrechnungen/paket/<int:pk>/download/', incoming_views.package_download, name='incoming_package_download'),
     path('eingangsrechnungen/paket/<int:pk>/email/', incoming_views.package_email, name='incoming_package_email'),

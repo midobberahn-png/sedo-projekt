@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 from django.views.decorators.cache import never_cache
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_POST
 
 from .incoming_forms import IncomingInvoiceForm
@@ -118,10 +119,74 @@ def detail(request, pk):
 
 
 @login_required
+@never_cache
+def preview(request, pk):
+    invoice = get_object_or_404(IncomingInvoice, pk=pk)
+    context = {'invoice': invoice}
+    try:
+        data = verified_original(invoice)
+        kind = _preview_type(invoice, data)
+        context['kind'] = kind
+        if kind == 'text':
+            if len(data) > 1024 * 1024:
+                raise IncomingError('Diese XML-Datei ist für die Vorschau zu groß. Bitte das Original herunterladen.')
+            encoding = 'utf-16' if data.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig'
+            context['document_text'] = data.decode(encoding, errors='replace')
+    except IncomingError as exc:
+        context['error'] = str(exc)
+    return render(request, 'sedo/incoming/preview.html', context, status=409 if context.get('error') else 200)
+
+
+def _preview_type(invoice, data):
+    if invoice.media_type == 'application/pdf' and data.startswith(b'%PDF-'):
+        return 'pdf'
+    if invoice.media_type == 'application/xml':
+        return 'text'  # Always escaped text: never execute an XML stylesheet or embedded markup.
+    if invoice.media_type in ('image/png', 'image/jpeg', 'image/tiff'):
+        import io
+        from PIL import Image
+        try:
+            with Image.open(io.BytesIO(data)) as picture:
+                if picture.format not in ('PNG', 'JPEG', 'TIFF'):
+                    raise ValueError('Unsupported raster format')
+                if picture.width * picture.height > 25_000_000:
+                    raise ValueError('Preview exceeds pixel budget')
+                picture.verify()
+            return 'image'
+        except (OSError, ValueError, Image.DecompressionBombError) as exc:
+            raise IncomingError('Das Bild kann nicht angezeigt werden. Bitte das Original prüfen.') from exc
+    raise IncomingError('Dieses Dokument kann nicht angezeigt werden. Bitte das Original herunterladen und prüfen.')
+
+
+@login_required
+@never_cache
+@xframe_options_sameorigin
 def original(request, pk):
     invoice = get_object_or_404(IncomingInvoice, pk=pk)
     try:
-        return download_bytes(verified_original(invoice), invoice.filename)
+        data = verified_original(invoice)
+        if request.GET.get('inline') != '1':
+            return download_bytes(data, invoice.filename, invoice.media_type)
+        kind = _preview_type(invoice, data)
+        if kind not in ('pdf', 'image'):
+            return HttpResponse('Für dieses Dokument ist keine eingebettete Ansicht verfügbar.', status=400)
+        content_type = invoice.media_type
+        if kind == 'image':
+            import io
+            from PIL import Image
+            # Re-encode raster previews, including TIFF, for consistent browser support.
+            output = io.BytesIO()
+            try:
+                with Image.open(io.BytesIO(data)) as picture:
+                    picture.thumbnail((2400, 2400))
+                    picture.convert('RGB').save(output, format='PNG')
+            except (OSError, ValueError, Image.DecompressionBombError) as exc:
+                raise IncomingError('Das Bild kann nicht angezeigt werden. Bitte das Original prüfen.') from exc
+            data, content_type = output.getvalue(), 'image/png'
+        response = download_bytes(data, invoice.filename, content_type)
+        response['Content-Disposition'] = content_disposition_header(False, invoice.filename)
+        response['Content-Security-Policy'] = "default-src 'none'; object-src 'self'; frame-ancestors 'self'"
+        return response
     except IncomingError as exc:
         return HttpResponse(str(exc), status=409)
 

@@ -2,14 +2,14 @@
 <link rel="stylesheet" href="{% static 'sedo/reports-v1.css' %}?v=2">
 <div class="report-page">
   <div class="topbar report-head">
-    <div><div class="eyebrow">Unternehmensüberblick</div><h1 class="h1">Auswertungen</h1><p class="sub" data-help>Abgerechneter Umsatz, Forderungsalter und Angebotsentwicklung auf einen Blick.</p></div>
+    <div><div class="eyebrow">Unternehmensüberblick</div><h1 class="h1">Auswertungen</h1></div>
     <form method="get" class="report-year"><label for="report-year">Geschäftsjahr</label><select id="report-year" name="year">{% for option in year_options %}<option value="{{ option|unlocalize }}"{% if option == year %} selected{% endif %}>{{ option|unlocalize }}</option>{% endfor %}</select><button class="btn" type="submit">Anzeigen</button></form>
   </div>
 
   <section class="report-kpis" aria-label="Kennzahlen {{ year|unlocalize }}">
-    <article class="card"><span>Abgerechneter Umsatz {{ year|unlocalize }}</span><strong>{{ revenue }} €</strong><small data-help>Ausgestellte Rechnungen und Korrekturen ohne Stornos</small></article>
-    <article class="card"><span>Offene Forderungen heute</span><strong>{{ open_total }} €</strong><small data-help>Unabhängig vom gewählten Geschäftsjahr</small></article>
-    <article class="card"><span>Angebotsquote {{ year|unlocalize }}</span><strong>{% if offer_quote is not None %}{{ offer_quote }} %{% else %}—{% endif %}</strong><small data-help>Angenommen oder berechnet ÷ entschiedene Angebote</small></article>
+    <article class="card"><span>Abgerechneter Umsatz {{ year|unlocalize }}</span><strong>{{ revenue }} €</strong></article>
+    <article class="card"><span>Offene Forderungen heute</span><strong>{{ open_total }} €</strong></article>
+    <article class="card"><span>Angebotsquote {{ year|unlocalize }}</span><strong>{% if offer_quote is not None %}{{ offer_quote }} %{% else %}—{% endif %}</strong></article>
   </section>
 
   <section class="card report-section" aria-labelledby="monthly-heading">
@@ -26,7 +26,7 @@
 
   <div class="report-grid">
     <section class="card report-section" aria-labelledby="aging-heading"><div class="report-section-head"><div><h2 id="aging-heading">Offene Forderungen nach Alter</h2><p>Heutiger Stand nach Fälligkeit</p></div><a class="btn small" href="{% url 'sedo:open_items' %}">Offene Posten</a></div><div class="rank-list">{% for row in aging %}<div class="rank-row"><div><strong>{{ row.label }}</strong><span>{{ row.count }} · {{ row.total }} €</span></div><div class="rank-track aging"><span style="width:{{ row.percent }}%"></span></div></div>{% endfor %}</div></section>
-    <section class="card report-section offer-funnel" aria-labelledby="offers-heading"><div class="report-section-head"><div><h2 id="offers-heading">Angebote {{ year|unlocalize }}</h2><p data-help>Quote nur aus bereits entschiedenen Angeboten</p></div><a class="btn small" href="{% url 'sedo:offer_list' %}">Angebote öffnen</a></div><div class="offer-quote"><strong>{% if offer_quote is not None %}{{ offer_quote }} %{% else %}Noch keine Entscheidung{% endif %}</strong><span>Erfolgsquote</span></div><dl><div><dt>Angenommen / berechnet</dt><dd>{{ accepted_offers }}</dd></div><div><dt>Abgelehnt</dt><dd>{{ rejected_offers }}</dd></div><div><dt>Noch offen</dt><dd>{{ open_offers }}</dd></div></dl></section>
+    <section class="card report-section offer-funnel" aria-labelledby="offers-heading"><div class="report-section-head"><div><h2 id="offers-heading">Angebote {{ year|unlocalize }}</h2></div><a class="btn small" href="{% url 'sedo:offer_list' %}">Angebote öffnen</a></div><div class="offer-quote"><strong>{% if offer_quote is not None %}{{ offer_quote }} %{% else %}Noch keine Entscheidung{% endif %}</strong><span>Erfolgsquote</span></div><dl><div><dt>Angenommen / berechnet</dt><dd>{{ accepted_offers }}</dd></div><div><dt>Abgelehnt</dt><dd>{{ rejected_offers }}</dd></div><div><dt>Noch offen</dt><dd>{{ open_offers }}</dd></div></dl></section>
   </div>
 </div>
 {% endblock %}

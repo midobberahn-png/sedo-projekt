@@ -25,14 +25,14 @@
 
   {% if section == 'overview' or section == 'timeline' %}
   <section class="card timeline-card" aria-labelledby="timeline-heading">
-    <div class="work-section-head"><div><h2 id="timeline-heading">{% if section == 'overview' %}Letzte Aktivitäten{% else %}Kunden-Chronik{% endif %}</h2><p class="muted">Angebote, Rechnungen, Zahlungen, Mahnungen, E-Mails und Notizen in zeitlicher Reihenfolge.</p></div>{% if section == 'overview' %}<a class="btn small" href="?section=timeline">Ganze Chronik</a>{% endif %}</div>
+    <div class="work-section-head"><div><h2 id="timeline-heading">{% if section == 'overview' %}Letzte Aktivitäten{% else %}Kunden-Chronik{% endif %}</h2></div>{% if section == 'overview' %}<a class="btn small" href="?section=timeline">Ganze Chronik</a>{% endif %}</div>
     {% if section == 'timeline' %}
       <form class="timeline-note" method="post" action="{% url 'sedo:customer_note_create' customer.pk %}">{% csrf_token %}<label for="id_text"><strong>Notiz hinzufügen</strong><span>Gespräch, Vereinbarung oder nächsten Schritt festhalten.</span></label>{{ note_form.text }}<button class="btn primary" type="submit">Notiz speichern</button></form>
       <nav class="timeline-filters" aria-label="Chronik filtern">{% for key, label in timeline_kinds %}<a href="?section=timeline{% if key != 'all' %}&amp;kind={{ key }}{% endif %}"{% if timeline_kind == key %} class="active" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
     {% endif %}
     <ol class="timeline-list">
       {% for event in timeline_entries %}<li class="timeline-entry kind-{{ event.kind }}"><div class="timeline-marker" aria-hidden="true"></div><div class="timeline-content"><div class="timeline-meta"><span class="timeline-kind">{% if event.kind == 'invoice' %}Rechnung{% elif event.kind == 'offer' %}Angebot{% elif event.kind == 'payment' %}Zahlung{% elif event.kind == 'dunning' %}Mahnung{% elif event.kind == 'email' %}E-Mail{% else %}Notiz{% endif %}</span><time datetime="{{ event.occurred_at|date:'c' }}">{% if event.show_time %}{{ event.occurred_at|date:'d.m.Y · H:i' }}{% else %}{{ event.occurred_at|date:'d.m.Y' }}{% endif %}</time>{% if event.actor %}<span>{{ event.actor }}</span>{% endif %}</div><h3>{% if event.link %}<a href="{{ event.link }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</h3>{% if event.detail %}<p>{{ event.detail|linebreaksbr }}</p>{% endif %}</div>{% if event.has_amount %}<strong class="timeline-amount">{{ event.amount }} €</strong>{% endif %}</li>
-      {% empty %}<li class="empty-state"><p class="empty-title">Noch keine Aktivitäten</p><p>Eine Notiz ist ein guter Anfang für die gemeinsame Kundenhistorie.</p></li>{% endfor %}
+      {% empty %}<li class="empty-state"><p class="empty-title">Noch keine Aktivitäten</p></li>{% endfor %}
     </ol>
   </section>
   {% endif %}
@@ -55,7 +55,7 @@
         <div class="work-amount"><span>Brutto</span><strong>{{ r.gross_total }} €</strong></div>
         <div>{% include 'sedo/_invoice_state_stack.html' with invoice=r compact=1 %}</div>
         <div>{% if r.lifecycle == 'draft' %}<a class="btn small" href="{% url 'sedo:invoice_edit' r.pk %}" aria-label="Entwurf {{ r.number }} weiterbearbeiten">Weiterbearbeiten</a>{% else %}<a class="btn small" href="{% url 'sedo:invoice_detail' r.pk %}" aria-label="Rechnung {{ r.number }} öffnen">Öffnen</a>{% endif %}</div>
-      </li>{% empty %}<li class="empty-state"><p class="empty-title">{% if q or invoice_filter != 'all' %}Keine passenden Rechnungen{% else %}Noch keine Rechnungen{% endif %}</p>{% if q or invoice_filter != 'all' %}<a class="btn" href="?section=invoices">Alle Kundenrechnungen anzeigen</a>{% else %}<p>Erstelle eine Rechnung mit den Stammdaten dieses Kunden.</p><a class="btn" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk|unlocalize }}">Erste Rechnung erstellen</a>{% endif %}</li>{% endfor %}
+      </li>{% empty %}<li class="empty-state"><p class="empty-title">{% if q or invoice_filter != 'all' %}Keine passenden Rechnungen{% else %}Noch keine Rechnungen{% endif %}</p>{% if q or invoice_filter != 'all' %}<a class="btn" href="?section=invoices">Alle Kundenrechnungen anzeigen</a>{% else %}<a class="btn" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk|unlocalize }}">Erste Rechnung erstellen</a>{% endif %}</li>{% endfor %}
     </ul>
   </section>
   {% endif %}
@@ -73,7 +73,7 @@
   {% if section == 'objects' %}
   <section class="card" aria-labelledby="customer-objects-heading">
     <div class="work-section-head"><div><h2 id="customer-objects-heading">Objekte & Leistungsorte</h2><p class="muted">{{ page_obj.paginator.count }} Treffer</p></div><a class="btn" href="{% url 'sedo:object_create' %}?customer={{ customer.pk|unlocalize }}">Objekt anlegen</a></div>
-    <ul class="work-objects">{% for o in customer_objects %}<li><h3>{{ o.name }}</h3><p>{{ o.street|default:'Keine Straße hinterlegt' }}<br>{{ o.postcode }} {{ o.city }} · {{ o.country }}</p><a class="btn small" href="{% url 'sedo:object_update' o.pk %}" aria-label="Objekt {{ o.name }} bearbeiten">Bearbeiten</a><details class="work-object-actions"><summary>Weitere Aktionen<span class="sr-only"> für {{ o.name }}</span></summary><a href="{% url 'sedo:object_delete' o.pk %}">Objekt löschen…</a></details></li>{% empty %}<li class="empty-state"><p class="empty-title">{% if q %}Keine passenden Objekte{% else %}Noch keine Objekte{% endif %}</p>{% if q %}<a class="btn" href="?section=objects">Alle Kundenobjekte anzeigen</a>{% else %}<p>Lege wiederkehrende Leistungsorte an, um sie beim Erstellen von Belegen auszuwählen.</p>{% endif %}</li>{% endfor %}</ul>
+    <ul class="work-objects">{% for o in customer_objects %}<li><h3>{{ o.name }}</h3><p>{{ o.street|default:'Keine Straße hinterlegt' }}<br>{{ o.postcode }} {{ o.city }} · {{ o.country }}</p><a class="btn small" href="{% url 'sedo:object_update' o.pk %}" aria-label="Objekt {{ o.name }} bearbeiten">Bearbeiten</a><details class="work-object-actions"><summary>Weitere Aktionen<span class="sr-only"> für {{ o.name }}</span></summary><a href="{% url 'sedo:object_delete' o.pk %}">Objekt löschen…</a></details></li>{% empty %}<li class="empty-state"><p class="empty-title">{% if q %}Keine passenden Objekte{% else %}Noch keine Objekte{% endif %}</p>{% if q %}<a class="btn" href="?section=objects">Alle Kundenobjekte anzeigen</a>{% else %}{% endif %}</li>{% endfor %}</ul>
   </section>
   {% endif %}
 

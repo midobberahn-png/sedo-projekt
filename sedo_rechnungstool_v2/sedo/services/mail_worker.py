@@ -16,6 +16,7 @@ _guard = threading.Lock()
 _active = set()
 _worker = None
 _wake = threading.Event()
+POLL_SECONDS = 300
 
 
 def recover_interrupted_sends():
@@ -68,7 +69,7 @@ def start_mail_worker():
                 logger.error('E-Mail-Hintergrundabruf pausiert; bitte Datenbank prüfen.')
             finally:
                 close_old_connections()
-            _wake.wait(60)
+            _wake.wait(POLL_SECONDS)
             _wake.clear()
     _worker = threading.Thread(target=loop, name='sedo-mail-poll', daemon=True)
     _worker.start()

@@ -192,7 +192,8 @@ class SettingsTests(TestCase):
         self.assertEqual(AppSetting.get('ai_local_base_url'), CFG['base_url'])
         with patch.object(backend, '_local_request', return_value=MODELS) as request:
             response=self.client.post(self.url, {'action':'test_ai'}, follow=True)
-        self.assertContains(response, 'Lokales Modell erreichbar')
+        self.assertNotContains(response, 'Lokales Modell erreichbar')
+        self.assertTrue(any('Lokales Modell erreichbar' in str(message) for message in response.context['messages']))
         self.assertEqual(request.call_count, 1)
         self.assertEqual(request.call_args.args[1], '/models')
 

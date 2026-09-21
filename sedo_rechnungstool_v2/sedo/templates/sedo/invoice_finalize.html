@@ -25,7 +25,7 @@
   <p>Nach dem Finalisieren ist dieser Beleg nicht mehr direkt bearbeitbar. Änderungen erfolgen dann über Korrektur oder Storno. Es werden PDF, XML und ZUGFeRD erzeugt; es wird keine E-Mail versendet.</p>
   <p>Aktuelles Rechnungsdatum: <strong>{{ invoice.issue_date|date:'d.m.Y' }}</strong>.
     Leistungszeitraum: {{ invoice.period_start|date:'d.m.Y'|default:'—' }} – {{ invoice.period_end|date:'d.m.Y'|default:'—' }}.</p>
-  <p>Eine EN-Entwurfsnummer wird jetzt durch eine RE-Rechnungsnummer ersetzt. Eine bereits vorhandene RE-Nummer bleibt unverändert.</p>
+
   <form method="post" action="{% url 'sedo:invoice_finalize' invoice.pk %}">
     {% csrf_token %}
     <input type="hidden" name="confirm" value="1">
@@ -35,7 +35,7 @@
       <strong>Das Rechnungsdatum liegt in einem Vormonat.</strong>
       <p>Ohne Häkchen bestätigst du das bestehende Datum {{ invoice.issue_date|date:'d.m.Y' }}. Es wird nicht automatisch geändert.</p>
       <label class="check-line" for="datum-heute"><input type="checkbox" id="datum-heute" name="datum_heute" value="1"> Rechnungsdatum auf heute setzen ({{ heute|date:'d.m.Y' }})</label>
-      <p class="hint" data-help>Dabei verschiebt sich die Fälligkeit um denselben Zeitraum. Das vereinbarte Zahlungsziel und der Leistungszeitraum bleiben erhalten.</p>
+
     </div>
     {% endif %}
     <div class="toolbar mt-3">

@@ -516,7 +516,10 @@ class BelegkettenTests(TestCase):
             vorher = self.snapshot()
             antwort = self.client.get(reverse('sedo:security_status'))
         self.assertContains(antwort, 'Belegketten in Ordnung')
-        self.assertContains(antwort, 'Trockenlauf')
+        from pathlib import Path
+        from django.conf import settings
+        self.assertNotContains(antwort, 'Trockenlauf')
+        self.assertIn('Trockenlauf', (Path(settings.BASE_DIR) / 'BEDIENHINWEISE.md').read_text())
         self.assertEqual(self.snapshot(), vorher)
         self.assertNotIn('name="reparieren"', antwort.content.decode())
 

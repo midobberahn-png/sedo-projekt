@@ -328,9 +328,10 @@ class IncomingInvoiceTests(TestCase):
         self.assertEqual(IncomingInvoice.objects.count(), 1)
         self.assertFalse(MailLocation.objects.filter(folder__role='inbox', seen=True).exists())
 
-    def test_settings_cards_and_help_remain_renderable_without_javascript(self):
+    def test_settings_remain_renderable_without_javascript_and_without_help(self):
         response = self.client.get(reverse('sedo:settings'))
         self.assertContains(response, 'data-settings-section', count=6)
         self.assertContains(response, 'name="smtp_host"')
         self.assertContains(response, 'quiet-ui.js')
-        self.assertContains(response, 'data-help')
+        self.assertNotContains(response, 'data-help')
+        self.assertNotContains(response, 'info-tip')

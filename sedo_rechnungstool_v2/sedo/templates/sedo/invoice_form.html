@@ -13,7 +13,7 @@
       <div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></div>
       <div>
         <h1>{{ title }}</h1>
-        <div class="sub" data-help>In fünf Schritten zur fertigen Rechnung – Empfänger, Leistung und Betrag vor dem Erstellen prüfen.</div>
+
       </div>
     </div>
     <a class="work-close" href="{% url 'sedo:invoice_list' %}" title="Abbrechen" aria-label="Rechnungserstellung abbrechen">×</a>
@@ -30,7 +30,7 @@
     <section class="wizard-step" id="step-kunde" data-wizard-step data-step-label="Empfänger">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></div>
-        <div><h2>Wer bekommt die Rechnung?</h2><div class="sub" data-help>Gespeicherten Kunden auswählen oder einen neuen Empfänger erfassen.</div></div>
+        <div><h2>Wer bekommt die Rechnung?</h2></div>
       </div>
       <div class="form-card" id="section-customer">
         <div class="form-card-title">
@@ -45,7 +45,7 @@
           </div>
           <label for="id_customer">Oder aus der Kundenliste wählen</label>
           {{ form.customer }}{{ form.customer.errors }}
-          <div class="hint" data-help>Bei ausgewählten Kunden werden die gespeicherten Stammdaten verwendet.</div>
+
 
           <div class="customer-selected-pill" id="customer-pill">
             <strong id="pill-name">—</strong>
@@ -61,7 +61,7 @@
           <button type="button" class="btn small" id="clear-customer">Neuen Empfänger erfassen</button>
           <button type="button" class="btn small" id="customer-retry" hidden>Erneut laden</button>
         </div>
-        <p class="hint" id="customer-data-hint" data-help>Manuelle Eingaben legen beim Speichern einen neuen Kunden an. Bei ausgewähltem Kunden gelten dessen Stammdaten.</p>
+
         <div class="work-grid compact-form" id="customer-fields">
 
           <div><label for="id_salutation">{{ form.salutation.label }}</label>{{ form.salutation }}{{ form.salutation.errors }}</div>
@@ -71,7 +71,7 @@
           <div><label for="id_customer_type">{{ form.customer_type.label }}</label>{{ form.customer_type }}{{ form.customer_type.errors }}</div>
           <div><label for="id_contact_person">{{ form.contact_person.label }}</label>{{ form.contact_person }}{{ form.contact_person.errors }}</div>
           <div><label for="id_phone">{{ form.phone.label }}</label>{{ form.phone }}{{ form.phone.errors }}</div>
-          <div><label for="id_email">{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}<div class="hint" data-help>Für den E-Mail-Entwurf.</div></div>
+          <div><label for="id_email">{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}</div>
           <div><label for="id_street">{{ form.street.label }}</label>{{ form.street }}{{ form.street.errors }}</div>
           <div><label for="id_postcode">{{ form.postcode.label }}</label>{{ form.postcode }}{{ form.postcode.errors }}</div>
           <div><label for="id_city">{{ form.city.label }}</label>{{ form.city }}{{ form.city.errors }}</div>
@@ -84,7 +84,7 @@
     <section class="wizard-step" id="step-objekt" data-wizard-step data-step-label="Leistungsort">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></div>
-        <div><h2>Wo wurde gearbeitet?</h2><div class="sub" data-help>Objekt auswählen oder die Adresse der ausgeführten Leistung eingeben.</div></div>
+        <div><h2>Wo wurde gearbeitet?</h2></div>
       </div>
       <div class="form-card" id="section-object">
         <div class="form-card-title">
@@ -103,7 +103,7 @@
           <button type="button" class="btn small" id="object-details-toggle" aria-controls="object-fields" aria-expanded="true">Details ausblenden</button>
           <button type="button" class="btn small" id="clear-object">Anderen Leistungsort eingeben</button>
         </div>
-        <p class="hint" data-help>Ohne Objektauswahl wird ein manuell benannter Leistungsort beim Speichern als neues Objekt angelegt.</p>
+
         <div class="work-grid" id="object-fields">
           <div><label for="id_object_name">{{ form.object_name.label }}</label>{{ form.object_name }}{{ form.object_name.errors }}</div>
           <div><label for="id_object_street">{{ form.object_street.label }}</label>{{ form.object_street }}{{ form.object_street.errors }}</div>
@@ -118,7 +118,7 @@
     <section class="wizard-step" id="step-rechnungsdaten" data-wizard-step data-step-label="Rechnungsdaten">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></div>
-        <div><h2>Datum, Zahlungsziel, Zeitraum</h2><div class="sub" data-help>Die Vorgaben passen meistens – nur bei Bedarf ändern.</div></div>
+        <div><h2>Datum, Zahlungsziel, Zeitraum</h2></div>
       </div>
       <div class="form-card">
         <div class="work-grid compact-form">
@@ -140,7 +140,7 @@
     <section class="wizard-step" id="step-positionen" data-wizard-step data-step-label="Positionen">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg></div>
-        <div><h2>Was wird abgerechnet? <span class="info-tip" tabindex="0" aria-label="Hinweis zu den Positionen">i<span class="info-tip-text">Bezeichnung, Menge und Einzelpreis eingeben – Gesamtbeträge werden automatisch berechnet.</span></span></h2><div class="sub" data-help>Gesamtbeträge werden während der Eingabe berechnet.</div></div>
+        <div><h2>Was wird abgerechnet? </h2></div>
       </div>
       <div class="form-card">
         {% if formset.non_form_errors %}<div class="card warning-card wizard-step-error" style="margin-bottom:12px">{{ formset.non_form_errors }}</div>{% endif %}
@@ -207,7 +207,7 @@
     <section class="wizard-step" id="step-pruefen" data-wizard-step data-step-label="Prüfen">
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></div>
-        <div><h2>Rechnung prüfen</h2><div class="sub" data-help>Empfänger, Leistungsort, Positionen und Gesamtbetrag noch einmal kontrollieren.</div></div>
+        <div><h2>Rechnung prüfen</h2></div>
       </div>
       <div class="form-card invoice-review">
         <div class="invoice-review-head"><h3>Rechnungsübersicht</h3><span class="hint">Noch nicht ausgestellt</span></div>
@@ -221,9 +221,9 @@
         <ul id="rc-items" class="invoice-review-items"></ul>
         <button class="btn small" type="button" data-review-goto="step-positionen" hidden>Positionen prüfen</button>
         <div class="invoice-review-totals"><span>Netto <strong id="rc-net">0,00 €</strong></span><span>Umsatzsteuer <strong id="rc-vat">0,00 €</strong></span><span class="review-gross">Gesamtbetrag <strong id="rc-gross">0,00 €</strong></span></div>
-        <p class="hint" data-help>Die Übersicht rechnet während der Eingabe mit. Mit „Vorschau“ die serverseitig berechneten Beträge prüfen.</p>
+
         <div id="rc-warnings"></div>
-        <noscript><p>Ohne JavaScript: Mit „Vorschau“ unten die vollständigen Rechnungsdaten und Beträge prüfen.</p></noscript>
+        <noscript></noscript>
       </div>
 
       <details class="form-card wizard-recurring" {% if request.POST.save_as_recurring %}open{% endif %}>
@@ -233,14 +233,14 @@
             <input type="checkbox" name="save_as_recurring" value="1" {% if request.POST.save_as_recurring %}checked{% endif %}>
             Diese Rechnung zusätzlich als Abo-/Monatsrechnungsvorlage speichern
           </label>
-          <div class="hint" data-help>Vorlage erscheint unter <strong>Monatsrechnung</strong> und kann monatlich erzeugt werden.</div>
+
           <div style="margin-top:10px">
             <label style="font-size:13px;color:#4b5563;font-weight:800;margin-bottom:5px;display:block">Vorlagenname (optional)</label>
             <input class="form-control form-control-sm" type="text" name="recurring_title" value="{{ request.POST.recurring_title }}" placeholder="z. B. Monatliche Treppenhausreinigung · Musterstraße 1">
           </div>
         </div>
       </details>
-      <p class="hint">Entwürfe bleiben bearbeitbar. „Rechnung erstellen“ stellt den Beleg aus. „Erstellen &amp; E-Mail vorbereiten“ lädt eine E-Mail-Datei zum Versand im Mailprogramm herunter.</p>
+
     </section>
 
     <div class="sticky-actions wizard-bar">
@@ -252,7 +252,7 @@
         <span class="wizard-final" data-wizard-final>
           <button class="btn" type="submit" name="action" value="preview">Vorschau</button>
           <button class="btn" type="submit" name="action" value="draft">Als Entwurf speichern</button>
-          <span class="hint">Entwürfe erhalten EN…; die Rechnungsnummer entsteht erst beim Finalisieren.</span>
+
           <button class="btn primary" type="submit" name="action" value="create">Rechnung erstellen</button>
           <button class="btn" type="submit" name="action" value="send">Erstellen &amp; E-Mail vorbereiten</button>
         </span>

@@ -153,6 +153,8 @@ def main() -> int:
         return 1
 
     import webview
+    # Explicit downloads use the native save dialog; document previews stay in SEDO.
+    webview.settings['ALLOW_DOWNLOADS'] = True
 
     # Fensterposition/-größe der letzten Sitzung wiederherstellen
     import json

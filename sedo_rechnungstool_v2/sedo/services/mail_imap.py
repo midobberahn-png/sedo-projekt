@@ -205,6 +205,7 @@ def _apply_flags(location, flags):
 
 
 def sync_folder(client, folder, budget, deadline, heartbeat=None):
+    from . import mail_progress
     validity = select(client, folder)
     # An empty selected mailbox may answer FETCH 1:* with NO on some servers.
     uids_raw = checked(client.uid('SEARCH', None, 'UNDELETED'))
@@ -248,6 +249,8 @@ def sync_folder(client, folder, budget, deadline, heartbeat=None):
     loaded = 0
     loaded_uids = set()
     missing_cache = {uid for uid, location in existing.items() if uid in metadata and not cache_exists(location.message)}
+    cached = len(existing.keys() & live_uids) - len(missing_cache)
+    mail_progress.update(folder.account_id, folder.pk, cached, len(live_uids))
     for uid in sorted((metadata.keys() - existing.keys()) | missing_cache, reverse=True):
         if loaded >= budget or time.monotonic() >= deadline:
             break
@@ -275,14 +278,17 @@ def sync_folder(client, folder, budget, deadline, heartbeat=None):
             defaults={'message': message, 'seen': location.seen, 'flagged': location.flagged, 'answered': location.answered})
         loaded += 1
         loaded_uids.add(uid)
+        mail_progress.update(folder.account_id, folder.pk, cached + loaded, len(live_uids))
     folder.cached_count = folder.locations.count() - len(missing_cache - loaded_uids)
     folder.save(update_fields=['cached_count'])
     return loaded
 
 
 def sync_account(account_id):
+    from . import mail_progress
     with account_lease(account_id) as token:
         account = MailAccount.objects.get(pk=account_id)
+        mail_progress.begin(account_id)
         try:
             with connection(account) as client:
                 folders = discover(client, account)
@@ -304,6 +310,8 @@ def sync_account(account_id):
         except MailError as exc:
             MailAccount.objects.filter(pk=account_id).update(last_error=str(exc)[:400])
             raise
+        finally:
+            mail_progress.finish(account_id)
 
 
 def checked_location(client, location):

@@ -155,7 +155,8 @@ class StartupSettingsTests(TestCase):
         with patch('sedo.views.start_bonsai_background',return_value=True) as start:
             response=self.client.post(reverse('sedo:settings'),{'action':'start_ai'},follow=True)
         start.assert_called_once_with(manual=True)
-        self.assertContains(response,'Bonsai wird im Hintergrund gestartet')
+        self.assertNotContains(response, 'Bonsai wird im Hintergrund gestartet')
+        self.assertTrue(any('Bonsai wird im Hintergrund gestartet' in str(message) for message in response.context['messages']))
         user.is_staff=False;user.save()
         with patch('sedo.views.start_bonsai_background') as start:
             self.assertEqual(self.client.post(reverse('sedo:settings'),{'action':'start_ai'}).status_code,403)

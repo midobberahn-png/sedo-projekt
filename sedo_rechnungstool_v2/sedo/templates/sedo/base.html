@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/static/sedo/accessibility-v2.css?v=1">
   <link rel="stylesheet" href="/static/sedo/theme-light-blue.css?v=1">
   <link rel="stylesheet" href="/static/sedo/operations-v1.css?v=1">
-<link rel="stylesheet" href="/static/sedo/quiet-ui.css?v=1">
+<link rel="stylesheet" href="/static/sedo/quiet-ui.css?v=2">
 </head>
 <body class="app-shell">
 <a class="skip-link" href="#main-content">Zum Inhalt springen</a>
@@ -58,37 +58,34 @@
     </div>
     <nav class="nav" aria-label="Hauptnavigation">
       <div class="drawer-title"><span>Tägliche Arbeit</span></div>
-      <a {% if 'mail_' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:mail_inbox' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg></span><span class="nav-text">E-Mail</span></a>
-      <a {% if "incoming_" in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:incoming_index' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></span><span class="nav-text">Eingangsrechnungen</span></a>
-      <a {% if request.resolver_match.url_name == 'dashboard' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:dashboard' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-dashboard"/></svg></span><span class="nav-text">Dashboard</span></a>
-      <a {% if 'calendar_' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:calendar_index' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></span><span class="nav-text">Kalender</span></a>
-      <a {% if 'task_' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:task_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></span><span class="nav-text">Aufgaben</span></a>
-      <a {% if 'customer' in request.resolver_match.url_name or 'object' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:customer_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span><span class="nav-text">Kunden</span></a>
-      <a {% if 'invoice' in request.resolver_match.url_name or 'reminder' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:invoice_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></span><span class="nav-text">Rechnungen</span></a>
-      <a {% if 'offer' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:offer_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg></span><span class="nav-text">Angebote</span></a>
-      <a {% if request.resolver_match.url_name == 'open_items' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:open_items' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></span><span class="nav-text">Offene Posten</span></a>
-
+      <a aria-label="Dashboard" {% if request.resolver_match.url_name == 'dashboard' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:dashboard' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-dashboard"/></svg></span><span class="nav-text">Dashboard</span></a>
+      <a aria-label="E-Mail" {% if 'mail_' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:mail_inbox' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg></span><span class="nav-text">E-Mail</span></a>
+      <a aria-label="Rechnungen" {% if 'invoice' in request.resolver_match.url_name and 'incoming' not in request.resolver_match.url_name and request.resolver_match.url_name != 'invoice_create' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:invoice_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></span><span class="nav-text">Rechnungen</span></a>
+      <a aria-label="Angebote" {% if 'offer' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:offer_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-offer"/></svg></span><span class="nav-text">Angebote</span></a>
+      <a aria-label="Kalender" {% if 'calendar_' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:calendar_index' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></span><span class="nav-text">Kalender</span></a>
+      <a aria-label="Eingangsrechnungen" {% if "incoming_" in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:incoming_index' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></span><span class="nav-text">Eingangsrechnungen</span></a>
       <div class="drawer-title"><span>Abrechnung</span></div>
-      <a {% if request.resolver_match.url_name == 'aareon_monthly' or request.resolver_match.url_name == 'aareon_import' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:aareon_monthly' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-building"/></svg></span><span class="nav-text">GWG</span></a>
-      <a {% if 'recurring' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:recurring_monthly' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></span><span class="nav-text">Abo-Rechnungen</span></a>
-      <a {% if 'payment' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:payment_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-payment"/></svg></span><span class="nav-text">Zahlungen</span></a>
-      <a {% if 'cashbook' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:cashbook_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-cashbook"/></svg></span><span class="nav-text">Kassenbuch</span></a>
-      <a {% if request.resolver_match.url_name == 'month_close' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:month_close' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-monthclose"/></svg></span><span class="nav-text">Monatsabschluss</span></a>
-      <a {% if request.resolver_match.url_name == 'reports' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:reports' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></span><span class="nav-text">Auswertungen</span></a>
-
+      <a aria-label="Neue Rechnung" {% if request.resolver_match.url_name == 'invoice_create' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:invoice_create' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></span><span class="nav-text">Neue Rechnung</span></a>
+      <a aria-label="GWG Monatsrechnung" {% if request.resolver_match.url_name == 'aareon_monthly' or request.resolver_match.url_name == 'aareon_import' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:aareon_monthly' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-building"/></svg></span><span class="nav-text">GWG Monatsrechnung</span></a>
+      <a aria-label="Abo-Rechnung" {% if 'recurring' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:recurring_monthly' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></span><span class="nav-text">Abo-Rechnung</span></a>
+      <div class="drawer-title"><span>Finanzen</span></div>
+      <a aria-label="Kassenbuch" {% if 'cashbook' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:cashbook_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-cashbook"/></svg></span><span class="nav-text">Kassenbuch</span></a>
+      <a aria-label="Zahlungen" {% if 'payment' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:payment_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-payment"/></svg></span><span class="nav-text">Zahlungen</span></a>
+      <a aria-label="Offene Posten" {% if request.resolver_match.url_name == 'open_items' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:open_items' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-open"/></svg></span><span class="nav-text">Offene Posten</span></a>
+      <a aria-label="Monatsabschluss" {% if request.resolver_match.url_name == 'month_close' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:month_close' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-monthclose"/></svg></span><span class="nav-text">Monatsabschluss</span></a>
+      <a aria-label="Auswertung" {% if request.resolver_match.url_name == 'reports' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:reports' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></span><span class="nav-text">Auswertung</span></a>
       <div class="drawer-title"><span>System</span></div>
-      <a {% if request.resolver_match.url_name == 'readiness' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:readiness' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></span><span class="nav-text">Startklar</span></a>
-      <a {% if 'service_catalog' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:service_catalog_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-catalog"/></svg></span><span class="nav-text">Leistungskatalog</span></a>
-      <details class="nav-group"{% if request.resolver_match.url_name == 'settings' or request.resolver_match.url_name == 'backup' or request.resolver_match.url_name == 'security_status' or request.resolver_match.url_name == 'audit_log' %} open{% endif %}>
-        <summary><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-text">Administration</span><span class="nav-caret">▾</span></summary>
+      <a aria-label="Kunden" {% if 'customer' in request.resolver_match.url_name or 'object' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:customer_list' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span><span class="nav-text">Kunden</span></a>
+      <details class="nav-group"{% if request.resolver_match.url_name == 'backup' or request.resolver_match.url_name == 'security_status' or request.resolver_match.url_name == 'audit_log' %} open{% endif %}>
+        <summary aria-label="Administration"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-text">Administration</span><span class="nav-caret">▾</span></summary>
         <div class="nav-sub">
-          <a {% if request.resolver_match.url_name == 'settings' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:settings' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-text">Einstellungen</span></a>
-          <a {% if request.resolver_match.url_name == 'backup' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:backup' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-backup"/></svg></span><span class="nav-text">Backup</span></a>
-          <a {% if request.resolver_match.url_name == 'security_status' or request.resolver_match.url_name == 'audit_log' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:security_status' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><span class="nav-text">Sicherheit</span></a>
-          <a href="/admin/"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-admin"/></svg></span><span class="nav-text">Django-Admin</span></a>
+          <a aria-label="Backup" {% if request.resolver_match.url_name == 'backup' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:backup' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-backup"/></svg></span><span class="nav-text">Backup</span></a>
+          <a aria-label="Sicherheit" {% if request.resolver_match.url_name == 'security_status' or request.resolver_match.url_name == 'audit_log' %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:security_status' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><span class="nav-text">Sicherheit</span></a>
+          <a aria-label="Django-Admin" href="/admin/"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-admin"/></svg></span><span class="nav-text">Django-Admin</span></a>
           <form method="post" action="{% url 'logout' %}" class="nav-logout-form">{% csrf_token %}<button type="submit" class="nav-logout-btn"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-logout"/></svg></span><span class="nav-text">Abmelden</span></button></form>
         </div>
       </details>
+      <a aria-label="Einstellungen" {% if request.resolver_match.url_name == 'settings' or request.resolver_match.url_name == 'readiness' or 'service_catalog' in request.resolver_match.url_name %}class="active" aria-current="page"{% endif %} href="{% url 'sedo:settings' %}"><span class="nav-ico"><svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-text">Einstellungen</span></a>
     </nav>
   </aside>
   <main class="main" id="app-main">
@@ -114,9 +111,9 @@
       </div>
     </header>
     <div class="page-shell" id="main-content" tabindex="-1">
-      {% if messages %}<div class="server-messages" role="region" aria-label="Meldungen">{% for message in messages %}<div class="notice {{ message.tags }}" role="status">{{ message }}</div>{% endfor %}</div>{% endif %}
+      {% if messages %}<div class="server-messages" role="region" aria-label="Meldungen">{% for message in messages %}{% if message.level >= 30 %}<div class="notice {{ message.tags }}" role="status">{{ message }}</div>{% endif %}{% endfor %}</div>{% endif %}
       {% block content %}{% endblock %}
-      <div class="footer-note">v2.3.1 · Backup im Systemmenü</div>
+
     </div>
   </main>
 </div>
@@ -124,7 +121,7 @@
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 <script src="/static/sedo/wizard.js?v=3_24"></script>
 <script src="/static/sedo/global_search.js?v=3_1"></script>
-<script src="/static/sedo/accessibility-v2.js?v=1"></script>
-<script src="/static/sedo/quiet-ui.js?v=1"></script>
+<script src="/static/sedo/accessibility-v2.js?v=2"></script>
+<script src="/static/sedo/quiet-ui.js?v=2"></script>
 </body>
 </html>

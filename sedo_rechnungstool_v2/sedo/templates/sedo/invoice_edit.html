@@ -18,7 +18,7 @@
 <div class="draft-workflow">
 <div class="topbar">
   <div><div class="eyebrow">Noch nicht ausgestellt</div><h1>Entwurf {{ invoice.number }} bearbeiten</h1>
-    <p class="sub" data-help>Die Nummer bleibt beim Speichern unverändert. Es entsteht nur ein Wasserzeichen-PDF, keine E-Rechnung.</p></div>
+    </div>
 </div>
 <form method="post" id="entwurf-bearbeiten">
   {% csrf_token %}
@@ -26,16 +26,16 @@
   {{ form.non_field_errors }}
   <div class="card">
     <h2>Rechnungsdaten</h2>
-    <p class="hint" data-help>Hier werden nur vorhandene Kunden und Objekte ausgewählt. Stammdaten werden weder verändert noch neu angelegt.</p>
+
     <div class="draft-fields">
     {% for field in form %}
     <div class="form-group{% if field.name == 'note' %} field-wide{% endif %}">
       {{ field.label_tag }}{{ field }}{{ field.errors }}
-      {% if field.help_text %}<div class="hint" data-help>{{ field.help_text }}</div>{% endif %}
+
     </div>
     {% endfor %}
     </div>
-    <p class="hint" data-help>Das Objekt muss zum ausgewählten Kunden gehören.</p>
+
   </div>
   <div class="card">
     <div class="section-head"><h2>Positionen</h2><span class="muted">Mindestens eine Position ist erforderlich.</span></div>
@@ -54,7 +54,7 @@
       {% endfor %}
     </div>
     <button class="btn" id="position-hinzufuegen" type="button" hidden>Position hinzufügen</button>
-    <noscript><p class="hint">Ohne JavaScript steht je Speichervorgang eine zusätzliche Positionszeile bereit.</p></noscript>
+    <noscript></noscript>
   </div>
   <div class="toolbar card">
     <a class="btn" href="{% url 'sedo:invoice_detail' invoice.pk %}">Abbrechen</a>

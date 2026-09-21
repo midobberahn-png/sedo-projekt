@@ -2,7 +2,7 @@
 {% block title %}Kalender · SEDO{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{% static 'sedo/calendar.css' %}?v=1">
-<div class="topbar calendar-heading"><div><div class="eyebrow">Deine Zeit im Blick</div><h1 class="h1">Kalender</h1><p data-help>Termine in ausgewählten iCloud-Kalendern werden mit Apple Kalender auf deinen Geräten abgeglichen. Lokale SEDO-Termine bleiben auf diesem Rechner.</p></div><div class="toolbar"><a class="btn primary" href="{% url 'sedo:calendar_create' %}">Neuer Termin</a><a class="btn icon-btn" href="{% url 'sedo:calendar_settings' %}" aria-label="Kalendereinstellungen"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg></a></div></div>
+<div class="topbar calendar-heading"><div><div class="eyebrow">Deine Zeit im Blick</div><h1 class="h1">Kalender</h1></div><div class="toolbar"><a class="btn primary" href="{% url 'sedo:calendar_create' %}">Neuer Termin</a><a class="btn icon-btn" href="{% url 'sedo:calendar_settings' %}" aria-label="Kalendereinstellungen"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg></a></div></div>
 {% if connection.last_error %}<div class="card calendar-notice" role="status">{{ connection.last_error }}</div>{% endif %}
 {% if conflicts %}<div class="card calendar-notice"><h2>Änderungen vergleichen</h2>{% for event in conflicts %}<p><a href="{% url 'sedo:calendar_detail' event.pk %}">{{ event.title }}</a> · {{ event.calendar.name }}</p>{% endfor %}</div>{% endif %}
 {% for error in calendar_errors %}<p class="calendar-notice" role="status">{{ error }}</p>{% endfor %}

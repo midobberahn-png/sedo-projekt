@@ -19,19 +19,21 @@ class AppShellV2Tests(SimpleTestCase):
         self.assertIn(shell, text)
         self.assertLess(text.index(design), text.index(shell))
 
-    def test_navigation_hat_drei_klare_arbeitsgruppen(self):
-        text = BASE.read_text(encoding='utf-8')
-        daily = text.index('<span>Tägliche Arbeit</span>')
-        billing = text.index('<span>Abrechnung</span>')
-        system = text.index('<span>System</span>')
-        self.assertLess(daily, billing)
-        self.assertLess(billing, system)
-        for label in ('Dashboard', 'Kunden', 'Rechnungen', 'Angebote', 'Offene Posten'):
-            self.assertIn(f'<span class="nav-text">{label}</span>', text)
-        for label in ('GWG', 'Abo-Rechnungen', 'Zahlungen', 'Kassenbuch', 'Monatsabschluss'):
-            self.assertIn(f'<span class="nav-text">{label}</span>', text)
-        self.assertIn('<span class="nav-text">Leistungskatalog</span>', text)
-        self.assertIn('<span class="nav-text">Administration</span>', text)
+    def test_navigation_has_requested_groups_and_order(self):
+        from lxml import html
+        from django.template.loader import render_to_string
+        doc = html.fromstring(render_to_string('sedo/base.html'))
+        nav = doc.xpath('//nav[@aria-label="Hauptnavigation"]')[0]
+        self.assertEqual(nav.xpath('./div[@class="drawer-title"]/span/text()'),
+                         ['Tägliche Arbeit', 'Abrechnung', 'Finanzen', 'System'])
+        self.assertEqual(nav.xpath('./a/span[@class="nav-text"]/text()'), [
+            'Dashboard', 'E-Mail', 'Rechnungen', 'Angebote', 'Kalender', 'Eingangsrechnungen',
+            'Neue Rechnung', 'GWG Monatsrechnung', 'Abo-Rechnung', 'Kassenbuch', 'Zahlungen',
+            'Offene Posten', 'Monatsabschluss', 'Auswertung', 'Kunden', 'Einstellungen'])
+        self.assertFalse(nav.xpath('.//a[contains(@href,"aufgaben")]'))
+        self.assertFalse(nav.xpath('.//a[contains(@href,"startklar") or contains(@href,"leistungskatalog")]'))
+        self.assertEqual(nav.xpath('./a[@aria-label="Neue Rechnung"]/@href'), ['/rechnungen/neu/'])
+        self.assertTrue(all(node.get('aria-label') for node in nav.xpath('./a')))
 
     def test_globale_suche_ist_einmalig_in_der_commandbar(self):
         text = BASE.read_text(encoding='utf-8')

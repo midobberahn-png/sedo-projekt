@@ -2,18 +2,18 @@
 {% block content %}
 <div class="topbar">
   <div>
-    <div class="eyebrow">Verkauf</div><h1 class="h1">Abo-Rechnungen <span class="info-tip" tabindex="0" aria-label="Hinweis zu wiederkehrenden Rechnungen">i<span class="info-tip-text">Gespeicherte Vorlagen auswählen, Monat festlegen und den Lauf gesammelt erzeugen. Die GWG-Monatsrechnung bleibt separat.</span></span></h1>
-    <div class="sub" data-help>Abo-/Monatsrechnungsvorlagen für Kunden ohne GWG-Mapping erzeugen.</div>
+    <div class="eyebrow">Verkauf</div><h1 class="h1">Abo-Rechnungen </h1>
+
   </div>
   <div class="page-actions"><a class="btn" href="{% url 'sedo:invoice_list' %}">Rechnungsarchiv</a></div>
 </div>
 <div class="process-strip"><div class="process-step active"><b>1</b><span>Vorlagen prüfen</span></div><div class="process-step"><b>2</b><span>Monat wählen</span></div><div class="process-step"><b>3</b><span>Rechnungen erzeugen</span></div><div class="process-step"><b>4</b><span>Archiv prüfen</span></div></div>
 <div class="card">
-  <div class="section-head"><div><h2>Vorschaukalender</h2><p class="hint" data-help>Unverbindliche Vorschau aus den aktiven Vorlagen. Es werden dabei keine Rechnungen erzeugt. Die Vorschau verwendet „Vorhandene Rechnungen überspringen“ und alle aktiven Vorlagen.</p></div><form method="get" class="toolbar"><label for="preview-date">Erster Rechnungstag</label><input id="preview-date" type="date" name="preview_date" value="{{ default_issue_date }}"><button class="btn">Vorschau aktualisieren</button></form></div>
+  <div class="section-head"><div><h2>Vorschaukalender</h2></div><form method="get" class="toolbar"><label for="preview-date">Erster Rechnungstag</label><input id="preview-date" type="date" name="preview_date" value="{{ default_issue_date }}"><button class="btn">Vorschau aktualisieren</button></form></div>
   <div class="preview-calendar">{% for month in preview_months %}<section class="preview-month"><div class="eyebrow">{{ month.period_start|date:'F Y' }}</div><h3>{{ month.pending_count }} geplante Rechnungen</h3><p class="hint">Rechnungsdatum {{ month.issue_date|date:'d.m.Y' }}</p>{% for row in month.rows %}<div class="preview-row {% if row.exists or row.duplicate %}preview-existing{% endif %}"><div><strong>{{ row.template.customer.name }}</strong><div class="muted">{{ row.template.title }} · fällig {{ row.due_date|date:'d.m.Y' }}</div></div><div><strong>{{ row.gross }} €</strong>{% if row.exists %}<div><span class="badge success">vorhanden</span></div>{% elif row.duplicate %}<div><span class="badge amber">gleicher Kunde/Objekt bereits geplant</span></div>{% endif %}</div></div>{% empty %}<div class="empty-state">Keine aktiven Vorlagen.</div>{% endfor %}<div class="preview-total"><span>Noch zu erzeugen</span><strong>{{ month.total }} €</strong></div></section>{% endfor %}</div>
 </div>
 <div class="card monthly-card" id="normal-block">
-  <div class="section-head"><div><h2>Monatsrechnungen / Abo-Rechnungen <span class="info-tip" tabindex="0" aria-label="Hinweis zu Vorlagen">i<span class="info-tip-text">Für Kunden ohne GWG-Mapping. Vorlagen entstehen entweder über „Neue Rechnung“ mit Haken „als Abo-/Monatsrechnungsvorlage speichern“ oder direkt hier über „Vorlage anlegen“.</span></span></h2></div><a class="btn primary" href="{% url 'sedo:recurring_create' %}">Vorlage anlegen</a></div>
+  <div class="section-head"><div><h2>Monatsrechnungen / Abo-Rechnungen </h2></div><a class="btn primary" href="{% url 'sedo:recurring_create' %}">Vorlage anlegen</a></div>
   <form method="post" action="{% url 'sedo:recurring_generate' %}" class="stacked-form compact-form" data-recurring-selection>
     {% csrf_token %}
     <div class="form-grid compact-grid">

@@ -322,7 +322,10 @@ class MailProtocolTests(MailFixture):
         self.assertEqual(folder.cached_count, 10)
         self.assertEqual(min(folder.locations.values_list('uid', flat=True)), 4)
         response = self.client.get(reverse('sedo:mail_inbox'), {'folder': folder.pk})
-        self.assertContains(response, '10 von 13')
+        state = self.client.get(reverse('sedo:mail_status')).json()['accounts'][0]
+        self.assertEqual((state['loaded'], state['total']), (10, 13))
+        self.assertFalse(state['running'])
+        self.assertNotContains(response, 'Jetzt abrufen')
         mail_imap.sync_account(self.account.pk)
         self.assertEqual(folder.locations.count(), 13)
 

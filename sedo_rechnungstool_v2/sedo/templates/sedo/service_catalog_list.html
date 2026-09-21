@@ -2,7 +2,7 @@
 <div class="topbar">
   <div>
     <div class="eyebrow">Stammdaten</div><h1 class="h1">Leistungskatalog</h1>
-    <div class="sub" data-help>Wiederverwendbare Leistungen mit Beschreibungstexten. Neue Leistungen lernt der KI-Assistent automatisch aus deinen Angeboten – hier kannst du sie prüfen und anpassen.</div>
+
   </div>
   <a class="btn primary" href="{% url 'sedo:service_catalog_create' %}">Neue Leistung</a>
 </div>
@@ -34,7 +34,7 @@
   <div class="empty-state">
     <div class="empty-icon"><svg class="ico" aria-hidden="true"><use href="#i-catalog"/></svg></div>
     <p>Noch keine Leistungen im Katalog.</p>
-    <p class="hint" data-help>Der Katalog füllt sich automatisch, sobald der KI-Assistent Angebote erzeugt – oder lege die erste Leistung manuell an.</p>
+
     <a class="btn primary" href="{% url 'sedo:service_catalog_create' %}">Neue Leistung</a>
   </div>
   {% endif %}
