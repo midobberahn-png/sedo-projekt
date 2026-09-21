@@ -37,7 +37,7 @@ zeigt alle Meldungen sichtbar an. Danach im Browser: http://127.0.0.1:8000
 ## Erste Schritte nach der Installation
 
 1. `.env` nach dem Muster von `.env.example` anlegen (Produktivbetrieb).
-2. Bonsai auf demselben Rechner starten; Einstellungen → **KI-Assistent (Bonsai · lokal)** → **Gespeicherte Verbindung prüfen**. Details: [BONSAI.md](BONSAI.md).
+2. Bonsai auf demselben Rechner installieren; SEDO startet es aus `Dokumente/Bonsai-demo` automatisch mit. Einstellungen → **KI-Assistent (Bonsai · lokal)** → **Gespeicherte Verbindung prüfen**. Anderer Installationsort und Details: [BONSAI.md](BONSAI.md).
 3. Erstes Diktat lädt das Whisper-Sprachmodell (~460 MB) einmalig herunter.
 4. Vor dem ersten ARP-/Aareon-Echtlauf: Checkliste in `MEMORY_SEDO.md` beachten
    (ARP Seller-ID, Empfänger-ID, BT-130/BT-154-Abgleich mit Tönnies).

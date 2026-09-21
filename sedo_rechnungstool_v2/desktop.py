@@ -142,6 +142,8 @@ def main() -> int:
     app, first_password = _bootstrap()
     from sedo.services.mail_worker import start_mail_worker
     start_mail_worker()
+    from sedo.services.bonsai_runtime import start_bonsai_background
+    start_bonsai_background()
     port = _free_port()
     _serve_in_thread(app, port)
     if not _wait_until_up(port):

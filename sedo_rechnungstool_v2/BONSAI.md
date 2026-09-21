@@ -8,10 +8,11 @@ vorhandene alte Schlüssel werden weiterhin aus Sicherungen entfernt.
 
 ## Einrichtung
 
-1. Bonsai auf **demselben Rechner wie SEDO** starten. Auf dem geprüften Mac liegt
-   die Installation unter `Documents/Bonsai-demo`; der vorhandene Einstieg ist
-   `./scripts/start_llama_server.sh`. SEDO startet oder installiert das Modell
-   nicht selbst.
+1. Bonsai muss auf **demselben Rechner wie SEDO** installiert sein. SEDO startet
+   es beim normalen Desktop-Start automatisch im Hintergrund, standardmäßig aus
+   `Documents/Bonsai-demo`. Ein bereits laufender Server wird weiterverwendet.
+   In den KI-Einstellungen lässt sich der Autostart ausschalten oder ein anderer
+   vollständiger Bonsai-Ordner eintragen. SEDO installiert/lädt keine Modelle nach.
 2. In SEDO unter **Einstellungen → KI-Assistent (Bonsai · lokal)** die lokale
    Adresse `http://127.0.0.1:8080/v1` verwenden. Die Modellkennung kann leer bleiben:
    dann wird das einzelne geladene Modell erkannt, einschließlich installations-
@@ -26,6 +27,21 @@ vorhandene alte Schlüssel werden weiterhin aus Sicherungen entfernt.
    weiterhin ihren eigenen Prüf- und Freigabeschritten.
 
 Nur die Administration kann den gemeinsamen Modellanschluss ändern oder prüfen.
+Sie kann über **Bonsai jetzt starten** einen beendeten Server erneut starten.
+Während das Modell lädt, bleibt SEDO bedienbar. Ein belegter Port löst keinen
+weiteren Start aus; gleichzeitige SEDO-Sitzungen stimmen den Start über eine
+Dateisperre ab. Wird Bonsai nicht bereit, erscheint ein Hinweis in den
+Einstellungen. Der Verbindungstest prüft die aktuelle Erreichbarkeit.
+
+Beim Beenden von SEDO bleibt Bonsai laufen, auch wenn SEDO es gestartet hat:
+der Server kann parallel von anderen Anwendungen verwendet werden. Es werden
+keine fremden Modellprozesse beendet. Der Autostart gilt für die Desktop-App;
+Tests, Builds, Verwaltungsbefehle und der klassische Webserver starten kein LLM.
+macOS/Linux verwenden das vorhandene `scripts/start_llama_server.sh`, Windows
+`scripts/start_llama_server.ps1` ohne Umgehung der Ausführungsrichtlinien.
+Automatischer Start verwendet HTTP; der Windows-Starter unterstützt Port 8080.
+Hardware- und Modellwahl übernimmt der installierte Bonsai-Starter.
+
 Optional überschreiben `SEDO_AI_LOCAL_BASE_URL` und `SEDO_AI_LOCAL_MODEL` die
 Einstellungen; die Oberfläche zeigt diese Vorgabe an. Es sind ausschließlich
 `localhost`, `127.0.0.1` und `[::1]` zulässig. `localhost` wird fest auf IPv4-Loopback

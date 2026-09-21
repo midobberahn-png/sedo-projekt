@@ -102,7 +102,7 @@
   <div class="section-head">
     <div>
       <h2>KI-Assistent (Bonsai · lokal)</h2>
-      <p class="hint">Angebotsentwürfe, Leistungstexte, Begleitschreiben und KI-Prüfungen werden auf diesem Rechner verarbeitet. Kein Cloud-Fallback und keine Modell-API-Gebühren. Bonsai muss auf dem SEDO-Rechner laufen. Lokales Diktat nutzt Whisper; ist es nicht verfügbar, kannst du Text eingeben.</p>
+      <p class="hint">Angebotsentwürfe, Leistungstexte, Begleitschreiben und KI-Prüfungen werden auf diesem Rechner verarbeitet. Kein Cloud-Fallback und keine Modell-API-Gebühren. SEDO kann dein installiertes Bonsai automatisch mitstarten. Lokales Diktat nutzt Whisper; ist es nicht verfügbar, kannst du Text eingeben.</p>
     </div>
     {% if ai_configured %}<span class="badge green">Lokal aktiviert</span>{% else %}<span class="badge amber">Deaktiviert</span>{% endif %}
   </div>
@@ -112,6 +112,15 @@
     {% csrf_token %}<input type="hidden" name="action" value="save_ai">
     <div class="form-grid compact-grid">
       <div class="form-row full"><label class="check-line"><input type="checkbox" name="ai_local_enabled" {% if ai_cfg.enabled %}checked{% endif %}>Lokalen KI-Assistenten verwenden</label></div>
+      <div class="form-row full">
+        <label class="check-line"><input type="checkbox" name="ai_local_autostart" {% if ai_cfg.autostart %}checked{% endif %}>Bonsai beim Start der SEDO-App automatisch mitstarten</label>
+        <div class="hint">Ein bereits laufender Server wird weiterverwendet. Bonsai bleibt beim Schließen von SEDO verfügbar, damit andere Anwendungen weiter darauf zugreifen können.</div>
+      </div>
+      <div class="form-row full">
+        <label for="ai-runtime-dir">Bonsai-Ordner (optional)</label>
+        <input id="ai-runtime-dir" name="ai_local_runtime_dir" value="{{ ai_cfg.runtime_dir }}" placeholder="Automatisch: Dokumente/Bonsai-demo">
+        <div class="hint">Vollständiger Pfad zum vorhandenen Bonsai-demo-Ordner, falls er woanders liegt. Es werden keine Modelle installiert oder heruntergeladen.</div>
+      </div>
       <div class="form-row">
         <label for="settings-field-13">Lokale Modelladresse</label>
         <input id="settings-field-13" name="ai_local_base_url" value="{{ ai_cfg.base_url }}" required {% if ai_cfg.endpoint_from_env %}readonly{% endif %}>
@@ -126,9 +135,11 @@
     <div class="toolbar"><button class="btn primary" type="submit">KI-Einstellungen speichern</button></div>
   </form>
   <form method="post" class="toolbar">
-    {% csrf_token %}<input type="hidden" name="action" value="test_ai">
-    <button class="btn" type="submit">Gespeicherte Verbindung prüfen</button>
+    {% csrf_token %}
+    <button class="btn" type="submit" name="action" value="start_ai">Bonsai jetzt starten</button>
+    <button class="btn" type="submit" name="action" value="test_ai">Gespeicherte Verbindung prüfen</button>
   </form>
+  <p class="hint" role="status">{{ ai_start_status }}</p>
   {% else %}<p class="hint">Die Administration verwaltet den lokalen Modellzugang.</p>{% endif %}
 </div>
 

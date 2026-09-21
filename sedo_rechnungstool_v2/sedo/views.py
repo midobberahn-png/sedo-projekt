@@ -54,6 +54,7 @@ from .services.recurring_preview import build_recurring_preview
 from .services.zugferd_validation import validate_invoice_zugferd
 from .services.tax_export import create_tax_package, parse_month
 from .services.ai_local import check_local_model, validate_local_base_url, validate_local_model
+from .services.bonsai_runtime import runtime_status, start_bonsai_background, validate_runtime_dir
 
 # Interner Logger: breite Exception-Handler (Batch-Läufe, KI-Endpoints) melden
 # dem Nutzer eine freundliche Meldung, protokollieren den echten Fehler aber hier.
@@ -2782,6 +2783,15 @@ def settings_page(request):
                     messages.error(request, f'Mapping-Import fehlgeschlagen: {e}')
             return redirect('sedo:settings')
 
+        if action == 'start_ai':
+            if not request.user.is_staff:
+                return HttpResponseForbidden('Nur die Administration kann Bonsai starten.')
+            if start_bonsai_background(manual=True):
+                messages.info(request, 'Bonsai wird im Hintergrund gestartet. Bitte gleich die Verbindung prüfen.')
+            else:
+                messages.info(request, 'Bonsai-Start läuft bereits oder der lokale KI-Assistent ist deaktiviert.')
+            return redirect('sedo:settings')
+
         if action == 'test_ai':
             if not request.user.is_staff:
                 return HttpResponseForbidden('Nur die Administration kann den KI-Zugang prüfen.')
@@ -2798,12 +2808,15 @@ def settings_page(request):
             try:
                 base_url = validate_local_base_url(request.POST.get('ai_local_base_url', ''))
                 model = validate_local_model(request.POST.get('ai_local_model', ''))
+                runtime_dir = validate_runtime_dir(request.POST.get('ai_local_runtime_dir', ''))
             except AIError as exc:
                 messages.error(request, str(exc))
                 return redirect('sedo:settings')
             AppSetting.set('ai_local_base_url', base_url)
             AppSetting.set('ai_local_model', model)
             AppSetting.set('ai_local_enabled', '1' if request.POST.get('ai_local_enabled') else '0')
+            AppSetting.set('ai_local_autostart', '1' if request.POST.get('ai_local_autostart') else '0')
+            AppSetting.set('ai_local_runtime_dir', runtime_dir)
             write_audit(request, 'update', object_type='AppSetting', object_repr='KI-Assistent',
                         message='Lokale Bonsai-Einstellungen gespeichert')
             messages.success(request, 'Lokale KI-Einstellungen gespeichert.')
@@ -2878,6 +2891,7 @@ def settings_page(request):
         'ai_cfg': get_ai_config(),
         'ai_configured': ai_is_configured(),
         'weather_configured': bool(weather_key()),
+        'ai_start_status': runtime_status(),
         'smtp_host':      smtp_cfg['host'],
         'smtp_port':      smtp_cfg['port'],
         'smtp_user':      smtp_cfg['user'],

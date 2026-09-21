@@ -56,6 +56,8 @@ def validate_local_model(value: str) -> str:
 def get_ai_config() -> dict:
     return {
         'enabled': AppSetting.get('ai_local_enabled', '1') == '1',
+        'autostart': AppSetting.get('ai_local_autostart', '1') == '1',
+        'runtime_dir': AppSetting.get('ai_local_runtime_dir', '').strip(),
         'base_url': os.environ.get('SEDO_AI_LOCAL_BASE_URL', '').strip() or
                     AppSetting.get('ai_local_base_url', '').strip() or AI_DEFAULT_BASE_URL,
         'text_model': os.environ.get('SEDO_AI_LOCAL_MODEL', '').strip() or
