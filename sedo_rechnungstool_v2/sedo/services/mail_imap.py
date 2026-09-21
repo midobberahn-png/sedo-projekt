@@ -237,6 +237,14 @@ def sync_folder(client, folder, budget, deadline, heartbeat=None):
         folder.uidvalidity = validity
         folder.total_count = len(live_uids)
         folder.save(update_fields=['uidvalidity', 'total_count'])
+        # First inventory after enabling/changing rules is a baseline, even for
+        # old server mail whose body has not been downloaded yet. UIDVALIDITY
+        # changes establish a fresh baseline instead of moving the old mailbox.
+        if folder.spam_baseline_revision != folder.account.spam_revision or folder.spam_baseline_validity != validity:
+            folder.spam_baseline_revision = folder.account.spam_revision
+            folder.spam_baseline_validity = validity
+            folder.spam_baseline_uid = max(live_uids, default=0)
+            folder.save(update_fields=['spam_baseline_revision', 'spam_baseline_validity', 'spam_baseline_uid'])
     loaded = 0
     loaded_uids = set()
     missing_cache = {uid for uid, location in existing.items() if uid in metadata and not cache_exists(location.message)}
@@ -282,10 +290,14 @@ def sync_account(account_id):
                 folders.sort(key=lambda item: (item.role != 'inbox', item.name))
                 remaining = SYNC_BATCH
                 deadline = time.monotonic() + SYNC_SECONDS
+                synced_folders = set()
                 for folder in folders:
                     renew(account, token)
                     remaining -= sync_folder(client, folder, min(SYNC_FOLDER_BATCH, max(0, remaining)), deadline,
                                              heartbeat=lambda: renew(account, token))
+                    synced_folders.add(folder.pk)
+                from .mail_spam import process_account
+                process_account(client, account, token, synced_folders)
             MailAccount.objects.filter(pk=account_id).update(last_sync=timezone.now(), last_error='')
             from .incoming_invoices import collect_account
             collect_account(account_id)

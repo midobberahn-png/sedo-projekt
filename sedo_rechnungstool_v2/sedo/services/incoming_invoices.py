@@ -46,6 +46,8 @@ def collect_message(message):
         message = MailMessage.objects.get(pk=message.pk)
         if message.invoice_scan_done:
             return 0
+        from .mail_spam import require_business_clear
+        require_business_clear(message)
         if message.content_error:
             raise IncomingError('Nachricht unvollständig. Original bitte im Postfach prüfen.')
         if digest(original_bytes(message)) != message.digest:
@@ -83,11 +85,18 @@ def collect_account(account_id):
         return 0
     # Only incoming mail: sent, spam and trash never trigger intake. Existing
     # loaded inboxes are backfilled in bounded chunks on subsequent polls.
+    from .mail_spam import require_business_clear, spam_messages
     messages = MailMessage.objects.filter(account_id=account_id, invoice_scan_done=False,
-        locations__folder__role='inbox', locations__folder__active=True).distinct().order_by('pk')[:25]
+        locations__folder__role='inbox', locations__folder__active=True).exclude(
+            pk__in=spam_messages()).exclude(spam_moves__state='unknown').distinct().order_by('pk')[:25]
     count = 0
     for message in messages:
         try:
+            # A held message remains eligible after an explicit release.
+            try:
+                require_business_clear(message)
+            except MailError:
+                continue
             count += collect_message(message)
         except (IncomingError, MailError):
             MailMessage.objects.filter(pk=message.pk).update(invoice_scan_done=True,

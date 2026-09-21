@@ -67,7 +67,6 @@ class WorkspaceOverviewV2Tests(TestCase):
     def test_dashboard_mail_count_matches_unread_inboxes_and_tracks_read_status(self):
         for email in ('info@sedo-magdeburg.de', 'rechnung@sedo-magdeburg.de'):
             account = MailAccount.objects.create(email=email, username=email, enabled=False)
-            message = MailMessage.objects.create(account=account, digest='a' * 64)
             for name, role, active, selectable, seen in (
                 ('INBOX', 'inbox', True, True, False),
                 ('Archive', 'archive', True, True, False),
@@ -77,6 +76,10 @@ class WorkspaceOverviewV2Tests(TestCase):
                 ('Old Inbox', 'inbox', False, True, False),
                 ('Container', 'inbox', True, False, False),
             ):
+                # Distinct messages: a copy of the same message in Junk now
+                # correctly excludes that message from the normal mail count.
+                import hashlib
+                message = MailMessage.objects.create(account=account, digest=hashlib.sha256(name.encode()).hexdigest())
                 folder = MailFolder.objects.create(account=account, remote_name=name,
                     name=name, role=role, active=active, selectable=selectable, uidvalidity=1)
                 MailLocation.objects.create(folder=folder, message=message, uid=1, uidvalidity=1, seen=seen)

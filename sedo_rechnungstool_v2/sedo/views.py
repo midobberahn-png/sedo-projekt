@@ -625,6 +625,7 @@ def service_catalog_delete(request, pk):
 @login_required
 def dashboard(request, layout_form=None):
     from .models import MailAccount, MailLocation
+    from .services.mail_spam import spam_messages, confirmed_spam_messages
     from .dashboard_widgets import DashboardLayoutForm, catalogue, layout_for
     from .services.banking import cached_bank_balance
     from .services.dashboard_weather import weather_for
@@ -663,7 +664,10 @@ def dashboard(request, layout_form=None):
         # Match the unread inbox view, including manually refreshed/paused accounts.
         'unread_mail_count': MailLocation.objects.filter(
             folder__active=True, folder__selectable=True,
-            folder__role='inbox', seen=False).count(),
+            folder__role='inbox', seen=False).exclude(message__in=confirmed_spam_messages()).count(),
+        'unread_spam_count': spam_messages().filter(locations__seen=False,
+            locations__folder__active=True, locations__folder__selectable=True,
+            locations__folder__role__in=['inbox', 'junk']).count(),
         'today': today,
         'open_offers': Offer.objects.filter(status='offen').count(),
         'customers': Customer.objects.count(),
@@ -1601,7 +1605,9 @@ def offer_create(request):
             if source_mail:
                 from .services.mail_storage import pin_message
                 from .services.mail_secrets import MailError
+                from .services.mail_spam import require_business_clear
                 try:
+                    require_business_clear(source_mail)
                     pin_message(source_mail)
                 except MailError as exc:
                     form.add_error(None, str(exc))

@@ -604,7 +604,7 @@ class MailWorkflowTests(MailFixture):
         location = MailLocation.objects.create(pk=1234, folder=folder, message=message, uid=1234, uidvalidity=1)
         response = self.client.get(reverse('sedo:mail_message', args=[message.pk]))
         doc = html.fromstring(response.content)
-        self.assertEqual(doc.xpath('//input[@name="location"]/@value'), ['1234'])
+        self.assertEqual(set(doc.xpath('//input[@name="location"]/@value')), {'1234'})
         self.assertTrue(any('?folder=1234&account=' in value for value in doc.xpath('//a/@href')))
         self.assertNotIn('?folder=1.234', response.content.decode())
         response = self.client.get(reverse('sedo:mail_new'), {'source': message.pk, 'mode': 'reply'})

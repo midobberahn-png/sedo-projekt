@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, mail_views, dashboard_views, incoming_views
+from . import views, mail_views, dashboard_views, incoming_views, mail_spam_views
 
 app_name = 'sedo'
 urlpatterns = [
@@ -13,6 +13,9 @@ urlpatterns = [
     path('eingangsrechnungen/paket/<int:pk>/download/', incoming_views.package_download, name='incoming_package_download'),
     path('eingangsrechnungen/paket/<int:pk>/email/', incoming_views.package_email, name='incoming_package_email'),
     path('email/', mail_views.inbox, name='mail_inbox'),
+    path('email/spam/auswahl/', mail_spam_views.batch, name='mail_spam_batch'),
+    path('email/spam/verschiebung/<int:pk>/', mail_spam_views.resolve_move, name='mail_spam_resolve'),
+    path('email/spam/einstellungen/<int:pk>/', mail_spam_views.settings_page, name='mail_spam_settings'),
     path('email/nachricht/<int:pk>/', mail_views.inbox, name='mail_message'),
     path('email/nachricht/<int:pk>/html/', mail_views.html_body, name='mail_html'),
     path('email/nachricht/<int:pk>/original/', mail_views.download, name='mail_original'),
