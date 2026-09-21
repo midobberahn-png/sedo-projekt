@@ -1,7 +1,7 @@
 """
 SEDO – Tests für den KI-Angebotsassistenten (v3.18.0, Angebots-Generator)
 
-Alle Claude-Aufrufe sind gemockt – die Tests laufen ohne API-Key und ohne Netz.
+Alle Bonsai-Aufrufe sind gemockt – die Tests laufen ohne API-Key und ohne Netz.
 Ausführen: python manage.py test sedo.tests
 """
 import json
@@ -164,12 +164,12 @@ class KatalogTests(TestCase):
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Generator Ende-zu-Ende (Claude-Tool-Use gemockt)
+# Generator Ende-zu-Ende (Bonsai-Tool-Use gemockt)
 # ─────────────────────────────────────────────────────────────────────────
 class GeneratorTests(TestCase):
 
     def setUp(self):
-        AppSetting.set('ai_api_key', 'sk-ant-test-dummy')
+        AppSetting.set('ai_local_enabled', '1')
 
     def test_generierung_inkl_katalog_lernen(self):
         tool_input = {
@@ -177,7 +177,7 @@ class GeneratorTests(TestCase):
             'annahmen': ['Reihenhaus mit 3 Etagen angenommen'],
             'globale_hinweise': [],
         }
-        with patch('sedo.services.ai._ai_generate_via_tool_use', return_value=tool_input):
+        with patch('sedo.services.ai._ai_generate_offer', return_value=tool_input):
             result = generate_offer_from_text('Beräumung Reihenhaus mit Entsorgung 1200 Euro')
         self.assertEqual(len(result['positionen']), 1)
         self.assertIn('Reihenhaus mit 3 Etagen angenommen', result['annahmen'])
@@ -187,16 +187,16 @@ class GeneratorTests(TestCase):
     def test_zweiter_lauf_nutzt_katalogtext(self):
         tool_input = {'positionen': [_pos(katalog_name='Beräumung', leistungstext='Erster Text.')],
                       'annahmen': [], 'globale_hinweise': []}
-        with patch('sedo.services.ai._ai_generate_via_tool_use', return_value=tool_input):
+        with patch('sedo.services.ai._ai_generate_offer', return_value=tool_input):
             generate_offer_from_text('Beräumung bitte')
         tool_input2 = {'positionen': [_pos(katalog_name='Beräumung', leistungstext='Abweichender Text.')],
                        'annahmen': [], 'globale_hinweise': []}
-        with patch('sedo.services.ai._ai_generate_via_tool_use', return_value=tool_input2):
+        with patch('sedo.services.ai._ai_generate_offer', return_value=tool_input2):
             result = generate_offer_from_text('Nochmal Beräumung')
         self.assertEqual(result['positionen'][0]['leistungstext'], 'Erster Text.')
 
-    def test_ohne_api_key_wirft_aierror(self):
-        AppSetting.set('ai_api_key', '')
+    def test_deaktiviert_wirft_aierror(self):
+        AppSetting.set('ai_local_enabled', '0')
         with self.assertRaises(AIError):
             generate_offer_from_text('irgendeine Ansage')
 
@@ -205,7 +205,7 @@ class GeneratorTests(TestCase):
             generate_offer_from_text('ab')
 
     def test_config_defaults(self):
-        AppSetting.set('ai_text_model', '')
+        AppSetting.set('ai_local_model', '')
         self.assertEqual(get_ai_config()['text_model'], AI_DEFAULT_TEXT_MODEL)
 
 
@@ -230,23 +230,24 @@ class KiEndpointTests(TestCase):
         self._login()
         self.assertEqual(self.client.get(self.url).status_code, 405)
 
-    def test_ohne_api_key_400(self):
+    def test_deaktiviert_400(self):
+        AppSetting.set('ai_local_enabled', '0')
         self._login()
         resp = self.client.post(self.url, data=json.dumps({'text': 'Beräumung Reihenhaus'}),
                                 content_type='application/json')
         self.assertEqual(resp.status_code, 400)
-        self.assertIn('API-Key', resp.json()['error'])
+        self.assertIn('deaktiviert', resp.json()['error'])
 
     def test_erfolgreiche_generierung_ueber_endpoint(self):
         self._login()
-        AppSetting.set('ai_api_key', 'sk-ant-test-dummy')
+        AppSetting.set('ai_local_enabled', '1')
         tool_input = {
             'positionen': [_pos(titel='Beräumung Reihenhaus', leistungstext='Beräumung aller Räume.',
                                 einzelpreis=1200, katalog_name='Beräumung')],
             'annahmen': ['3 Etagen angenommen'],
             'globale_hinweise': [],
         }
-        with patch('sedo.services.ai._ai_generate_via_tool_use', return_value=tool_input):
+        with patch('sedo.services.ai._ai_generate_offer', return_value=tool_input):
             resp = self.client.post(self.url, data=json.dumps({'text': 'Beräumung Reihenhaus 1200 Euro'}),
                                     content_type='application/json')
         self.assertEqual(resp.status_code, 200)
@@ -259,7 +260,7 @@ class KiEndpointTests(TestCase):
 
     def test_aierror_wird_als_502_gemeldet(self):
         self._login()
-        AppSetting.set('ai_api_key', 'sk-ant-test-dummy')
+        AppSetting.set('ai_local_enabled', '1')
         with patch('sedo.views.generate_offer_from_text', side_effect=AIError('Testfehler')):
             resp = self.client.post(self.url, data=json.dumps({'text': 'Beräumung Reihenhaus'}),
                                     content_type='application/json')
@@ -328,7 +329,7 @@ class SeitenTests(TestCase):
     def test_einstellungen_enthalten_ki_karte(self):
         resp = self.client.get(reverse('sedo:settings'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'KI-Assistent (Claude)')
+        self.assertContains(resp, 'KI-Assistent (Bonsai · lokal)')
 
     def test_navigation_enthaelt_katalog(self):
         resp = self.client.get(reverse('sedo:dashboard'))

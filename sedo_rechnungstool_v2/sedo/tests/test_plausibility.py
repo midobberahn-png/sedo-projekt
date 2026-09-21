@@ -97,16 +97,17 @@ class PlausibilityEndpointTests(TestCase):
         self.assertEqual(len(data['lokal']), 1)
         self.assertIsNone(data['ki'])
 
-    def test_ki_ohne_key_liefert_fehlertext_aber_lokal(self):
+    def test_ki_deaktiviert_liefert_fehlertext_aber_lokal(self):
+        AppSetting.set('ai_local_enabled', '0')
         resp = self._post({'positionen': [_pos('Glas', '10')], 'mode': 'ki'})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertIn('API-Key', data['ki_error'])
+        self.assertIn('deaktiviert', data['ki_error'])
         self.assertEqual(data['lokal'], [])
 
     def test_ki_erhaelt_nur_positionen(self):
         """Datenschutz: an die KI-Funktion gehen nur die Positionsdaten."""
-        AppSetting.set('ai_api_key', 'test-key')
+        AppSetting.set('ai_local_enabled', '1')
         captured = {}
 
         def fake_review(positionen):

@@ -1,138 +1,22 @@
-"""KI-Angebotsassistent (Anthropic Claude).
+"""Lokaler Bonsai-Assistent für Angebote, Leistungstexte und Prüfhinweise.
 
-Diktat (läuft im Browser via Web Speech API) → Text → strukturierte
-Angebotspositionen via Claude Tool-Use.
-
-Übertragen werden eingegebene Leistungstexte und Katalogdaten, keine separaten
-Kundenfelder. Freitext wird nicht automatisch anonymisiert. Lokales Whisper
-bleibt auf dem SEDO-Rechner; Browser-Spracherkennung kann Clouddienste nutzen. Reine Python-
-Standardbibliothek (urllib), keine neuen Abhängigkeiten.
+Diktate werden lokal transkribiert. Freitext und Katalogdaten gehen ausschließlich
+an den Modellserver auf diesem Rechner. Kein Cloud-Fallback, keine API-Schlüssel.
 """
 from __future__ import annotations
 
-import json
-import os
 import re
-import time
-import urllib.error
-import urllib.request
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from ..models import AppSetting, ServiceCatalogItem
+from ..models import ServiceCatalogItem
+from .ai_local import (
+    AI_DEFAULT_TEXT_MODEL, AIError, ai_is_configured, generate_structured, get_ai_config,
+)
 
-AI_API_BASE = 'https://api.anthropic.com/v1'
-AI_API_VERSION = '2023-06-01'
-AI_DEFAULT_TEXT_MODEL = 'claude-sonnet-5'
-AI_MAX_TEXT_CHARS = 8000                   # Sicherheitslimit Diktatlänge
-AI_MAX_POSITIONS = 40                      # Sicherheitslimit Positionsanzahl
-AI_MAX_LONG_TEXT = 1200                    # Sicherheitslimit Leistungstextlänge
-AI_TOOL_NAME = 'angebotspositionen_erfassen'
-AI_REQUEST_TIMEOUT = 90                    # Sekunden für den Tool-Use-Request
-AI_RETRY_WAIT_SECONDS = 1.0
-
+AI_MAX_TEXT_CHARS = 8000
+AI_MAX_POSITIONS = 40
+AI_MAX_LONG_TEXT = 1200
 _AI_PREIS_ARTEN = {'genannt', 'aufgeteilt', 'geschaetzt', 'offen'}
-
-
-class AIError(Exception):
-    """Fehler im KI-Assistenten – Meldung ist endnutzertauglich (deutsch)."""
-
-
-def get_ai_config() -> dict:
-    """Liest die KI-Konfiguration.
-
-    Der API-Key kann alternativ als Umgebungsvariable ``SEDO_AI_API_KEY``
-    (z. B. via .env) gesetzt werden – dann liegt er nicht in der Datenbank.
-    Die Umgebungsvariable hat Vorrang vor dem AppSetting.
-    """
-    return {
-        'api_key': os.environ.get('SEDO_AI_API_KEY', '').strip() or AppSetting.get('ai_api_key', '').strip(),
-        'text_model': AppSetting.get('ai_text_model', '').strip() or AI_DEFAULT_TEXT_MODEL,
-    }
-
-
-def ai_is_configured() -> bool:
-    return bool(get_ai_config()['api_key'])
-
-
-def _ai_error_from_http(e: urllib.error.HTTPError, model: str = '') -> AIError:
-    """Übersetzt einen Anthropic-HTTP-Fehler in eine verständliche deutsche Meldung.
-
-    Fehlercodes gemäß Anthropic-API-Dokumentation (Stand 2026):
-    400 invalid_request_error, 401 authentication_error, 402 billing_error,
-    403 permission_error, 404 not_found_error, 413 request_too_large,
-    429 rate_limit_error, 500 api_error, 529 overloaded_error.
-    """
-    code = e.code
-    err_type = ''
-    detail = ''
-    try:
-        body = json.loads(e.read().decode('utf-8', errors='replace'))
-        inner = body.get('error') or {}
-        err_type = inner.get('type', '') or ''
-        detail = inner.get('message', '') or ''
-    except (ValueError, AttributeError):
-        pass
-
-    if code == 401:
-        return AIError('Der Claude-API-Key ist ungültig oder abgelaufen. Bitte unter Einstellungen → KI-Assistent prüfen.')
-    if code == 402:
-        return AIError('Es liegt ein Problem mit der Zahlungsmethode des Anthropic-Kontos vor. Bitte im Anthropic-Konto prüfen.')
-    if code == 403:
-        return AIError('Der API-Key hat keine Berechtigung für diese Anfrage. Bitte Workspace-Zugriff im Anthropic-Konto prüfen.')
-    if code == 404 and model:
-        return AIError(f'Das konfigurierte Modell „{model}" wurde nicht gefunden. Bitte Modellnamen unter Einstellungen → KI-Assistent prüfen.')
-    if code == 413:
-        return AIError('Das Diktat ist zu umfangreich für eine Anfrage. Bitte kürzer diktieren.')
-    if code == 429:
-        return AIError('Claude ist gerade ausgelastet (Rate-Limit erreicht). Bitte einen Moment warten und erneut versuchen.')
-    if code == 529:
-        return AIError('Die Claude-API ist aktuell überlastet. Bitte in ein paar Minuten erneut versuchen.')
-    if code >= 500:
-        return AIError('Claude meldet einen internen Serverfehler. Bitte in ein paar Minuten erneut versuchen.')
-    kurz = (detail[:180] + '…') if len(detail) > 180 else detail
-    if kurz:
-        return AIError(f'Claude-Fehler (HTTP {code}, {err_type or "unbekannt"}). {kurz}')
-    return AIError(f'Claude-Fehler (HTTP {code}). Bitte erneut versuchen.')
-
-
-def _ai_request(req: urllib.request.Request, timeout: int, model: str = '') -> dict:
-    """Führt einen HTTP-Request aus. Transiente Fehler (Netz/5xx/529) werden einmal wiederholt."""
-    last_err: Exception | None = None
-    for attempt in range(2):
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read().decode('utf-8'))
-        except urllib.error.HTTPError as e:
-            err = _ai_error_from_http(e, model)
-            if e.code in (500, 502, 503, 529) and attempt == 0:
-                last_err = err
-                time.sleep(AI_RETRY_WAIT_SECONDS)
-                continue
-            raise err from None
-        except (urllib.error.URLError, TimeoutError, OSError):
-            last_err = AIError('Keine Verbindung zu Claude möglich (Netzwerkfehler oder Zeitüberschreitung). Bitte Internetverbindung prüfen und erneut versuchen.')
-            if attempt == 0:
-                time.sleep(AI_RETRY_WAIT_SECONDS)
-                continue
-            raise last_err from None
-        except json.JSONDecodeError:
-            raise AIError('Die Antwort von Claude war nicht lesbar. Bitte erneut versuchen.') from None
-    raise last_err or AIError('Unbekannter Fehler bei der KI-Anfrage.')
-
-
-def _ai_post_json(path: str, payload: dict, api_key: str, timeout: int = 60, model: str = '') -> dict:
-    data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(
-        AI_API_BASE + path,
-        data=data,
-        headers={
-            'x-api-key': api_key,
-            'anthropic-version': AI_API_VERSION,
-            'Content-Type': 'application/json',
-        },
-        method='POST',
-    )
-    return _ai_request(req, timeout=timeout, model=model)
 
 
 # Input-Schema des Tools: vollständiger Angebotsentwurf
@@ -174,7 +58,7 @@ _AI_SYSTEM_PROMPT_BASE = (
     'Du bist Angebots-Assistent eines Gebäudereinigungs- und Objektdienstleistungsunternehmens '
     '(Unterhaltsreinigung, Glas-/Grundreinigung, Beräumung/Entrümpelung, Hausmeisterdienste, Außenanlagen, Winterdienst).\n'
     'Aus einer groben mündlichen Ansage erstellst du einen VOLLSTÄNDIGEN Angebotsentwurf mit logisch '
-    f'getrennten Einzelpositionen. Rufe dazu immer das Werkzeug "{AI_TOOL_NAME}" auf.\n'
+    'getrennten Einzelpositionen. Gib ausschließlich JSON gemäß dem vorgegebenen Schema aus.\n'
     '\n'
     'Regeln:\n'
     '1. Zerlege die Ansage in branchenübliche Einzelpositionen (z. B. wird „Beräumung Reihenhaus mit Entsorgung" '
@@ -426,33 +310,11 @@ def apply_and_learn_service_catalog(positionen: list[dict]) -> str:
     return ' · '.join(teile)
 
 
-def _ai_generate_via_tool_use(text: str, cfg: dict) -> dict:
-    """Ruft die Anthropic Messages API mit erzwungenem Tool-Use auf."""
-    payload = {
-        'model': cfg['text_model'],
-        'max_tokens': 8000,
-        'system': _AI_SYSTEM_PROMPT_BASE + _service_catalog_prompt_block(),
-        'messages': [{'role': 'user', 'content': f'Ansage:\n{text}'}],
-        'tools': [{
-            'name': AI_TOOL_NAME,
-            'description': 'Erfasst den aus der Ansage erzeugten vollständigen Angebotsentwurf strukturiert.',
-            'input_schema': _AI_OFFER_INPUT_SCHEMA,
-        }],
-        'tool_choice': {'type': 'tool', 'name': AI_TOOL_NAME},
-    }
-    data = _ai_post_json('/messages', payload, cfg['api_key'], timeout=AI_REQUEST_TIMEOUT, model=cfg['text_model'])
-
-    if data.get('stop_reason') == 'refusal':
-        raise AIError('Claude hat die Anfrage abgelehnt. Bitte die Ansage prüfen und erneut versuchen.')
-
-    content = data.get('content') or []
-    for block in content:
-        if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('name') == AI_TOOL_NAME:
-            tool_input = block.get('input')
-            if isinstance(tool_input, dict):
-                return tool_input
-            raise AIError('Die KI-Antwort hatte ein unerwartetes Format. Bitte erneut versuchen.')
-    raise AIError('Claude hat keine strukturierte Antwort geliefert. Bitte erneut versuchen.')
+def _ai_generate_offer(text: str, cfg: dict) -> dict:
+    return generate_structured(
+        _AI_SYSTEM_PROMPT_BASE + _service_catalog_prompt_block(), f'Ansage:\n{text}',
+        _AI_OFFER_INPUT_SCHEMA, max_tokens=6000, cfg=cfg,
+    )
 
 
 def generate_offer_from_text(text: str) -> dict:
@@ -461,8 +323,8 @@ def generate_offer_from_text(text: str) -> dict:
     Rückgabe: {'positionen', 'hinweise', 'annahmen', 'katalog_info'}
     """
     cfg = get_ai_config()
-    if not cfg['api_key']:
-        raise AIError('Kein Claude-API-Key hinterlegt. Bitte unter Einstellungen → KI-Assistent eintragen.')
+    if not cfg['enabled']:
+        raise AIError('Der lokale KI-Assistent ist deaktiviert. Bitte in den Einstellungen aktivieren.')
     text = (text or '').strip()
     if len(text) < 5:
         raise AIError('Bitte zuerst diktieren oder einen Text eingeben.')
@@ -471,7 +333,7 @@ def generate_offer_from_text(text: str) -> dict:
         text = text[:AI_MAX_TEXT_CHARS]
         gekuerzt = True
 
-    raw = _ai_generate_via_tool_use(text, cfg)
+    raw = _ai_generate_offer(text, cfg)
     result = normalize_ai_positions(raw)
     result['katalog_info'] = apply_and_learn_service_catalog(result['positionen'])
     if gekuerzt:
@@ -492,7 +354,6 @@ def extract_offer_positions_from_text(text: str) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 AI_POLISH_MAX_CHARS = 2500                 # Sicherheitslimit Eingabetext
-_AI_TEXT_TOOL = 'text_ausgeben'
 _AI_TEXT_SCHEMA = {
     'type': 'object',
     'properties': {'text': {'type': 'string', 'description': 'Der fertige deutsche Text.'}},
@@ -503,7 +364,7 @@ _AI_POLISH_SYSTEM = (
     'Du formulierst für ein Gebäudereinigungs- und Objektdienstleistungsunternehmen '
     'lose, umgangssprachliche oder emotionale Ansagen in eine professionelle '
     'Leistungsbeschreibung für Angebote/Rechnungen um (2–4 Sätze, sachliches '
-    f'Angebots-Deutsch). Rufe immer das Werkzeug "{_AI_TEXT_TOOL}" auf.\n'
+    'Angebots-Deutsch). Gib ausschließlich JSON gemäß dem vorgegebenen Schema aus.\n'
     'Regeln:\n'
     '1. Inhaltlich nichts erfinden – nur das Genannte professionell fassen.\n'
     '2. Keine Namen, Adressen, Telefonnummern oder Schuldzuweisungen übernehmen; '
@@ -517,7 +378,7 @@ _AI_POLISH_SYSTEM = (
 _AI_COVER_LETTER_SYSTEM = (
     'Du schreibst für ein Gebäudereinigungs- und Objektdienstleistungsunternehmen den '
     'Textkörper einer kurzen, freundlichen Begleit-E-Mail zu einer Rechnung. '
-    f'Rufe immer das Werkzeug "{_AI_TEXT_TOOL}" auf.\n'
+    'Gib ausschließlich JSON gemäß dem vorgegebenen Schema aus.\n'
     'Regeln:\n'
     '1. Anrede immer neutral: "Sehr geehrte Damen und Herren,". Keine Namen verwenden – '
     'auch nicht, wenn im Hinweis welche vorkommen.\n'
@@ -531,33 +392,11 @@ _AI_COVER_LETTER_SYSTEM = (
 
 
 def _ai_single_text(system_prompt: str, user_content: str) -> str:
-    """Gemeinsamer Unterbau: erzwungener Tool-Use, Rückgabe ist ein einzelner Text."""
-    cfg = get_ai_config()
-    if not cfg['api_key']:
-        raise AIError('Kein Claude-API-Key hinterlegt. Bitte unter Einstellungen → KI-Assistent eintragen.')
-    payload = {
-        'model': cfg['text_model'],
-        'max_tokens': 1000,
-        'system': system_prompt,
-        'messages': [{'role': 'user', 'content': user_content}],
-        'tools': [{
-            'name': _AI_TEXT_TOOL,
-            'description': 'Gibt den fertigen deutschen Text strukturiert zurück.',
-            'input_schema': _AI_TEXT_SCHEMA,
-        }],
-        'tool_choice': {'type': 'tool', 'name': _AI_TEXT_TOOL},
-    }
-    data = _ai_post_json('/messages', payload, cfg['api_key'], timeout=60, model=cfg['text_model'])
-    if data.get('stop_reason') == 'refusal':
-        raise AIError('Claude hat die Anfrage abgelehnt. Bitte den Text prüfen und erneut versuchen.')
-    for block in (data.get('content') or []):
-        if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('name') == _AI_TEXT_TOOL:
-            tool_input = block.get('input')
-            if isinstance(tool_input, dict) and isinstance(tool_input.get('text'), str):
-                text = tool_input['text'].strip()
-                if text:
-                    return text
-    raise AIError('Claude hat keinen verwendbaren Text geliefert. Bitte erneut versuchen.')
+    raw = generate_structured(system_prompt, user_content, _AI_TEXT_SCHEMA, max_tokens=1000)
+    text = raw['text'].strip()
+    if not text:
+        raise AIError('Bonsai hat keinen verwendbaren Text geliefert. Bitte erneut versuchen.')
+    return text
 
 
 def polish_service_text(text: str) -> str:
@@ -570,7 +409,6 @@ def polish_service_text(text: str) -> str:
     return _ai_single_text(_AI_POLISH_SYSTEM, f'Ansage:\n{text}')
 
 
-_AI_REVIEW_TOOL = 'befunde_melden'
 _AI_REVIEW_SCHEMA = {
     'type': 'object',
     'properties': {
@@ -594,7 +432,7 @@ _AI_REVIEW_SCHEMA = {
 _AI_REVIEW_SYSTEM = (
     'Du prüfst Angebots-/Rechnungspositionen eines Gebäudereinigungs- und '
     'Objektdienstleistungsunternehmens auf kaufmännische Plausibilität. '
-    f'Rufe immer das Werkzeug "{_AI_REVIEW_TOOL}" auf.\n'
+    'Gib ausschließlich JSON gemäß dem vorgegebenen Schema aus.\n'
     'Prüfe AUSSCHLIESSLICH:\n'
     '1. Inhaltliche Dubletten oder Überschneidungen zwischen Positionen.\n'
     '2. Unplausible Kombinationen aus Menge, Einheit und Einzelpreis '
@@ -619,8 +457,8 @@ def ai_review_positions(positionen: list[dict]) -> list[dict]:
     {'position': int|None, 'schwere': 'warnung'|'hinweis', 'text': str}.
     """
     cfg = get_ai_config()
-    if not cfg['api_key']:
-        raise AIError('Kein Claude-API-Key hinterlegt. Bitte unter Einstellungen → KI-Assistent eintragen.')
+    if not cfg['enabled']:
+        raise AIError('Der lokale KI-Assistent ist deaktiviert. Bitte in den Einstellungen aktivieren.')
     lines = []
     for idx, pos in enumerate(positionen[:AI_MAX_POSITIONS], start=1):
         desc = _ai_clean_str(pos.get('bezeichnung'), 200)
@@ -633,41 +471,22 @@ def ai_review_positions(positionen: list[dict]) -> list[dict]:
     if not lines:
         raise AIError('Keine prüfbaren Positionen vorhanden.')
 
-    payload = {
-        'model': cfg['text_model'],
-        'max_tokens': 1500,
-        'system': _AI_REVIEW_SYSTEM + _service_catalog_prompt_block(),
-        'messages': [{'role': 'user', 'content': 'Positionen:\n' + '\n'.join(lines)}],
-        'tools': [{
-            'name': _AI_REVIEW_TOOL,
-            'description': 'Meldet die gefundenen Plausibilitäts-Befunde strukturiert.',
-            'input_schema': _AI_REVIEW_SCHEMA,
-        }],
-        'tool_choice': {'type': 'tool', 'name': _AI_REVIEW_TOOL},
-    }
-    data = _ai_post_json('/messages', payload, cfg['api_key'], timeout=60, model=cfg['text_model'])
-    if data.get('stop_reason') == 'refusal':
-        raise AIError('Claude hat die Anfrage abgelehnt. Bitte erneut versuchen.')
-    for block in (data.get('content') or []):
-        if isinstance(block, dict) and block.get('type') == 'tool_use' and block.get('name') == _AI_REVIEW_TOOL:
-            raw = block.get('input')
-            if not isinstance(raw, dict) or not isinstance(raw.get('befunde'), list):
-                raise AIError('Die KI-Antwort hatte ein unerwartetes Format. Bitte erneut versuchen.')
-            findings = []
-            for item in raw['befunde'][:AI_REVIEW_MAX_FINDINGS]:
-                if not isinstance(item, dict):
-                    continue
-                text = _ai_clean_str(item.get('text'), 300)
-                if not text:
-                    continue
-                pos_no = item.get('position')
-                findings.append({
-                    'position': pos_no if isinstance(pos_no, int) and 1 <= pos_no <= len(lines) else None,
-                    'schwere': item.get('schwere') if item.get('schwere') in ('warnung', 'hinweis') else 'hinweis',
-                    'text': text,
-                })
-            return findings
-    raise AIError('Claude hat keine strukturierte Antwort geliefert. Bitte erneut versuchen.')
+    raw = generate_structured(
+        _AI_REVIEW_SYSTEM + _service_catalog_prompt_block(),
+        'Positionen:\n' + '\n'.join(lines), _AI_REVIEW_SCHEMA, max_tokens=1500, cfg=cfg,
+    )
+    findings = []
+    for item in raw['befunde'][:AI_REVIEW_MAX_FINDINGS]:
+        text = _ai_clean_str(item['text'], 300)
+        if not text:
+            continue
+        pos_no = item['position']
+        findings.append({
+            'position': pos_no if isinstance(pos_no, int) and 1 <= pos_no <= len(positionen) else None,
+            'schwere': item['schwere'],
+            'text': text,
+        })
+    return findings
 
 
 def generate_cover_letter_text(context_lines: list[str], hint: str = '') -> str:

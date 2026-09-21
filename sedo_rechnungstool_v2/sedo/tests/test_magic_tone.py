@@ -1,6 +1,6 @@
 """Tests für Magic-Tone: Profi-Text-Veredelung + KI-Begleittext.
 
-Der Claude-Aufruf selbst wird gemockt – geprüft werden Endpoint-Verhalten,
+Der Bonsai-Aufruf selbst wird gemockt – geprüft werden Endpoint-Verhalten,
 Fehlerpfade und vor allem die Datenschutzregel: Der serverseitig gebaute
 Begleittext-Kontext darf KEINE Kunden-/Objektdaten enthalten.
 """
@@ -23,7 +23,7 @@ class _Base(TestCase):
         get_user_model().objects.create_user('u', 'u@x.de', 'pw12345')
         self.client = Client()
         self.client.login(username='u', password='pw12345')
-        AppSetting.set('ai_api_key', 'test-key')
+        AppSetting.set('ai_local_enabled', '1')
 
 
 class PolishEndpointTests(_Base):
@@ -34,12 +34,12 @@ class PolishEndpointTests(_Base):
     def test_get_verboten(self):
         self.assertEqual(self.client.get(self.url).status_code, 405)
 
-    def test_ohne_api_key_400(self):
-        AppSetting.set('ai_api_key', '')
+    def test_deaktiviert_400(self):
+        AppSetting.set('ai_local_enabled', '0')
         resp = self.client.post(self.url, {'text': 'Server kaputt, extra Stunden'},
                                 content_type='application/json')
         self.assertEqual(resp.status_code, 400)
-        self.assertIn('API-Key', resp.json()['error'])
+        self.assertIn('deaktiviert', resp.json()['error'])
 
     def test_zu_kurzer_text_400(self):
         resp = self.client.post(self.url, '{"text": "ab"}', content_type='application/json')
@@ -54,7 +54,7 @@ class PolishEndpointTests(_Base):
         self.assertIn('Notfall-Systemanalyse', resp.json()['text'])
 
     def test_ai_fehler_502(self):
-        with patch('sedo.views.polish_service_text', side_effect=AIError('Claude ist ausgelastet.')):
+        with patch('sedo.views.polish_service_text', side_effect=AIError('Bonsai ist ausgelastet.')):
             resp = self.client.post(self.url, '{"text": "Treppenhaus sauber machen"}',
                                     content_type='application/json')
         self.assertEqual(resp.status_code, 502)

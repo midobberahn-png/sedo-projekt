@@ -1,8 +1,10 @@
 # SEDO Rechnungstool · v1.0 beta 3.21.0
 
-Lokales Rechnungstool für ZUGFeRD-E-Rechnungen. **Alles läuft auf diesem
-Rechner** – Server, Datenbank, PDFs, Spracherkennung. Nur der Text des
-KI-Assistenten geht an Claude (niemals Kunden-/Objektdaten, kein Audio).
+Lokales Rechnungstool für ZUGFeRD-E-Rechnungen. Der KI-Assistent nutzt
+**Bonsai auf dem SEDO-Rechner**: keine Cloud-Anfragen und keine externen
+Modell-API-Gebühren. Lokales Diktat nutzt Whisper; ohne lokale Spracherkennung
+bleibt Texteingabe verfügbar. Mail, Bank und Wetter verwenden weiterhin ihre
+jeweiligen ausdrücklich eingerichteten Schnittstellen.
 
 ## Starten (empfohlen: Desktop-Modus)
 
@@ -35,7 +37,7 @@ zeigt alle Meldungen sichtbar an. Danach im Browser: http://127.0.0.1:8000
 ## Erste Schritte nach der Installation
 
 1. `.env` nach dem Muster von `.env.example` anlegen (Produktivbetrieb).
-2. Einstellungen → **KI-Assistent**: Claude-API-Key eintragen.
+2. Bonsai auf demselben Rechner installieren; SEDO startet es aus `Dokumente/Bonsai-demo` automatisch mit. Einstellungen → **KI-Assistent (Bonsai · lokal)** → **Gespeicherte Verbindung prüfen**. Anderer Installationsort und Details: [BONSAI.md](BONSAI.md).
 3. Erstes Diktat lädt das Whisper-Sprachmodell (~460 MB) einmalig herunter.
 4. Vor dem ersten ARP-/Aareon-Echtlauf: Checkliste in `MEMORY_SEDO.md` beachten
    (ARP Seller-ID, Empfänger-ID, BT-130/BT-154-Abgleich mit Tönnies).

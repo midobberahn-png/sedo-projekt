@@ -275,7 +275,7 @@ def _sanitized_db_copy(db_path: Path) -> Path:
     """Erzeugt eine temporäre DB-Kopie, in der die Secret-Werte entfernt sind.
 
     Die Live-Datenbank bleibt unverändert; nur die Kopie fürs Backup wird
-    bereinigt. Nach einer Wiederherstellung müssen Claude-API-Key,
+    bereinigt. Nach einer Wiederherstellung müssen alte KI-API-Schlüssel,
     SMTP-Passwort und Bank-PIN einmal neu eingetragen werden.
 
     Drei Dinge, die vorher fehlten:
@@ -419,7 +419,7 @@ def create_backup(reason: str = 'manual') -> Path:
                 f'Grund: {reason}\n'
                 f'Datenbank: {db_path}\n'
                 f'Medienordner: {media_root}\n'
-                f'Hinweis: Claude-API-Key, SMTP-Passwort und Bank-PIN sind aus Sicherheitsgründen\n'
+                f'Hinweis: alte KI-API-Schlüssel, SMTP-Passwort und Bank-PIN sind aus Sicherheitsgründen\n'
                 f'NICHT im Backup enthalten – auch nicht als Rest-Bytes; die Datenbankkopie wird\n'
                 f'dafür neu aufgebaut. Ebenfalls entfernt: alle aktiven Anmelde-Sitzungen.\n'
                 f'Nach einer Wiederherstellung bitte unter Einstellungen neu eintragen.\n'
