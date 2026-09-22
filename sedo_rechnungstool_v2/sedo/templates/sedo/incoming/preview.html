@@ -1,6 +1,6 @@
 {% extends 'sedo/base.html' %}{% block title %}{{ invoice.filename }} · SEDO{% endblock %}
 {% block content %}
-<header class="topbar"><div><div class="eyebrow">Originalbeleg</div><h1 class="h1">{{ invoice.filename }}</h1></div><div class="toolbar"><a class="btn" href="{% url 'sedo:incoming_index' %}">Zur Sammlung</a><a class="btn" href="{% url 'sedo:incoming_detail' invoice.pk %}">Angaben prüfen</a><a class="btn" href="{% url 'sedo:incoming_original' invoice.pk %}" download>Herunterladen</a></div></header>
+<header class="topbar"><div><div class="eyebrow">Originalbeleg</div><h1 class="h1">{{ invoice.filename }}</h1></div><div class="toolbar"><a class="btn" href="{{ preview_back_url }}">← Zurück</a><a class="btn" href="{{ detail_url }}">Angaben prüfen</a><a class="btn" href="{% url 'sedo:incoming_original' invoice.pk %}" download>Herunterladen</a></div></header>
 {% if error %}<p class="notice error" role="alert">{{ error }}</p>
 {% elif kind == 'pdf' %}<iframe class="document-preview" title="{{ invoice.filename }}" src="{% url 'sedo:incoming_original' invoice.pk %}?inline=1"></iframe>
 {% elif kind == 'image' %}<div class="card document-image"><img src="{% url 'sedo:incoming_original' invoice.pk %}?inline=1" alt="{{ invoice.filename }}"></div>

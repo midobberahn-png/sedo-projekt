@@ -7,7 +7,6 @@ import csv
 import hashlib
 import io
 import json
-import re
 import zipfile
 from pathlib import PurePath
 
@@ -19,6 +18,7 @@ from .mail_mime import attachment_bytes, safe_name
 from .mail_secrets import MailError
 from .mail_storage import original_bytes, pin_message
 from .tax_export import _csv_text, parse_month
+from .incoming_detection import classify_document
 
 MAX_DOCUMENT = 25 * 1024 * 1024
 MAX_BATCH_BYTES = 100 * 1024 * 1024
@@ -57,20 +57,20 @@ def collect_message(message):
             ext = PurePath(item['name']).suffix.lower()
             if ext not in ('.pdf', '.xml', '.png', '.jpg', '.jpeg', '.tif', '.tiff'):
                 continue
-            invoice_hint = re.search(r'rechnung|invoice|gutschrift|credit.?note', message.subject + ' ' + item['name'], re.I)
-            if ext not in ('.pdf', '.xml') and not invoice_hint:
-                continue
             if item['size'] > MAX_DOCUMENT:
                 raise IncomingError('Ein Beleganhang ist größer als 25 MB. Bitte einzeln im Postfach prüfen.')
             name, data = attachment_bytes(message, item['index'])
             if not data or len(data) > MAX_DOCUMENT:
                 raise IncomingError('Ein Beleganhang ist leer oder zu groß. Bitte im Postfach prüfen.')
+            detection = classify_document(data, name, message.subject)
+            if detection.kind != 'invoice':
+                continue
             pin_message(message)
             kind = {'.pdf': 'application/pdf', '.xml': 'application/xml', '.png': 'image/png',
                     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.tif': 'image/tiff', '.tiff': 'image/tiff'}[ext]
             invoice, created = IncomingInvoice.objects.get_or_create(digest=digest(data), defaults={
                 'original': data, 'filename': safe_name(name), 'media_type': kind, 'size': len(data),
-                'reason': 'Rechnungshinweis in Betreff oder Dateiname' if invoice_hint else 'Dokumentanhang – Belegart prüfen'})
+                'reason': detection.reason})
             IncomingInvoiceSource.objects.get_or_create(message=message, attachment_index=item['index'], defaults={'invoice': invoice})
             if created:
                 AuditLog.objects.create(action='import', object_type='IncomingInvoice', object_id=str(invoice.pk),
@@ -245,3 +245,28 @@ def check_package_attachment(draft):
     if digest(bytes(package.data)) != package.digest or not any(
             digest(bytes(attachment.data)) == package.digest for attachment in draft.attachments.all()):
         raise MailError('Das Steuerbüro-Paket fehlt oder wurde verändert. Bitte diesen unversendeten Entwurf löschen und den Entwurf vom Paket aus neu erstellen.')
+
+
+def reclassify_unreviewed(*, apply=False, user=None):
+    """Only untouched, clearly non-invoice imports; keep originals and sources."""
+    def candidates():
+        return IncomingInvoice.objects.filter(state='review', revision=0, supplier='',
+            number='', document_date__isnull=True, gross__isnull=True, note='',
+            reviewed_at__isnull=True, reviewed_by__isnull=True, printed_at__isnull=True)
+    results = []
+    for invoice in candidates().order_by('pk').iterator(chunk_size=20):
+        detection = classify_document(verified_original(invoice), invoice.filename)
+        if detection.kind != 'other':
+            continue
+        applied = False
+        if apply:
+            with transaction.atomic():
+                changed = candidates().filter(pk=invoice.pk, digest=invoice.digest).update(
+                    state='ignored', revision=1, reason=('Automatisch aussortiert: ' + detection.reason)[:240])
+                if changed:
+                    invoice.refresh_from_db()
+                    record_action(invoice, user, 'update', 'Eindeutigen Fehlimport aussortiert: ' + detection.reason)
+                    applied = True
+        results.append({'id':invoice.pk, 'filename':invoice.filename, 'reason':detection.reason,
+                        'digest':invoice.digest, 'applied':applied})
+    return results

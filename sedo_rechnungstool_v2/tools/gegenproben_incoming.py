@@ -1,7 +1,7 @@
 """Schutzregeln des Belegeingangs auf isolierten Quellkopien entfernen."""
 import gegenproben_entwurf as runner
 
-runner.TEST = 'sedo.tests.test_incoming_invoices.IncomingInvoiceTests.'
+runner.TEST = 'sedo.tests.'
 runner.MUTATIONEN = [
     ('package_attachment', 'sedo/services/mail_send.py',
      '    check_package_attachment(draft)', '    pass',
@@ -25,6 +25,16 @@ runner.MUTATIONEN = [
     ('xml_dtd_guard', 'sedo/services/incoming_invoices.py',
      'if root.getroottree().docinfo.doctype:', 'if False:',
      'test_xml_entities_are_not_read_or_sent_to_model'),
+]
+
+runner.MUTATIONEN = [(*case[:-1], 'test_incoming_invoices.IncomingInvoiceTests.' + case[-1]) for case in runner.MUTATIONEN]
+runner.MUTATIONEN += [
+    ('invoice_only_intake', 'sedo/services/incoming_invoices.py',
+     "            if detection.kind != 'invoice':", '            if False:',
+     'test_incoming_detection.IncomingDetectionTests.test_each_attachment_is_checked_even_when_email_says_invoice'),
+    ('document_type_veto', 'sedo/services/incoming_detection.py',
+     '    if title and OTHER_WORD.fullmatch(title):', '    if False:',
+     'test_incoming_detection.IncomingDetectionTests.test_offer_delivery_and_meter_letters_never_inherit_invoice_filename_or_subject'),
 ]
 
 if __name__ == '__main__':
