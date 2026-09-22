@@ -4,7 +4,7 @@ Nur echte fachliche Assertion-Fehler zählen als erkannte Gegenprobe.
 """
 import gegenproben_entwurf as runner
 
-runner.TEST = 'sedo.tests.test_mail_client.'
+runner.TEST = 'sedo.tests.'
 runner.MUTATIONEN = [
     ('uidvalidity_guard', 'sedo/services/mail_imap.py',
      "if not location.folder.active or select(client, location.folder, readonly=False) != location.uidvalidity:",
@@ -34,6 +34,17 @@ runner.MUTATIONEN = [
      '        MailMessage.objects.filter(pk=message.pk, raw_cached=True).update(raw=raw, raw_cached=False)',
      '        pass',
      'MailMimeAndSecurityTests.test_business_source_survives_cache_loss_and_customer_link_pins_bytes'),
+]
+
+# Include targeted workspace guards in the same isolated mail counterprobe run.
+runner.MUTATIONEN = [(*case[:-1], 'test_mail_client.' + case[-1]) for case in runner.MUTATIONEN]
+runner.MUTATIONEN += [
+    ('selected_folder_copy', 'sedo/mail_views.py',
+     '    if location_id is not None:', '    if False:',
+     'test_mail_workspace.MailWorkspaceTests.test_reader_uses_selected_copy_only_and_retains_page_and_filters'),
+    ('copyuid_source_binding', 'sedo/services/mail_imap.py',
+     ' or source_uid != location.uid', '',
+     'test_mail_workspace.MailWorkspaceTests.test_bad_copyuid_never_invents_or_overwrites_destination'),
 ]
 
 if __name__ == '__main__':

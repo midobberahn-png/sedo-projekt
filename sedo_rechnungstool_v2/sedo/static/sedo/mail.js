@@ -9,6 +9,22 @@
     select.addEventListener('change', refresh);
     refresh();
   });
+  const folderPanel = document.querySelector('[data-mail-folder-panel]');
+  if (folderPanel) {
+    const compact = window.matchMedia('(max-width:640px)');
+    folderPanel.open = !compact.matches;
+    compact.addEventListener('change', () => { folderPanel.open = !compact.matches; });
+  }
+  document.addEventListener('change', event => {
+    if (event.target.matches('[data-mail-account-picker] select, [data-mail-filter]')) event.target.form.requestSubmit();
+  });
+  document.addEventListener('submit', event => {
+    const form = event.target;
+    if (!form.closest('.mail-workspace') || form.method !== 'post') return;
+    if (form.getAttribute('aria-busy') === 'true') { event.preventDefault(); return; }
+    form.setAttribute('aria-busy', 'true');
+  });
+  window.addEventListener('pageshow', () => document.querySelectorAll('.mail-workspace form[aria-busy]').forEach(form => form.removeAttribute('aria-busy')));
   const selection = document.querySelector('[data-mail-selection]');
   if (selection) {
     const update = () => {
@@ -17,6 +33,10 @@
       selection.querySelector('[data-mail-selection-count]').textContent = `${count} ausgewählt`;
     };
     document.addEventListener('change', update);
+    document.querySelector('[data-mail-clear-selection]')?.addEventListener('click', () => {
+      document.querySelectorAll('input[form="spam-selection"]:checked').forEach(box => { box.checked = false; });
+      update();
+    });
     update();
   }
   document.querySelectorAll('[data-mail-confirm]').forEach(button => {
@@ -54,7 +74,7 @@
           const error = document.querySelector(`[data-mail-error="${Number(account.id)}"]`);
           if (error) { error.textContent = account.last_error; error.hidden = !account.last_error; }
         });
-        const key = JSON.stringify([state.count, state.accounts.map(account => account.last_sync)]);
+        const key = JSON.stringify([state.count, state.accounts.map(account => [account.last_sync, account.running])]);
         const list = document.querySelector('.mail-message-list');
         const interacting = () => document.querySelector('input[form="spam-selection"]:checked') || list?.contains(document.activeElement);
         if (previous !== null && key !== previous && list && !interacting()) {
@@ -73,9 +93,14 @@
           const freshFolders = parsed.querySelector('.mail-folders');
           if (folders && freshFolders && !folders.contains(document.activeElement)) {
             const offset = folders.scrollTop;
+            const expanded = [...folders.querySelectorAll('[data-mail-folder-group][open]')].map(item => item.dataset.mailFolderGroup);
             folders.replaceChildren(...freshFolders.childNodes);
+            folders.querySelectorAll('[data-mail-folder-group]').forEach(item => { item.open = expanded.includes(item.dataset.mailFolderGroup); });
             folders.scrollTop = offset;
           }
+          const counter = document.querySelector('[data-mail-list-count]');
+          const newCounter = parsed.querySelector('[data-mail-list-count]');
+          if (counter && newCounter) counter.textContent = newCounter.textContent;
           previous = key;
         } else if (previous === null || !list) previous = key;
       } catch (_) {

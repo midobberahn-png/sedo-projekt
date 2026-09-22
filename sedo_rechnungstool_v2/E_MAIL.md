@@ -12,9 +12,9 @@ bestätigt, dass sämtliche bisherigen E-Mails auf dem Mailserver liegen.
    Dabei wird keine Test-Mail versendet.
 3. Vorhandene Ordner für **Gesendet**, **Papierkorb** und **Archiv** prüfen und
    gegebenenfalls zuordnen. Es darf je Rolle nur einen Zielordner geben.
-4. **Jetzt abrufen** lädt zuerst neuere E-Mails. Weitere Abrufe ergänzen den
-   Bestand. Der automatische Abruf läuft bei geöffneter Desktop-App etwa
-   jede Minute. Bei geschlossener App bleiben neue Mails auf dem Server.
+4. Der Abruf startet automatisch mit der Desktop-App und läuft alle fünf
+   Minuten. Zuerst werden neuere E-Mails geladen; weitere Abrufe ergänzen
+   den Bestand. Bei geschlossener App bleiben neue Mails auf dem Server.
 5. Für beide Postfächer Empfang, Ordner, Anhänge und eine ausdrücklich
    freigegebene Testantwort im Alltag prüfen. Erst danach Outlook ablösen.
 
@@ -50,6 +50,37 @@ Provider-Dokumentation:
 
 Die Postfächer sind gemeinsame Firmenpostfächer für angemeldete SEDO-Nutzer.
 Einrichtung und Passwortänderungen erfordern ein Administrationskonto.
+
+## Übersicht und Belegstatus
+
+Links stehen die wichtigsten Ordner, weitere Serverordner sind aufklappbar.
+Der Postfachwähler zeigt beide Firmenpostfächer gemeinsam oder einzeln. Auf
+breiten Bildschirmen stehen Liste und Nachricht nebeneinander; auf schmalen
+Bildschirmen führt „Nachrichtenliste“ zurück zur bisherigen Auswahl.
+
+Die primären Aktionen sind Antworten, Weiterleiten, Papierkorb und Spam.
+Markieren, Archivieren, Ordnerwechsel und endgültiges Löschen liegen unter
+„Weitere Aktionen“. Eine Mehrfachauswahl blendet ihre Aktionsleiste ein und
+wird vor dem Verschieben bestätigt. Ordner, Suche, Filter und Listenseite
+bleiben erhalten. Eine Aktion betrifft die geöffnete Ordnerkopie.
+
+Übernommene Rechnungsanhänge markieren die Quell-E-Mail automatisch:
+
+- **Beleg übernommen · zu prüfen**: Das Original ist gesichert, mindestens
+  ein verknüpfter Beleg wartet noch auf Prüfung.
+- **Belege abgearbeitet**: Alle verknüpften Belege sind geprüft oder als
+  Nicht-Rechnung abgelegt. Das bedeutet weder bezahlt noch ans Steuerbüro gesendet.
+- **Belegübernahme fehlgeschlagen**: Die Übernahme muss geprüft werden.
+
+Die entsprechenden Filter helfen beim Abarbeiten. Eine gewöhnliche Nachricht
+wird nicht allein deshalb als erledigt markiert, weil sie auf Anhänge geprüft
+wurde. Die Belege selbst lassen sich unter „Weiterarbeiten“ öffnen. Bereits
+übernommene Dokumente und ihre Verknüpfungen bleiben auch bei Ordnerwechseln
+bestehen.
+
+Der Hintergrundabruf gibt Benutzeraktionen zwischen abgeschlossenen Schritten
+Vorrang. Bei einer unterbrochenen Verschiebung wird zuerst der Serverstand
+abgeglichen; die Aktion wird nicht blind wiederholt.
 
 ## Von der Anfrage zum Angebot
 

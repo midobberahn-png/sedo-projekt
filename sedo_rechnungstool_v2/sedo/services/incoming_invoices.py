@@ -80,7 +80,7 @@ def collect_message(message):
         return count
 
 
-def collect_account(account_id):
+def collect_account(account_id, heartbeat=None):
     if AppSetting.get('incoming_invoice_enabled', '1') != '1':
         return 0
     # Only incoming mail: sent, spam and trash never trigger intake. Existing
@@ -91,6 +91,8 @@ def collect_account(account_id):
             pk__in=spam_messages()).exclude(spam_moves__state='unknown').distinct().order_by('pk')[:25]
     count = 0
     for message in messages:
+        if heartbeat:
+            heartbeat()
         try:
             # A held message remains eligible after an explicit release.
             try:
