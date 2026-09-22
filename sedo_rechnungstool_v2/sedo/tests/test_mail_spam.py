@@ -27,7 +27,8 @@ def message_bytes(sender='werbung@example.org', subject='Information', body='Gut
     if html_body:
         msg.add_alternative(html_body, subtype='html')
     if pdf:
-        msg.add_attachment(b'%PDF-test-original', maintype='application', subtype='pdf', filename='Rechnung.pdf')
+        from .document_fixtures import text_pdf
+        msg.add_attachment(text_pdf(), maintype='application', subtype='pdf', filename='Rechnung.pdf')
     return msg.as_bytes()
 
 

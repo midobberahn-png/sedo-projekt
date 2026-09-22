@@ -25,7 +25,7 @@ class DocumentPreviewTests(MailFixture):
         preview = reverse('sedo:incoming_preview', args=[item.pk])
         for route in [reverse('sedo:incoming_index'), reverse('sedo:incoming_detail', args=[item.pk])]:
             doc = html.fromstring(self.client.get(route).content)
-            links = doc.xpath('//a[@href=$url]', url=preview)
+            links = doc.xpath('//a[starts-with(@href,$url)]', url=preview)
             self.assertTrue(links)
             self.assertFalse(any('download' in link.attrib for link in links))
         response = self.client.get(preview)

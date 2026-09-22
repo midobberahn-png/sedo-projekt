@@ -2,9 +2,15 @@
 
 ## Ablauf
 
-1. Der reguläre IMAP-Abruf übernimmt PDF-/XML-Anhänge aus aktiven Posteingängen
-   in **Eingangsrechnungen → Zu prüfen**. Bilder werden übernommen, wenn Betreff
-   oder Dateiname auf Rechnung/Gutschrift hinweisen. Bereits geladene ältere
+1. Der reguläre IMAP-Abruf prüft jeden Anhang einzeln. Nur erkannte Rechnungen
+   kommen in **Eingangsrechnungen → Zu prüfen**. Text-PDFs benötigen einen
+   Rechnungsbezug im Dokument und einen Betrag; XML eine unterstützte Rechnungsart,
+   Nummer und Summe. Angebote, Lieferscheine, Auftragsbestätigungen, Mahnungen,
+   Gutschriften, Proforma-Rechnungen und Terminmitteilungen werden nicht als
+   Eingangsrechnungen übernommen. Unklare Dokumente bleiben im Postfach.
+   Textlose Scans/Bilder benötigen ausdrückliche Rechnungskennzeichen sowohl
+   im Dateinamen als auch im Betreff. Ein Mailbetreff allein genügt nie.
+   Bereits geladene ältere
    Nachrichten folgen in Gruppen von 25 pro Abruf. Gesendet, Spam und Papierkorb
    werden nicht automatisch ausgewertet. Keine externen Links oder ZIPs öffnen.
 2. Originalanhang und vollständige Quell-E-Mail werden in der lokalen Datenbank
@@ -12,7 +18,9 @@
    alle Herkunftsnachrichten bleiben verknüpft. Die Originale sind im regulären
    Backup enthalten und bleiben nach einer Löschung auf dem Mailserver erhalten.
 3. Den Originalbeleg öffnen, Lieferant, Nummer, Belegdatum, Brutto und Währung
-   prüfen. **Angaben mit Bonsai vorschlagen** liest Text-PDFs und XML ausschließlich
+   prüfen. **Zurück** führt aus der Dateiansicht und der Zuordnungsmaske
+   zur vorherigen Ansicht; Suchfilter und Listenseite bleiben erhalten.
+   **Angaben mit Bonsai vorschlagen** liest Text-PDFs und XML ausschließlich
    über den vorhandenen lokalen Transport. Scans/Bilder benötigen derzeit manuelle
    Eingaben. Vorschläge bleiben ungespeichert, bis der Benutzer sie übernimmt.
 4. Erst **Prüfen & freigeben** mit Pflichtbestätigung erlaubt Sammelaktionen.
@@ -40,7 +48,9 @@ Keine Kontierung, Zahlung oder Überweisungsvorlage wird erzeugt.
   maximal 500 PDF-Seiten in der Drucksammlung. Für den Mailversand gilt das
   bestehende 25-MB-Anhangslimit; größere Pakete kleiner zusammenstellen.
 - Erkennung erzeugt bewusst Prüfkandidaten, keine automatischen Buchungen.
-  Eine PDF kann ein anderer Dokumenttyp sein. Verschieden gescannte Fassungen
+  Die lokale, regelbasierte Erkennung nutzt die ersten drei PDF-Seiten; sie
+  ersetzt keine inhaltliche Prüfung oder OCR. Irrtümer sind über „Aussortieren“
+  reversibel korrigierbar. Verschieden gescannte Fassungen
   werden nicht per Hash zusammengeführt; gleiche Lieferanten-/Rechnungsnummern
   werden bei der Belegprüfung als mögliche Dublette angezeigt.
 - Prüfsummen vor Originaldownload, Drucken und Export; UTF-8 CSV schützt
@@ -60,15 +70,29 @@ Gelegentliche Einrichtung: Zahnrad bei Postfächern/Bankabruf/Belegeingang,
 aufklappbare Einstellungsabschnitte für SMTP, Bank, Bonsai, Wetter, GWG-Mapping
 und Backup-Automatik. Vorhandene Direktlinks auf Abschnitte öffnen deren Maske.
 
-Erklärungen sind in Templates ausdrücklich mit `data-help` markiert oder als
-Formular-`helptext` ausgewiesen. Sie erscheinen als umkreistes i mit Hover,
-Tastaturfokus und Antippen, sind mit Escape schließbar und bleiben im Viewport.
-Bestehende `info-tip`-Elemente verwenden dasselbe Verhalten. Ohne JavaScript
-bleiben markierte Texte und Einrichtungsmasken lesbar. Fehler, aktuelle Status,
-Pflichtbestätigungen und fachliche Warnungen bleiben sichtbar.
+Erklärungen stehen in dieser Dokumentation und in `BEDIENHINWEISE.md`. Die
+Anwendung zeigt keine Info-Icons oder dauerhaften Hilfetexte. Fehler, Status
+und notwendige Bestätigungen bleiben sichtbar.
+
+## Bestehende Fehlimporte prüfen
+
+`python manage.py recheck_incoming_documents` erzeugt nur eine Vorschau.
+Nach Sicherung sortiert `python manage.py recheck_incoming_documents --apply
+--user ADMINNAME` eindeutig erkannte andere Dokumenttypen reversibel aus.
+Berücksichtigt werden ausschließlich unbearbeitete Belege in „Zu prüfen“ mit
+Revision 0, ohne erfasste Angaben, Freigabe oder Druckbestätigung. Unklare
+Dokumente, bearbeitete und freigegebene Belege bleiben erhalten. Originalbytes,
+Prüfsummen und Quell-E-Mails werden nicht verändert. Änderungen werden protokolliert;
+„Aussortiert → Beleg prüfen → Wieder aufnehmen“ macht sie rückgängig. Das normale
+Archiv blendet aussortierte Belege aus, der Reiter „Aussortiert“ bleibt verfügbar.
+
+Die XML-Erkennung unterstützt UBL Invoice und CII mit expliziten Rechnungsarten
+nach der [Peppol-Rechnungsartenliste](https://docs.peppol.eu/poacc/billing/3.0/codelist/UNCL1001-inv/).
+Dies ist eine Typ-Erkennung, keine vollständige ZUGFeRD-/XRechnung-Validierung.
 
 ## Prüfung
 
-Gezielte Fälle: `sedo.tests.test_incoming_invoices` plus bestehende Mailtests.
+Gezielte Fälle: `sedo.tests.test_incoming_detection`, `sedo.tests.test_incoming_invoices`
+und bestehende Mailtests; neun Gegenproben in `tools/gegenproben_incoming.py`.
 Vollständige Freigabe weiterhin mit `tools/local_checks.py` (siehe
 `LOCAL_CHECKS.md`). Native Mac-Validierung ersetzt keine Windows-/Linux-Abnahme.

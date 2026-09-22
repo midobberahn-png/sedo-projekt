@@ -20,8 +20,9 @@ from sedo.models import (AppSetting, IncomingInvoice, IncomingInvoicePackage, In
     MailAccount, MailDraft, MailFolder, MailLocation, MailMessage)
 from sedo.services.incoming_invoices import (IncomingError, collect_account, collect_message, create_package,
     print_collection, selected_approved, suggest_fields, verified_original)
-from sedo.services.mail_mime import store_message
-from sedo.services.mail_storage import original_bytes
+from sedo.services.mail_mime import store_message, attachment_bytes
+from sedo.services.mail_storage import original_bytes, pin_message
+from .document_fixtures import text_pdf
 
 
 def pdf_bytes():
@@ -51,7 +52,7 @@ class IncomingInvoiceTests(TestCase):
         email['To'] = account.email
         email['Subject'] = subject
         email.set_content('Rechnung anbei.')
-        email.add_attachment(pdf_bytes() if data is None else data, maintype='application', subtype='octet-stream', filename=name)
+        email.add_attachment(text_pdf() if data is None else data, maintype='application', subtype='octet-stream', filename=name)
         message = store_message(account, email.as_bytes(), cache_only=cache)
         folder, _ = MailFolder.objects.get_or_create(account=account, role=role, defaults={'remote_name': role, 'name': role})
         MailLocation.objects.create(folder=folder, message=message, uid=message.pk, uidvalidity=1)
@@ -59,8 +60,15 @@ class IncomingInvoiceTests(TestCase):
 
     def invoice(self, approved=False, **kwargs):
         message = self.message(**kwargs)
-        collect_message(message)
-        item = IncomingInvoice.objects.get(sources__message=message)
+        # Archived fixture for review/preview/export tests, including historical
+        # malformed originals. Intake behavior is exercised separately above/below.
+        name, data = attachment_bytes(message, message.attachments[0]['index'])
+        pin_message(message)
+        ext = Path(name).suffix.lower()
+        media = {'.xml':'application/xml', '.tiff':'image/tiff', '.png':'image/png', '.jpg':'image/jpeg'}.get(ext, 'application/pdf')
+        item = IncomingInvoice.objects.create(digest=hashlib.sha256(data).hexdigest(),
+            original=data, filename=name, size=len(data), media_type=media, reason='Gesichertes Testoriginal')
+        IncomingInvoiceSource.objects.create(message=message, invoice=item, attachment_index=message.attachments[0]['index'])
         if approved:
             item.state = 'approved'
             item.supplier = 'Lieferant'
@@ -110,12 +118,11 @@ class IncomingInvoiceTests(TestCase):
         self.assertTrue(original_bytes(message))
         self.assertContains(self.client.get(reverse('sedo:incoming_index')), 'Belegübernahme fehlgeschlagen')
 
-    def test_unknown_documents_stay_review_candidates_and_executables_are_ignored(self):
-        self.message(name='Bescheinigung.pdf', subject='Unterlagen')
+    def test_unknown_documents_and_executables_stay_out_of_invoice_intake(self):
+        self.message(data=pdf_bytes(), name='Bescheinigung.pdf', subject='Unterlagen')
         self.message(name='setup.exe', subject='Neue Software')
         collect_account(self.account.pk)
-        self.assertEqual(IncomingInvoice.objects.count(), 1)
-        self.assertIn('Belegart prüfen', IncomingInvoice.objects.get().reason)
+        self.assertEqual(IncomingInvoice.objects.count(), 0)
 
     def test_approval_requires_fields_confirmation_and_current_revision(self):
         item = self.invoice()
@@ -264,7 +271,7 @@ class IncomingInvoiceTests(TestCase):
             ai.assert_not_called()
 
     def test_empty_scan_pdf_has_manual_fallback_without_ai_call(self):
-        item = self.invoice()
+        item = self.invoice(data=pdf_bytes())
         with patch('sedo.services.ai_local.generate_structured') as ai:
             with self.assertRaises(IncomingError):
                 suggest_fields(item)

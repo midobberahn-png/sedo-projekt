@@ -93,7 +93,7 @@ Bonsai liest Text-PDFs und XML lokal. Vorschläge werden erst beim Speichern üb
 
 ### incoming/index.html
 
-PDF- und XML-Anhänge aus dem Posteingang werden automatisch gesammelt. Bilder werden bei Rechnungshinweisen im Betreff oder Dateinamen erkannt. Belegart und Angaben vor der Freigabe prüfen. Originale bleiben unverändert in SEDO und sind im Backup enthalten. Es werden keine Zahlungen ausgelöst.
+Jeder Anhang wird einzeln geprüft. Nur Dokumente mit erkannten Rechnungsmerkmalen werden gesammelt; Angebote, Lieferscheine und Terminmitteilungen bleiben im Postfach. Unklare Dateien werden nicht automatisch übernommen. Textlose Scans und Bilder benötigen eindeutige Rechnungskennzeichen im Dateinamen und im Betreff. Belegart und Angaben vor der Freigabe prüfen. „Zurück“ führt aus Dateiansicht und Zuordnungsmaske zur vorherigen Ansicht samt Filtern. Originale bleiben unverändert in SEDO und sind im Backup enthalten. Es werden keine Zahlungen ausgelöst.
 
 Bis zu 100 Belege pro Paket. Ein Download bestätigt keinen tatsächlichen Druck. Das Steuerbüro-Paket enthält die ausgewählten Originalbelege, Quell-E-Mails, Übersicht und Prüfsummen. Versand folgt erst nach Prüfung des Mailentwurfs.
 

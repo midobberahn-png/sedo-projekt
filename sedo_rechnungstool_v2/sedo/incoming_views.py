@@ -9,6 +9,8 @@ from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import content_disposition_header
+from django.urls import Resolver404, resolve, reverse
+from urllib.parse import urlencode, urlsplit
 from django.views.decorators.cache import never_cache
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_POST
@@ -21,6 +23,24 @@ from .services.incoming_invoices import (IncomingError, collect_message, create_
 from .services.mail_mime import addresses
 from .services.mail_secrets import MailError
 from .services.mail_send import MAX_ATTACHMENTS_BYTES
+
+
+def navigation(request, pk):
+    parent = request.GET.get('back', '')
+    try:
+        parts = urlsplit(parent)
+        match = resolve(parts.path)
+        valid = (len(parent) <= 2000 and parent.startswith('/') and not parts.scheme and
+                 not parts.netloc and not any(ord(char) < 32 or char == '\\' for char in parent) and
+                 match.view_name in ('sedo:incoming_index', 'sedo:mail_inbox', 'sedo:mail_message'))
+    except (ValueError, Resolver404):
+        valid = False
+    parent = parent if valid else reverse('sedo:incoming_index')
+    query = urlencode({'back': parent})
+    detail_url = reverse('sedo:incoming_detail', args=[pk]) + '?' + query
+    return {'back_url': parent, 'detail_url': detail_url,
+            'preview_url': reverse('sedo:incoming_preview', args=[pk]) + '?' + query + '&from=detail',
+            'preview_back_url': detail_url if request.GET.get('from') == 'detail' else parent}
 
 
 def download_bytes(data, name, content_type='application/octet-stream'):
@@ -42,6 +62,7 @@ def index(request):
         items = items.filter(state=view)
     else:
         view = 'all'
+        items = items.exclude(state='ignored')
     q = request.GET.get('q', '').strip()[:200]
     month = request.GET.get('month', timezone.localdate().strftime('%Y-%m'))
     if q:
@@ -65,6 +86,7 @@ def index(request):
         'packages': IncomingInvoicePackage.objects.select_related('draft').defer('data', 'draft__raw')[:15],
         'auto_enabled': AppSetting.get('incoming_invoice_enabled', '1') == '1',
         'tax_email': AppSetting.get('incoming_tax_email', ''),
+        'return_url': request.get_full_path(),
     })
 
 
@@ -72,6 +94,7 @@ def index(request):
 @never_cache
 def detail(request, pk):
     invoice = get_object_or_404(IncomingInvoice, pk=pk)
+    nav = navigation(request, pk)
     form = IncomingInvoiceForm(instance=invoice, initial={'revision': invoice.revision})
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -85,7 +108,7 @@ def detail(request, pk):
                 if action in ('save', 'approve'):
                     form = IncomingInvoiceForm(request.POST, instance=invoice)
                     if not form.is_valid():
-                        return render(request, 'sedo/incoming/detail.html', {'invoice': invoice, 'form': form})
+                        return render(request, 'sedo/incoming/detail.html', {'invoice': invoice, 'form': form, **nav})
                 with transaction.atomic():
                     # An atomic revision claim also serializes edits on SQLite.
                     revision = int(request.POST.get('revision', '-1'))
@@ -107,7 +130,7 @@ def detail(request, pk):
                         invoice.save()
                     record_action(invoice, request.user, 'update', f'Belegstatus: {invoice.get_state_display()}')
                 messages.success(request, 'Beleg gespeichert. Das Original bleibt unverändert.')
-                return redirect('sedo:incoming_detail', pk)
+                return redirect(nav['detail_url'])
             else:
                 raise IncomingError('Unbekannte Aktion.')
         except (IncomingError, AIError, ValueError, InvalidOperation) as exc:
@@ -115,14 +138,14 @@ def detail(request, pk):
     duplicates = IncomingInvoice.objects.none()
     if invoice.supplier and invoice.number:
         duplicates = IncomingInvoice.objects.filter(supplier__iexact=invoice.supplier, number__iexact=invoice.number).exclude(pk=pk)
-    return render(request, 'sedo/incoming/detail.html', {'invoice': invoice, 'form': form, 'duplicates': duplicates})
+    return render(request, 'sedo/incoming/detail.html', {'invoice': invoice, 'form': form, 'duplicates': duplicates, **nav})
 
 
 @login_required
 @never_cache
 def preview(request, pk):
     invoice = get_object_or_404(IncomingInvoice, pk=pk)
-    context = {'invoice': invoice}
+    context = {'invoice': invoice, **navigation(request, pk)}
     try:
         data = verified_original(invoice)
         kind = _preview_type(invoice, data)
@@ -298,7 +321,10 @@ def collect(request, pk):
     try:
         MailMessage.objects.filter(pk=pk).update(invoice_scan_done=False)
         count = collect_message(message)
-        messages.success(request, f'{count} neue Belege übernommen. Bereits gespeicherte Originale werden nicht doppelt angelegt.')
+        if not count and not message.incoming_sources.exists():
+            messages.error(request, 'Keine eindeutige Rechnung erkannt. Die Dokumente bleiben im Postfach.')
+        else:
+            messages.success(request, f'{count} neue Belege übernommen. Bereits gespeicherte Originale werden nicht doppelt angelegt.')
     except (IncomingError, MailError) as exc:
         messages.error(request, str(exc))
     if 'return_query' in request.POST:
