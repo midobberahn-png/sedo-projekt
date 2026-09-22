@@ -191,13 +191,13 @@ def business_source(message):
 def destination_for(account, role):
     folders = account.folders.filter(role=role, active=True, selectable=True)
     if folders.count() != 1:
-        raise MailError('Bitte im Zahnrad des Postfachs genau einen Posteingang und einen Spamordner zuordnen.')
+        raise MailError('Bitte in den Postfach-Einstellungen genau einen passenden Zielordner zuordnen.')
     return folders.get()
 
 
 def move_locked(client, location, destination, *, automatic=False):
     """Caller holds the lease. At most one attempt until a fresh reconciliation."""
-    from .mail_imap import checked_location, quoted
+    from .mail_imap import cache_move_target, checked_location, quoted
     if destination.account_id != location.folder.account_id or not destination.active or not destination.selectable:
         raise MailError('Bitte einen verfügbaren Ordner desselben Postfachs wählen.')
     if location.folder_id == destination.pk:
@@ -206,7 +206,7 @@ def move_locked(client, location, destination, *, automatic=False):
         raise MailError('Eine Verschiebung ist noch ungeklärt. Bitte zuerst das Postfach neu abrufen und den Serverstand prüfen.')
     checked_location(client, location)
     if b'MOVE' not in {item.upper() for item in client.capabilities}:
-        raise MailError('Markierung gespeichert. Der Server unterstützt kein sicheres Verschieben; bitte den Ordner im Webmail ändern.')
+        raise MailError('Der Server unterstützt kein sicheres Verschieben (IMAP MOVE); bitte den Ordner im Webmail ändern.')
     attempt = MailSpamMove.objects.create(message=location.message, source=location.folder,
         destination=destination, uid=location.uid, uidvalidity=location.uidvalidity, automatic=automatic,
         note='Verschiebung gestartet; bei Unterbrechung zuerst Serverstand abgleichen.')
@@ -214,13 +214,14 @@ def move_locked(client, location, destination, *, automatic=False):
         status, _ = client.uid('MOVE', str(location.uid), quoted(destination.remote_name))
     except Exception:
         # A lost acknowledgement may mean MOVE succeeded. Never infer failure.
-        raise MailError('Markierung gespeichert; Verschiebung unklar. Bitte neu abrufen. Es erfolgt keine automatische Wiederholung.') from None
+        raise MailError('Verschiebung unklar. Der automatische Abgleich prüft den Serverstand. Es erfolgt keine automatische Wiederholung.') from None
     if status != 'OK':
         attempt.state, attempt.note = 'failed', 'Der Server hat die Verschiebung abgelehnt.'
         attempt.save(update_fields=['state', 'note'])
         raise MailError(attempt.note)
     attempt.state, attempt.note = 'done', 'Verschiebung vom Server bestätigt.'
     attempt.save(update_fields=['state', 'note'])
+    cache_move_target(client, location, destination)
     location.delete()
 
 
@@ -289,11 +290,11 @@ def process_account(client, account, token, synced_folders):
 
 
 def correct(location_id, decision, user):
-    from .mail_imap import account_lease, connection
+    from .mail_imap import foreground_lease, connection
     if decision not in ('spam', 'ham'):
         raise MailError('Ungültige Spamentscheidung.')
     initial = MailLocation.objects.select_related('folder').get(pk=location_id)
-    with account_lease(initial.folder.account_id):
+    with foreground_lease(initial.folder.account_id):
         location = MailLocation.objects.select_related('message__account', 'folder__account').filter(pk=location_id).first()
         if not location:
             raise MailError('Nachricht wurde inzwischen verschoben. Bitte die Liste aktualisieren.')

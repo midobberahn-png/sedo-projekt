@@ -10,11 +10,11 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
-from .mail_views import _integer, _shell
+from .mail_views import _integer, _shell, mailbox_url, return_query
 from .models import AuditLog, MailAccount, MailLocation, MailSpamRule, MailSpamMove
-from .services.mail_imap import account_lease
+from .services.mail_imap import account_lease, move_message
 from .services.mail_secrets import MailError
-from .services.mail_spam import assess, audit, correct, evaluate, normalize_rule
+from .services.mail_spam import assess, audit, correct, destination_for, evaluate, normalize_rule
 from .services.mail_worker import request_sync
 
 
@@ -113,13 +113,14 @@ def selected_locations(values):
 def snapshot(items):
     return [[item.pk, item.message_id, item.folder_id, item.uidvalidity, item.uid,
              item.message.account.spam_revision, item.message.spam_manual,
-             item.message.spam_checked_at.isoformat() if item.message.spam_checked_at else ''] for item in items]
+             item.message.spam_state, item.message.spam_revision] for item in items]
 
 
 @login_required
 @require_POST
 @never_cache
 def batch(request):
+    query = return_query(request)
     try:
         ticket = request.POST.get('ticket')
         if ticket:
@@ -133,6 +134,7 @@ def batch(request):
             if snapshot(items) != data['rows']:
                 raise MailError('Nachrichten oder Regeln haben sich geändert. Bitte die Vorschau neu öffnen.')
             action = data['action']
+            query = data.get('return_query', '')
             completed, failed, accounts = 0, [], set()
             for item in items:
                 accounts.add(item.folder.account_id)
@@ -142,6 +144,8 @@ def batch(request):
                             item.message.refresh_from_db()
                             item.message.account.refresh_from_db()
                             assess(item.message, review_old=True, user=request.user)
+                    elif action == 'trash':
+                        move_message(item, destination_for(item.folder.account, 'trash'))
                     else:
                         correct(item.pk, action, request.user)
                     completed += 1
@@ -152,12 +156,12 @@ def batch(request):
                     request_sync(pk)
             if failed:
                 context = _shell(request)
-                context.update({'completed': completed, 'failures': failed})
+                context.update({'completed': completed, 'failures': failed, 'mailbox_url': mailbox_url(query)})
                 return render(request, 'sedo/mail/spam_result.html', context)
             messages.success(request, f'{completed} Nachricht(en) ' + ('geprüft und markiert.' if action == 'check' else 'bearbeitet. Der Serverstand wird neu abgerufen.'))
-            return redirect('sedo:mail_inbox')
+            return redirect(mailbox_url(query))
         action = request.POST.get('action')
-        if action not in ('spam', 'ham', 'check'):
+        if action not in ('spam', 'ham', 'check', 'trash'):
             raise MailError('Unbekannte Spamaktion.')
         items = selected_locations(request.POST.getlist('location'))
         rows = []
@@ -166,11 +170,12 @@ def batch(request):
             rows.append({'item': item, 'reason': reason, 'state': dict(item.message._meta.get_field('spam_state').choices)[state]})
         context = _shell(request)
         context.update({'selection': rows, 'action': action,
-            'ticket': signing.dumps({'user': request.user.pk, 'action': action, 'rows': snapshot(items)}, salt='mail-spam-review')})
+            'mailbox_url': mailbox_url(query),
+            'ticket': signing.dumps({'user': request.user.pk, 'action': action, 'rows': snapshot(items), 'return_query': query}, salt='mail-spam-review')})
         return render(request, 'sedo/mail/spam_review.html', context)
     except MailError as exc:
         messages.error(request, str(exc))
-        return redirect('sedo:mail_inbox')
+        return redirect(mailbox_url(query))
 
 
 @login_required

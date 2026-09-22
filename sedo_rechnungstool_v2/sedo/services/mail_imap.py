@@ -3,6 +3,7 @@ import base64
 import imaplib
 import re
 import ssl
+import threading
 import time
 import uuid
 import certifi
@@ -26,6 +27,42 @@ SYNC_SECONDS = 12
 
 class MailBusy(MailError):
     pass
+
+
+class MailSyncYield(MailBusy):
+    """A background reader yields its lease to an explicit user action."""
+
+
+_foreground_guard = threading.Lock()
+_foreground_waiters = {}
+
+
+@contextmanager
+def foreground_lease(account_id, timeout=5):
+    # Keep the database lease as the authority across processes. In the desktop
+    # process, the next sync heartbeat can give way instead of blocking a click.
+    with _foreground_guard:
+        _foreground_waiters[account_id] = _foreground_waiters.get(account_id, 0) + 1
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            lease = account_lease(account_id)
+            try:
+                token = lease.__enter__()
+                break
+            except MailBusy:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(.1)
+    finally:
+        with _foreground_guard:
+            _foreground_waiters[account_id] -= 1
+            if not _foreground_waiters[account_id]:
+                del _foreground_waiters[account_id]
+    try:
+        yield token
+    finally:
+        lease.__exit__(None, None, None)
 
 
 def tls_context():
@@ -52,6 +89,9 @@ def account_lease(account_id):
 
 
 def renew(account, token):
+    with _foreground_guard:
+        if _foreground_waiters.get(account.pk):
+            raise MailSyncYield('Hintergrundabruf für die Bedienung kurz unterbrochen.')
     if not MailAccount.objects.filter(pk=account.pk, lease_token=token).update(lease_until=timezone.now() + timedelta(minutes=3)):
         raise MailBusy('Der Postfachabgleich wurde von einem anderen Vorgang übernommen.')
 
@@ -304,9 +344,11 @@ def sync_account(account_id):
                     synced_folders.add(folder.pk)
                 from .mail_spam import process_account
                 process_account(client, account, token, synced_folders)
-            MailAccount.objects.filter(pk=account_id).update(last_sync=timezone.now(), last_error='')
             from .incoming_invoices import collect_account
-            collect_account(account_id)
+            collect_account(account_id, heartbeat=lambda: renew(account, token))
+            MailAccount.objects.filter(pk=account_id).update(last_sync=timezone.now(), last_error='')
+        except MailSyncYield:
+            return  # Completed operations remain committed; the next poll resumes.
         except MailError as exc:
             MailAccount.objects.filter(pk=account_id).update(last_error=str(exc)[:400])
             raise
@@ -325,7 +367,7 @@ def checked_location(client, location):
 def set_flag(location, flag, enabled):
     if flag not in ('seen', 'flagged'):
         raise MailError('Unbekannte Nachrichtenmarkierung.')
-    with account_lease(location.folder.account_id):
+    with foreground_lease(location.folder.account_id):
         with connection(location.folder.account) as client:
             checked_location(client, location)
             checked(client.uid('STORE', str(location.uid), '+FLAGS.SILENT' if enabled else '-FLAGS.SILENT',
@@ -339,21 +381,33 @@ def move_message(location, destination):
         raise MailError('Bitte einen verfügbaren Ordner desselben Postfachs wählen.')
     if location.folder_id == destination.pk:
         return
-    with account_lease(location.folder.account_id):
+    with foreground_lease(location.folder.account_id):
         with connection(location.folder.account) as client:
-            checked_location(client, location)
-            capabilities = {item.upper() for item in client.capabilities}
-            if b'MOVE' not in capabilities:
-                # COPY + DELETE is not atomic; retries after lost acknowledgements duplicate mail.
-                raise MailError('Dieser Mailserver unterstützt kein sicheres Verschieben (IMAP MOVE). Bitte vorerst das Webmail verwenden.')
-            checked(client.uid('MOVE', str(location.uid), quoted(destination.remote_name)))
-            location.delete()
+            from .mail_spam import move_locked
+            move_locked(client, location, destination)
+
+
+def cache_move_target(client, location, destination):
+    """Use only the server's exact one-message COPYUID mapping (RFC 6851/4315)."""
+    _, values = client.response('COPYUID')
+    if not values or len(values) != 1 or not isinstance(values[0], bytes):
+        return
+    match = re.fullmatch(rb'([1-9][0-9]*) ([1-9][0-9]*) ([1-9][0-9]*)', values[0])
+    if not match:
+        return
+    validity, source_uid, target_uid = map(int, match.groups())
+    if max(validity, source_uid, target_uid) > 4294967295 or source_uid != location.uid or destination.uidvalidity not in (0, validity):
+        return
+    # Never replace a cached different message on a contradictory server mapping.
+    MailLocation.objects.get_or_create(folder=destination, uidvalidity=validity, uid=target_uid,
+        defaults={'message_id': location.message_id, 'seen': location.seen,
+                  'flagged': location.flagged, 'answered': location.answered})
 
 
 def delete_permanently(location):
     if location.folder.role != 'trash':
         raise MailError('Endgültig löschen ist nur im Papierkorb möglich.')
-    with account_lease(location.folder.account_id):
+    with foreground_lease(location.folder.account_id):
         with connection(location.folder.account) as client:
             checked_location(client, location)
             if b'UIDPLUS' not in {item.upper() for item in client.capabilities}:

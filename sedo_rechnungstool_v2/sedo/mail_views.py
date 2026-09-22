@@ -6,8 +6,9 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q, Sum
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 from django.views.decorators.cache import never_cache
@@ -31,6 +32,35 @@ def _integer(value):
         return None
 
 
+MAIL_SECTIONS = {'': 'Posteingang', 'spam': 'Spam', 'sent': 'Gesendet', 'archive': 'Archiv', 'trash': 'Papierkorb'}
+
+
+def return_query(request):
+    """Preserve only mailbox filters, never accept an arbitrary redirect URL."""
+    source = QueryDict(request.POST.get('return_query', '')[:2400]) if request.method == 'POST' else request.GET
+    query = QueryDict(mutable=True)
+    for key in ('account', 'folder', 'page'):
+        value = _integer(source.get(key))
+        if value and value > 0:
+            query[key] = value
+    for key, choices in [('section', MAIL_SECTIONS), ('view', ('unread', 'flagged', 'suspect', 'imported', 'pending', 'processed', 'unimported')), ('scope', ('all',))]:
+        if source.get(key) in choices and source.get(key):
+            query[key] = source[key]
+    if source.get('q', '').strip():
+        query['q'] = source['q'].strip()[:200]
+    return query.urlencode()
+
+
+def mailbox_url(query=''):
+    return reverse('sedo:mail_inbox') + ('?' + query if query else '')
+
+
+def document_counts(queryset, prefix=''):
+    return queryset.annotate(
+        document_count=Count(prefix+'incoming_sources', distinct=True),
+        document_pending=Count(prefix+'incoming_sources', filter=Q(**{prefix+'incoming_sources__invoice__state':'review'}), distinct=True))
+
+
 def _shell(request):
     from .services.mail_spam import spam_messages
     account_id = _integer(request.GET.get('account'))
@@ -40,17 +70,31 @@ def _shell(request):
         unread=Count('locations', filter=Q(locations__seen=False)))
     if account_id:
         folders = folders.filter(account_id=account_id)
+    section = request.GET.get('section', '')
+    if section not in MAIL_SECTIONS:
+        section = ''
+    context_query = return_query(request)
     return {'accounts': accounts, 'folders': folders, 'account_id': account_id, 'folder_id': folder_id,
-            'spam_count': spam_messages().filter(locations__seen=False, locations__folder__active=True,
+            'section': section, 'section_label': MAIL_SECTIONS[section],
+            'return_query': context_query, 'mailbox_url': mailbox_url(context_query),
+            'spam_count': spam_messages().filter(**({'account_id':account_id} if account_id else {})).filter(locations__seen=False, locations__folder__active=True,
                 locations__folder__selectable=True, locations__folder__role__in=['inbox', 'junk']).count(),
             'draft_count': MailDraft.objects.filter(author=request.user, state='draft').count()}
 
 
-def _reader_context(message):
+def _reader_context(message, *, folder_id=None, location_id=None):
     from .services.mail_spam import blocked
     matches = Customer.objects.filter(email__iexact=message.sender_email) if message.sender_email else Customer.objects.none()
     suggested = matches.first() if matches.count() == 1 else None
-    return {'selected': message, 'locations': message.locations.select_related('folder__account'),
+    locations = list(message.locations.filter(folder__active=True, folder__selectable=True).select_related('folder__account'))
+    if location_id is not None:
+        current = next((item for item in locations if item.pk == location_id), None)
+    else:
+        current = next((item for item in locations if item.folder_id == folder_id), None)
+        current = current or next((item for item in locations if item.folder.role == 'inbox'), None) or next(iter(locations), None)
+    sources = message.incoming_sources.select_related('invoice').defer('invoice__original')
+    return {'selected': message, 'locations': [current] if current else [], 'current_location': current,
+            'document_sources': sources,
             'spam_blocked': blocked(message), 'spam_moves': message.spam_moves.exclude(state='done')[:3],
             'message_offers': message.offers.filter(deleted_at__isnull=True).select_related('linked_invoice'),
             'message_tasks': message.tasks.all(), 'suggested_customer': suggested,
@@ -63,7 +107,7 @@ def _reader_context(message):
 def inbox(request, pk=None):
     from .services.mail_spam import spam_messages, confirmed_spam_messages
     context = _shell(request)
-    is_spam = request.GET.get('section') == 'spam'
+    is_spam = context['section'] == 'spam'
     items = MailLocation.objects.filter(folder__active=True, folder__selectable=True)
     if context['account_id']:
         items = items.filter(folder__account_id=context['account_id'])
@@ -74,7 +118,7 @@ def inbox(request, pk=None):
         items = items.filter(folder=folder)
         context['current_folder'] = folder
     else:
-        items = items.filter(folder__role='inbox')
+        items = items.filter(folder__role=context['section'] or 'inbox')
     q = request.GET.get('q', '').strip()[:200]
     view = request.GET.get('view', '')
     if q:
@@ -95,14 +139,24 @@ def inbox(request, pk=None):
         items = items.filter(flagged=True)
     elif view == 'suspect':
         items = items.filter(message__spam_state='suspect')
+    items = document_counts(items, 'message__')
+    if view == 'imported':
+        items = items.filter(document_count__gt=0)
+    elif view == 'pending':
+        items = items.filter(Q(document_pending__gt=0) | ~Q(message__invoice_scan_error=''))
+    elif view == 'processed':
+        items = items.filter(document_count__gt=0, document_pending=0, message__invoice_scan_error='')
+    elif view == 'unimported':
+        items = items.filter(document_count=0)
     items = items.select_related('message', 'folder__account').defer('message__raw', 'message__body', 'folder__account__password_encrypted').order_by('-message__sent_at', '-pk')
     context.update({'page_obj': Paginator(items, 30).get_page(request.GET.get('page')), 'q': q, 'view': view,
                     'scope': request.GET.get('scope', ''), 'is_inbox': True, 'is_spam': is_spam})
-    query = request.GET.copy()
+    query = QueryDict(context['return_query']).copy()
     query.pop('page', None)
     context['page_query'] = query.urlencode()
     if pk is not None:
-        context.update(_reader_context(get_object_or_404(MailMessage.objects.select_related('account', 'customer').defer('raw'), pk=pk)))
+        message = get_object_or_404(document_counts(MailMessage.objects.select_related('account', 'customer').defer('raw')), pk=pk)
+        context.update(_reader_context(message, folder_id=context['folder_id'], location_id=_integer(request.GET.get('location'))))
     return render(request, 'sedo/mail/inbox.html', context)
 
 
@@ -239,6 +293,7 @@ def download(request, pk, index=None):
 def message_action(request, pk):
     message = get_object_or_404(MailMessage, pk=pk)
     action = request.POST.get('action')
+    query = return_query(request)
     try:
         if action == 'customer':
             customer_id = _integer(request.POST.get('customer'))
@@ -246,7 +301,12 @@ def message_action(request, pk):
             message.save(update_fields=['customer'])
             messages.success(request, 'Kundenzuordnung gespeichert.')
         else:
-            location = get_object_or_404(MailLocation.objects.select_related('folder__account'), pk=_integer(request.POST.get('location')), message=message)
+            location = MailLocation.objects.select_related('folder__account').filter(
+                pk=_integer(request.POST.get('location'))).first()
+            if location is not None and location.message_id != message.pk:
+                raise Http404('Ungültige Nachrichtenauswahl.')
+            if location is None or not location.folder.active or not location.folder.selectable:
+                raise MailError('Diese Nachricht wurde inzwischen verschoben oder gelöscht. Bitte die Nachrichtenliste öffnen.')
             if action in ('seen', 'unseen', 'flag', 'unflag'):
                 set_flag(location, 'seen' if action in ('seen', 'unseen') else 'flagged', action in ('seen', 'flag'))
             elif action in ('move', 'trash', 'archive'):
@@ -260,7 +320,7 @@ def message_action(request, pk):
                 move_message(location, destination)
                 request_sync(message.account_id)
                 messages.success(request, 'Nachricht verschoben. Der Zielordner wird neu abgeglichen.')
-                return redirect('sedo:mail_inbox')
+                return redirect(mailbox_url(query))
             elif action == 'delete':
                 if request.POST.get('confirm') != 'delete':
                     raise MailError('Bitte das endgültige Löschen im Papierkorb ausdrücklich bestätigen.')
@@ -270,12 +330,19 @@ def message_action(request, pk):
                     remove_cached(message)
                     message.delete()
                 messages.success(request, 'Die Nachricht wurde vom Server gelöscht. Verknüpfte Geschäftsquellen bleiben in SEDO erhalten.')
-                return redirect('sedo:mail_inbox')
+                return redirect(mailbox_url(query))
             else:
                 raise MailError('Unbekannte Nachrichtenaktion.')
     except MailError as exc:
         messages.error(request, str(exc))
-    return redirect('sedo:mail_message', pk)
+        if action in ('move', 'trash', 'archive', 'delete'):
+            request_sync(message.account_id)
+    target = reverse('sedo:mail_message', args=[pk])
+    params = QueryDict(query).copy()
+    location_id = _integer(request.POST.get('location'))
+    if location_id:
+        params['location'] = location_id
+    return redirect(target + ('?' + params.urlencode() if params else ''))
 
 
 @login_required

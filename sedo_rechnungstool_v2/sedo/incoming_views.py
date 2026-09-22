@@ -301,4 +301,13 @@ def collect(request, pk):
         messages.success(request, f'{count} neue Belege übernommen. Bereits gespeicherte Originale werden nicht doppelt angelegt.')
     except (IncomingError, MailError) as exc:
         messages.error(request, str(exc))
+    if 'return_query' in request.POST:
+        from .mail_views import _integer, return_query
+        from django.http import QueryDict
+        from django.urls import reverse
+        params = QueryDict(return_query(request)).copy()
+        location_id = _integer(request.POST.get('location'))
+        if location_id:
+            params['location'] = location_id
+        return redirect(reverse('sedo:mail_message', args=[pk]) + ('?' + params.urlencode() if params else ''))
     return redirect('sedo:incoming_index')

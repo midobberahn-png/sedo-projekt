@@ -1,0 +1,1 @@
+{% if error %}<span class="mail-document-badge is-error">Belegübernahme fehlgeschlagen</span>{% elif count %}<span class="mail-document-badge {% if pending %}is-pending{% else %}is-complete{% endif %}">{% if pending %}{{ count }} Beleg{% if count != 1 %}e{% endif %} übernommen · {{ pending }} zu prüfen{% else %}✓ Belege abgearbeitet{% endif %}</span>{% endif %}
