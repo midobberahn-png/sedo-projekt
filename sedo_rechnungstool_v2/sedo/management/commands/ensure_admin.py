@@ -18,7 +18,7 @@ class Command(BaseCommand):
         User = get_user_model()
         user = User.objects.filter(username='admin').first()
         if user is None:
-            password = secrets.token_urlsafe(9)  # ~12 Zeichen, URL-sicher
+            password = secrets.token_urlsafe(24)  # 32 Zeichen, URL-sicher; oberhalb der Mindestlänge
             User.objects.create_superuser('admin', 'admin@local.test', password)
             self.stdout.write(self.style.SUCCESS('Lokaler Benutzer erstellt: admin'))
             self.stdout.write(self.style.SUCCESS(f'Einmalig angezeigtes Passwort: {password}'))

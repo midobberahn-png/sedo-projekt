@@ -14,7 +14,7 @@ from .file_fixtures import isolate_files
 class AccessibilityV2Tests(TestCase):
     def setUp(self):
         isolate_files(self)
-        self.user = get_user_model().objects.create_user('a11y-test')
+        self.user = get_user_model().objects.create_user('a11y-test', is_staff=True)
         self.client.force_login(self.user)
         self.customer = Customer.objects.create(name='TEST Kunde')
         self.inv = Invoice.objects.create(number='TEST-RE', customer=self.customer, gross_total=100)

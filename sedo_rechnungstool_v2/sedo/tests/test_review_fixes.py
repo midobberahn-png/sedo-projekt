@@ -94,10 +94,10 @@ class SecretHandlingTests(TestCase):
         finally:
             os.environ.pop('SEDO_AI_API_KEY', None)
 
-    def test_smtp_passwort_env_hat_vorrang(self):
+    def test_ungebundenes_smtp_passwort_aus_env_wird_nicht_weitergereicht(self):
         os.environ['SEDO_SMTP_PASSWORD'] = 'env-geheim'
         try:
-            self.assertEqual(get_smtp_config()['password'], 'env-geheim')
+            self.assertEqual(get_smtp_config()['password'], '')
         finally:
             os.environ.pop('SEDO_SMTP_PASSWORD', None)
 

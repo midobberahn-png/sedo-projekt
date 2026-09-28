@@ -120,7 +120,7 @@ class DashboardLayoutTests(TestCase):
         self.assertEqual(AppSetting.get('weather_api_key'), 'TEST-SECRET-WEATHER')
         self.client.force_login(self.other)
         self.assertEqual(self.client.post(url, {'action': 'save_weather', 'weather_api_key_clear': '1'}).status_code, 403)
-        self.assertNotContains(self.client.get(url), 'weather-api-key')
+        self.assertNotContains(self.client.get(url), 'weather-api-key', status_code=403)
         self.client.force_login(self.user)
         self.client.post(url, {'action': 'save_weather', 'weather_api_key': 'bad\r\nheader'})
         self.assertEqual(AppSetting.get('weather_api_key'), 'TEST-SECRET-WEATHER')

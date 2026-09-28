@@ -10,3 +10,12 @@
 *.sqlite3 binary
 *.zip binary
 *.pdf binary
+
+# Never export operational state with source archives (existing Git history is unchanged).
+data export-ignore
+media export-ignore
+backups export-ignore
+logs export-ignore
+mail-cache export-ignore
+security-state export-ignore
+.env export-ignore

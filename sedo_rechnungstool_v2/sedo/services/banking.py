@@ -32,6 +32,7 @@ from django.utils.dateparse import parse_datetime
 
 from ..models import AppSetting
 from .payments import import_bank_json
+from .banking_transport import protect_client
 
 logger = logging.getLogger('sedo')
 
@@ -54,15 +55,8 @@ class TanConfirmationPending(BankingError):
 
 
 def get_banking_config() -> dict:
-    return {
-        'blz': AppSetting.get('fints_blz', ''),
-        'endpoint': AppSetting.get('fints_endpoint', ''),
-        'login': AppSetting.get('fints_login', ''),
-        # Env-Variable hat Vorrang – dann liegt keine PIN in der Datenbank.
-        'pin': os.environ.get('SEDO_FINTS_PIN', '') or AppSetting.get('fints_pin', ''),
-        'iban': AppSetting.get('fints_iban', ''),
-        'product_id': AppSetting.get('fints_product_id', ''),
-    }
+    from .credential_binding import load_config
+    return load_config('fints')
 
 
 def banking_is_configured() -> bool:
@@ -134,7 +128,7 @@ def fetch_bank_transactions(days: int = 30, pin: str | None = None) -> dict:
     Meldung, wenn etwas fehlt oder die Bank ablehnt.
     """
     cfg = get_banking_config()
-    if not banking_is_configured():
+    if not all(cfg[key] for key in ('blz', 'endpoint', 'login')):
         raise BankingError('Bankzugang unvollständig – bitte in den Einstellungen '
                            'BLZ, FinTS-Adresse und Anmeldename hinterlegen.')
     use_pin = (pin or '').strip() or cfg['pin']
@@ -155,6 +149,7 @@ def fetch_bank_transactions(days: int = 30, pin: str | None = None) -> dict:
     try:
         client = FinTS3PinTanClient(cfg['blz'], cfg['login'], use_pin,
                                     cfg['endpoint'], **kwargs)
+        protect_client(client, cfg['endpoint'])
         with client:
             init = getattr(client, 'init_tan_response', None)
             if _is_tan_request(init):
@@ -197,8 +192,8 @@ def fetch_bank_transactions(days: int = 30, pin: str | None = None) -> dict:
     except BankingError:
         raise
     except Exception as exc:
-        logger.exception('FinTS-Abruf fehlgeschlagen')
-        raise BankingError(f'Bankabruf fehlgeschlagen: {exc}') from exc
+        logger.warning('FinTS-Abruf fehlgeschlagen; Details werden aus Datenschutzgründen nicht protokolliert.')
+        raise BankingError('Bankabruf fehlgeschlagen. Bitte Bankzugang und Freigabe prüfen.') from None
 
     rows = _normalize_mt940(transactions)
     result = import_bank_json(rows)
@@ -252,7 +247,9 @@ def fetch_bank_balance(pin=None):
                 return _await_decoupled(client, value)
             return value
 
-        with FinTS3PinTanClient(cfg['blz'], cfg['login'], use_pin, cfg['endpoint'], **kwargs) as client:
+        bank = FinTS3PinTanClient(cfg['blz'], cfg['login'], use_pin, cfg['endpoint'], **kwargs)
+        protect_client(bank, cfg['endpoint'])
+        with bank as client:
             resolved(getattr(client, 'init_tan_response', None))
             accounts = resolved(client.get_sepa_accounts())
             if not accounts:

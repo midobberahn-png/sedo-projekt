@@ -94,6 +94,9 @@ def check() -> int:
               'calendar_available': calendar_available,
               'frozen': bool(getattr(sys, 'frozen', False)),
               'python': '.'.join(map(str, sys.version_info[:3]))}
+    from sedo.security_selfcheck import check as security_check
+    result['security'] = security_check(home)
+    result['ok'] = result['ok'] and all(result['security'].values())
     report = os.environ.get('SEDO_CHECK_REPORT')
     if report:
         Path(report).write_text(json.dumps(result, indent=2), encoding='utf-8')
@@ -103,6 +106,9 @@ def check() -> int:
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 3 and sys.argv[1] == '--sedo-document-probe':
+        from sedo.document_probe import worker_main
+        raise SystemExit(worker_main(sys.argv[2]))
     if len(sys.argv) == 3 and sys.argv[1] == '--check-restore':
         from sedo.restore_check import main
         raise SystemExit(main(sys.argv[2]))

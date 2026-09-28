@@ -1,0 +1,7 @@
+# GitHub source downloads are not operational backups. Keep live data in Git
+# unchanged, but export only the application/CI source roots by default.
+/* export-ignore
+/.gitattributes -export-ignore
+/.gitignore -export-ignore
+/.github -export-ignore
+/sedo_rechnungstool_v2 -export-ignore

@@ -89,15 +89,8 @@ def _tls_context() -> ssl.SSLContext:
 
 def get_smtp_config() -> dict:
     """Liest die SMTP-Konfiguration aus den AppSettings."""
-    return {
-        'host': AppSetting.get('smtp_host', ''),
-        'port': _smtp_port(),
-        'user': AppSetting.get('smtp_user', ''),
-        # Env-Variable (z. B. via .env) hat Vorrang – dann kein Passwort in der DB.
-        'password': os.environ.get('SEDO_SMTP_PASSWORD', '') or AppSetting.get('smtp_password', ''),
-        'from_name': AppSetting.get('smtp_from_name', DEFAULT_FROM_NAME),
-        'tls': AppSetting.get('smtp_tls', '1') == '1',
-    }
+    from .credential_binding import load_config
+    return load_config('smtp')
 
 
 def smtp_is_configured() -> bool:
@@ -124,6 +117,8 @@ def send_email_smtp(recipient: str, subject: str, body: str,
         raise ValueError(
             'SMTP nicht konfiguriert. Bitte Host und Benutzer in den Einstellungen hinterlegen.'
         )
+    if not cfg['password']:
+        raise ValueError('SMTP-Zugangsdaten fehlen oder passen nicht zur Verbindung. Bitte administrativ neu hinterlegen; bei Umgebungsvariablen auch die Identitätsbindung prüfen.')
     msg = MIMEMultipart()
     msg['From'] = f"{cfg['from_name']} <{cfg['user']}>"
     msg['To'] = recipient

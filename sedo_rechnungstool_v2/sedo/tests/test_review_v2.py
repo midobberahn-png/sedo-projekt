@@ -202,7 +202,11 @@ class F09SmtpZertifikatspruefungTests(TestCase):
     def setUp(self):
         AppSetting.set('smtp_host', 'smtp.example.de')
         AppSetting.set('smtp_user', 'info@example.de')
-        AppSetting.set('smtp_password', 'nur-fuer-den-test')
+        # The transport fixture is bound after selecting port/TLS in each test.
+
+    def _bind_test_secret(self):
+        from sedo.services.credential_binding import load_config, save_config
+        save_config('smtp', load_config('smtp'), 'nur-fuer-den-test')
 
     def _pruefe_kontext(self, context, hinweis):
         self.assertIsInstance(context, ssl.SSLContext, hinweis)
@@ -213,6 +217,7 @@ class F09SmtpZertifikatspruefungTests(TestCase):
         # Port 465, STARTTLS-Haken aus – genau die Konstellation aus F-09.
         AppSetting.set('smtp_tls', '0')
         AppSetting.set('smtp_port', '465')
+        self._bind_test_secret()
         with patch('sedo.services.mail.smtplib.SMTP_SSL') as smtp_ssl:
             send_email_smtp('kunde@example.de', 'Betreff', 'Text')
         self.assertTrue(smtp_ssl.called, 'Ohne STARTTLS muss SMTP_SSL verwendet werden.')
@@ -224,6 +229,7 @@ class F09SmtpZertifikatspruefungTests(TestCase):
     def test_starttls_versand_bleibt_verifizierend(self):
         AppSetting.set('smtp_tls', '1')
         AppSetting.set('smtp_port', '587')
+        self._bind_test_secret()
         with patch('sedo.services.mail.smtplib.SMTP') as smtp:
             send_email_smtp('kunde@example.de', 'Betreff', 'Text')
         server = smtp.return_value.__enter__.return_value
@@ -244,6 +250,7 @@ class F09SmtpZertifikatspruefungTests(TestCase):
         # Begleittest: Der Fix darf den Versandweg nicht kaputtmachen.
         AppSetting.set('smtp_tls', '0')
         AppSetting.set('smtp_port', '465')
+        self._bind_test_secret()
         with patch('sedo.services.mail.smtplib.SMTP_SSL') as smtp_ssl:
             send_email_smtp('kunde@example.de', 'Betreff', 'Text')
         server = smtp_ssl.return_value.__enter__.return_value
@@ -256,6 +263,7 @@ class F09SmtpZertifikatspruefungTests(TestCase):
         # deshalb ist er hier festgenagelt.
         AppSetting.set('smtp_tls', '0')
         AppSetting.set('smtp_port', '465')
+        self._bind_test_secret()
         with patch('sedo.services.mail.smtplib.SMTP_SSL',
                    side_effect=ssl.SSLCertVerificationError('certificate verify failed')):
             with self.assertRaises(smtplib.SMTPException) as ctx:

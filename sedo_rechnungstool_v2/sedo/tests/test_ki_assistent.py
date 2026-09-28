@@ -315,7 +315,7 @@ class SeitenTests(TestCase):
 
     def setUp(self):
         User = get_user_model()
-        User.objects.create_user('tester', password='geheim123')
+        User.objects.create_user('tester', password='geheim123', is_staff=True)
         self.client.login(username='tester', password='geheim123')
 
     def test_angebotsmaske_enthaelt_generator_panel(self):

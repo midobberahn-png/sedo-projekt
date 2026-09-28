@@ -127,6 +127,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'sedo.login_throttle.LoginThrottleMiddleware',
     'sedo.middleware.LoginRequiredMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -221,3 +222,15 @@ SESSION_COOKIE_HTTPONLY = True
 # plausibility …) lesen den CSRF-Token aus dem Formularfeld im DOM, nicht
 # aus dem Cookie (Audit-Empfehlung 15.08.).
 CSRF_COOKIE_HTTPONLY = True
+
+# Security audit 28.09.2026: password changes and both admin creation forms.
+# Existing account hashes are not silently changed.
+AUTH_PASSWORD_VALIDATORS = [
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 15}},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+]
+SEDO_LOGIN_WINDOW = 300
+SEDO_LOGIN_ATTEMPTS = 5
+SEDO_LOGIN_SOURCE_ATTEMPTS = 100

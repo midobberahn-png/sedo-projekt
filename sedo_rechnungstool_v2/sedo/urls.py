@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, mail_views, dashboard_views, incoming_views, mail_spam_views, calendar_views
+from . import views, mail_views, dashboard_views, incoming_views, mail_spam_views, calendar_views, security_views
 
 app_name = 'sedo'
 urlpatterns = [
@@ -86,7 +86,7 @@ urlpatterns = [
     path('aufgaben/', views.task_list, name='task_list'),
     path('aufgaben/<int:pk>/bearbeiten/', views.task_list, name='task_update'),
     path('aufgaben/<int:pk>/status/', views.task_toggle, name='task_toggle'),
-    path('backup/', views.backup_page, name='backup'),
+    path('backup/', security_views.backup_page, name='backup'),
     path('kassenbuch/neu/<str:kind>/', views.cashbook_create, name='cashbook_create'),
     path('kassenbuch/import-bank/', views.cashbook_import_bank, name='cashbook_import_bank'),
     path('kassenbuch/pdf/', views.cashbook_pdf, name='cashbook_pdf'),
@@ -108,7 +108,7 @@ urlpatterns = [
     path('leistungskatalog/neu/', views.service_catalog_create, name='service_catalog_create'),
     path('leistungskatalog/<int:pk>/bearbeiten/', views.service_catalog_update, name='service_catalog_update'),
     path('leistungskatalog/<int:pk>/loeschen/', views.service_catalog_delete, name='service_catalog_delete'),
-    path('einstellungen/', views.settings_page, name='settings'),
+    path('einstellungen/', security_views.settings_page, name='settings'),
     path('sicherheit/', views.security_status, name='security_status'),
     path('startklar/', views.readiness, name='readiness'),
     path('startklar/<str:key>/', views.readiness_toggle, name='readiness_toggle'),
