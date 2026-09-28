@@ -1,0 +1,18 @@
+{
+  "date": "2026-09-28",
+  "repository": "midobberahn-png/sedo-projekt",
+  "pull_request": 33,
+  "branch": "security/audit-2026-09-28",
+  "main_target": "eee82e8714d60f5f010a927c00a643134ed37ecd",
+  "code_commit": "87bad550f90898ccb7effd2127d222900e30cc6b",
+  "tested_full_baseline": "a1c708c3613fe0c34aeebf09277bc30619a5bb15",
+  "regression": {"tests": 987, "passed": 987, "new_tests": 77, "seconds": 101.331, "scope": "910-test CI baseline plus fixes, not complete current-main integration suite"},
+  "original_audit_probes": {"tests": 23, "passed": 23, "seconds": 1.514, "protection_assertions_retained": true},
+  "affected_current_main_files": {"count": 24, "patch_apply_check": true, "sha256_and_python_compile_check": true, "remote_blob_comparison": true},
+  "resource_limits": {"linux_cpu": true, "linux_memory": true, "native_macos_executed": false, "native_windows_executed": false},
+  "source_archive": {"synthetic_git_archive_verified": true, "git_history_cleaned": false, "operational_files_removed": false},
+  "external_effects": {"real_bank_or_mail_connections": false, "live_data_changed": false, "main_merged": false, "production_deployed": false},
+  "complete_release_approval": false,
+  "ci_runs_returned_for_code_commit": 0,
+  "open_release_gates": ["Complete current-main suite with final code and locked dependencies", "Native macOS/Windows builds and WebView/device acceptance", "Actual operational home migration and active key/credential rotation", "Controlled repository/history cleanup after verified independent backup", "Fresh full dependency/CVE and final role-object acceptance"]
+}
