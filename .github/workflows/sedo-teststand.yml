@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, hardening-h2-teststand]
+    branches: [main, hardening-h2-teststand, security/audit-2026-09-28]
     paths: ['sedo_rechnungstool_v2/**', '.github/workflows/sedo-teststand.yml']
   workflow_dispatch:
 permissions:
@@ -82,6 +82,11 @@ jobs:
           assert a.read_bytes()==b.read_bytes(), 'Quellpakete weichen ab'
           print('Quellpakete byteidentisch')
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: h2-quellnachweis-${{ matrix.os }}
+          path: ${{ runner.temp }}/h2-source-a/*.zip
+          retention-days: 14
       - name: Releaseprofil frisch installieren und gesamte Suite pruefen
         if: runner.os == 'Linux'
         run: |
@@ -92,7 +97,7 @@ jobs:
           SEDO_CHECK_REPORT="$RUNNER_TEMP/h2-evidence/source-check.json" "$RUNNER_TEMP/h2-venv/bin/python" tools/desktop_entry.py --check-strict
           "$RUNNER_TEMP/h2-venv/bin/python" -m pip freeze --all > "$RUNNER_TEMP/h2-evidence/installed.txt"
       - name: Natives Desktop-Testpaket erstellen und tatsaechlich starten
-        if: runner.os != 'Linux' && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/hardening-h2-teststand')
+        if: runner.os != 'Linux'
         run: |
           set -euo pipefail
           python tools/teststand.py build --output "$RUNNER_TEMP/h2-native" 2>&1 | tee "$RUNNER_TEMP/h2-evidence/native-build.log"
