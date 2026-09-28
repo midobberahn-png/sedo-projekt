@@ -1,0 +1,44 @@
+name: SEDO bekannte Security-Release-Sperren
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, security/audit-2026-09-28]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sedo-security-release-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  known-pypdf-advisories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: sedo_rechnungstool_v2
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /sedo_rechnungstool_v2/tools/check_known_pypdf_advisories.py
+            /sedo_rechnungstool_v2/sedo/tests/test_release_advisories.py
+            /sedo_rechnungstool_v2/requirements-release.lock
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Datierten Teilpruefer testen
+        run: python -m unittest discover -s sedo/tests -p 'test_release_advisories.py' -v
+      - name: Bekannte betroffene PDF-Version sperren
+        run: python tools/check_known_pypdf_advisories.py requirements-release.lock --output "$RUNNER_TEMP/pypdf-advisories.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sedo-known-pypdf-advisories
+          path: ${{ runner.temp }}/pypdf-advisories.json
+          retention-days: 14
+# A green result only clears this dated six-advisory subset, NOT a full SCA,
+# native acceptance, operational SEC-03 closure, or an overall security release.
