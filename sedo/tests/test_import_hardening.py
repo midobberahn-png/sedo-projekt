@@ -104,6 +104,14 @@ class MonthlySendCustomerLockTests(TestCase):
         self.inv_b = Invoice.objects.create(number='RE2026080102', customer=self.b,
                                             gross_total=Decimal('119.00'), status='erstellt')
 
+    def test_monthly_service_form_contains_no_internal_review_note(self):
+        response = self.client.get(reverse('sedo:aareon_monthly'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        self.assertNotIn('Review-Fund', content)
+        self.assertNotIn('{#', content)
+        self.assertIn('aria-label="Menge Heckenschnitt"', content)
+
     def test_gemischte_kunden_werden_blockiert(self):
         resp = self.client.post(reverse('sedo:aareon_monthly'), {
             'action': 'send_monthly_email',

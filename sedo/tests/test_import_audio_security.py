@@ -242,6 +242,8 @@ class TranscriptionBoundaryTests(SimpleTestCase):
                     transcription.transcribe_audio(b'fake')
             with patch('sedo.document_probe.run_operation', side_effect=DocumentProbeError()), self.assertRaises(ValueError):
                 transcription.transcribe_audio(b'fake')
+            with patch('sedo.document_probe.run_operation', side_effect=DocumentProbeError('busy')), self.assertRaisesMessage(transcription.TranscriptionUnavailable, 'ausgelastet'):
+                transcription.transcribe_audio(b'fake')
             with patch('sedo.document_probe.run_operation', return_value={'text': 'ok'}):
                 self.assertEqual(transcription.transcribe_audio(b'fake'), 'ok')
 

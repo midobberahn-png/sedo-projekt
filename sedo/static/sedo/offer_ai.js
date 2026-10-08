@@ -39,7 +39,7 @@
     busy = state;
     extractBtn.disabled = state;
     recordBtn.disabled = !whisperAvailable || (state && !recording);
-    if (state) setStatus(label || 'Bitte warten …');
+    setStatus(state ? (label || 'Bitte warten …') : '');
   }
 
   /* ── Lade-Feedback: Shimmer-Skeleton unter dem KI-Bereich ─────────── */

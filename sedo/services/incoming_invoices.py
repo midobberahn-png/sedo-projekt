@@ -100,7 +100,12 @@ def collect_account(account_id, heartbeat=None):
             except MailError:
                 continue
             count += collect_message(message)
-        except (IncomingError, MailError):
+        except IncomingError as exc:
+            # Only our fixed, user-facing intake messages are safe to display.
+            # Keep the original mail untouched for a later manual retry.
+            MailMessage.objects.filter(pk=message.pk).update(invoice_scan_done=True,
+                invoice_scan_error=f'Belegübernahme fehlgeschlagen: {exc}'[:240])
+        except MailError:
             MailMessage.objects.filter(pk=message.pk).update(invoice_scan_done=True,
                 invoice_scan_error='Belegübernahme fehlgeschlagen. Original und Anhänge im Postfach prüfen; anschließend erneut prüfen.')
     return count

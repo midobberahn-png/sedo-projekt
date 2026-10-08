@@ -113,7 +113,7 @@ class IncomingInvoiceTests(TestCase):
         message = self.message(data=b'')
         collect_account(self.account.pk)
         message.refresh_from_db()
-        self.assertTrue(message.invoice_scan_error)
+        self.assertIn('Ein Beleganhang ist leer', message.invoice_scan_error)
         self.assertEqual(IncomingInvoice.objects.count(), 0)
         self.assertTrue(original_bytes(message))
         self.assertContains(self.client.get(reverse('sedo:incoming_index')), 'Belegübernahme fehlgeschlagen')

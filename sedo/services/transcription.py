@@ -138,6 +138,8 @@ def transcribe_audio(audio_bytes: bytes, suffix: str = '.webm') -> str:
             raise ValueError('Ungültiges Ergebnis der Spracherkennung.')
         return text
     except DocumentProbeError as exc:
-        raise ValueError('Die Aufnahme konnte nicht innerhalb der sicheren Grenzen verarbeitet werden. Bitte kürzer diktieren.') from exc
+        if exc.code == 'busy':
+            raise TranscriptionUnavailable('Die lokale Verarbeitung ist gerade ausgelastet. Bitte kurz warten und erneut versuchen.') from exc
+        raise ValueError('Die Aufnahme konnte lokal nicht verarbeitet werden. Bitte mit einer kurzen Aufnahme erneut versuchen oder Text eingeben.') from exc
     finally:
         _TRANSCRIPTION_SLOT.release()

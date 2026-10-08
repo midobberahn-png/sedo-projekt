@@ -172,7 +172,7 @@ input,select,textarea{width:100%;min-height:var(--fieldH);padding:8px 11px;borde
 
 /* v1.0 beta 3 · Monatsrechnung und kompaktere Auswahlfelder */
 .monthly-services{display:flex;flex-direction:column;gap:10px;margin:10px 0 14px}
-.service-row{display:grid;grid-template-columns:175px minmax(180px,1.35fr) 92px 90px 130px;gap:8px;align-items:end;background:#f8fbff;border:1px solid #e3ecf6;border-radius:10px;padding:10px 12px;box-shadow:0 3px 10px rgba(16,24,40,.03)}
+.service-row{display:grid;grid-template-columns:175px minmax(180px,1.35fr) minmax(105px,.5fr) minmax(95px,.45fr) minmax(150px,.65fr);gap:8px;align-items:end;background:#f8fbff;border:1px solid #e3ecf6;border-radius:10px;padding:10px 12px;box-shadow:0 3px 10px rgba(16,24,40,.03)}
 .service-check{display:flex;align-items:center;gap:8px;margin:0;font-weight:700;color:#172033;white-space:nowrap}.service-check input{width:auto;min-height:auto;box-shadow:none}
 .monthly-services input,.compact-form input,.compact-form select{min-height:38px;padding:8px 10px;border-radius:8px;font-size:14px}.check-line{display:flex;align-items:center;gap:9px;margin:8px 0 2px;font-size:13px}.check-line input{width:auto;min-height:auto;box-shadow:none}.warning-card ul{margin:0;padding-left:20px;color:#92400e}.section-head form{margin:0}
 @media(max-width:900px){.service-row{grid-template-columns:1fr 1fr}.service-check{grid-column:1/-1}}
