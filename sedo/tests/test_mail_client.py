@@ -632,7 +632,12 @@ class MailWorkflowTests(MailFixture):
         list_queries = [entry['sql'] for entry in queries if 'LIMIT 30' in entry['sql']]
         self.assertEqual(len(list_queries), 1)
         self.assertNotIn('"raw"', list_queries[0])
-        self.assertLess(len(queries), 12)
+        # First-run access adds one fresh, fixed-cost company validation. Keep
+        # the original mailbox budget, and catch repeated/N+1 profile reads.
+        profile_queries = [entry['sql'] for entry in queries
+                           if '"sedo_appsetting"' in entry['sql'] and "'seller_profile'" in entry['sql']]
+        self.assertEqual(len(profile_queries), 1)
+        self.assertLess(len(queries) - len(profile_queries), 12)
         response = self.client.get(reverse('sedo:mail_inbox'), {'q': 'Zusatznachricht 120', 'view': 'flagged'})
         self.assertEqual(len(response.context['page_obj']), 1)
 

@@ -631,7 +631,11 @@ def build_xml(inv: InvoiceRow, issue_date: datetime, period_start: datetime | No
         sub(note, "ram", "Content", inv.leistungsart_contents_for_positions[0])
 
     note2 = sub(doc, "ram", "IncludedNote")
-    sub(note2, "ram", "Content", f"{SELLER['name']}\n{SELLER['street']}\n{SELLER['postcode']} {SELLER['city']}\nGeschäftsführung: {SELLER['ceo']}\nHandelsregister: {SELLER['register']}")
+    legal_lines = [SELLER['name'], SELLER['street'], f"{SELLER['postcode']} {SELLER['city']}",
+                   f"Vertretung: {SELLER['ceo']}"]
+    if SELLER['register']:
+        legal_lines.append(f"Register: {SELLER['register']}")
+    sub(note2, "ram", "Content", '\n'.join(legal_lines))
     sub(note2, "ram", "SubjectCode", "REG")
 
     tx = sub(root, "rsm", "SupplyChainTradeTransaction")
@@ -883,7 +887,6 @@ def create_pdf(inv: InvoiceRow, out_pdf: Path, issue_date: datetime, period_star
     doc_title = inv.document_title or "Rechnung"
     is_storno = doc_type == "457"
     is_draft = inv.is_draft
-    logo_path = Path(__file__).resolve().parent.parent / "assets" / "sedo_logo.png"
     vat_pct = f"{float(inv.vat_rate):.10g}".replace(".", ",")
 
     def fc(*rgb): c.setFillColorRGB(*rgb)
@@ -894,24 +897,15 @@ def create_pdf(inv: InvoiceRow, out_pdf: Path, issue_date: datetime, period_star
         c.line(left, y_pos, right, y_pos)
         c.setLineWidth(1)
 
-    # ── Kopf: kleines Logo links, Absenderblock rechts, Haarlinie ────────
+    # ── Kopf: Unternehmensdaten aus der lokalen Einrichtung ───────────
     def draw_header():
         top = h - 12 * mm
-        if logo_path.exists():
-            c.drawImage(str(logo_path), left, top - 10 * mm,
-                        width=24 * mm, height=12 * mm,
-                        preserveAspectRatio=True, anchor="sw", mask="auto")
-        else:
-            fc(*ACCENT); c.setFont("Helvetica-Bold", 15)
-            c.drawString(left, top - 5 * mm, "SEDO")
         fc(*INK); c.setFont("Helvetica-Bold", 9.5)
         c.drawRightString(right, top - 1 * mm, SELLER["name"])
-        fc(*MUT); c.setFont("Helvetica-Oblique", 7)
-        c.drawRightString(right, top - 5 * mm, "Sauberes Handwerk · Rund um Ihr Objekt")
-        c.setFont("Helvetica", 7)
-        c.drawRightString(right, top - 9 * mm,
-                          f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · "
-                          f"Tel. {SELLER['phone']} · {SELLER['email']}")
+        fc(*MUT); c.setFont("Helvetica", 7)
+        c.drawRightString(right, top - 5 * mm,
+                          f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · {SELLER['country']}")
+        c.drawRightString(right, top - 9 * mm, f"Tel. {SELLER['phone']} · {SELLER['email']}")
         hairline(h - HEADER_H + 4 * mm)
 
     # ── Fuss: Haarlinie + drei Spalten Kleingedrucktes ───────────────────
@@ -923,7 +917,7 @@ def create_pdf(inv: InvoiceRow, out_pdf: Path, issue_date: datetime, period_star
         yy = FOOTER_H - 8 * mm
         for line in [SELLER["name"],
                      f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']}",
-                     f"GF: {SELLER['ceo']} · {SELLER['register']}"]:
+                     f"Vertretung: {SELLER['ceo']}" + (f" · {SELLER['register']}" if SELLER['register'] else '')]:
             c.drawString(left, yy, line); yy -= 3.1 * mm
         yy = FOOTER_H - 8 * mm
         for line in [SELLER.get('bank_name') or 'Bankverbindung',

@@ -12,11 +12,10 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 from ..models import AppSetting
-from ..company_profile import SELLER, seller_document
+from ..company_profile import SELLER, SellerProfileError, seller_document
 from .credentials import configuration, secret_for
 
 DEFAULT_SMTP_PORT = 587
-DEFAULT_FROM_NAME = 'SEDO'
 DEFAULT_FROM_ADDR = ''
 SMTP_TIMEOUT_SECONDS = 20
 
@@ -94,6 +93,12 @@ def _tls_context() -> ssl.SSLContext:
 def get_smtp_config() -> dict:
     """Metadata only: rendering settings must never expose or decrypt a password."""
     cfg = configuration('smtp')
+    if not cfg['from_name'].strip():
+        try:
+            cfg['from_name'] = SELLER['name']
+        except SellerProfileError:
+            # Settings and recovery remain readable before company setup.
+            cfg['from_name'] = ''
     try:
         port = int(cfg['port'])
     except ValueError:
@@ -129,7 +134,7 @@ def send_email_smtp(recipient: str, subject: str, body: str,
     if not cfg['password']:
         raise ValueError('Bitte das SMTP-Passwort in den Einstellungen neu eingeben.')
     msg = MIMEMultipart()
-    msg['From'] = f"{cfg['from_name']} <{cfg['user']}>"
+    msg['From'] = formataddr((cfg['from_name'], cfg['user']))
     msg['To'] = recipient
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain', 'utf-8'))

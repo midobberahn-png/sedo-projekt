@@ -1,0 +1,116 @@
+{% load static %}
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Firmendaten einrichten · SEDO</title>
+  <link rel="stylesheet" href="{% static 'sedo/company-setup.css' %}">
+</head>
+<body>
+  <a class="skip-link" href="#company-setup">Zur Einrichtung springen</a>
+  <header class="setup-header">
+    <div class="setup-brand">
+      <img src="{% static 'sedo/sedo_logo.png' %}" alt="" width="44" height="44">
+      <div><strong>SEDO</strong><span>Büro &amp; Abrechnung</span></div>
+    </div>
+    <form method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button class="button-secondary" type="submit">Abmelden</button>
+    </form>
+  </header>
+
+  <main id="company-setup" class="setup-main" tabindex="-1">
+    <div class="setup-intro">
+      <p class="eyebrow">Willkommen bei SEDO</p>
+      <h1>Firmendaten einrichten</h1>
+      <p>Mit Ihren eigenen Angaben erstellt SEDO Ihre Angebote und Rechnungen. Vervollständigen Sie die Firmendaten einmal – danach können Sie loslegen.</p>
+      <p class="setup-storage">Die Firmendaten werden lokal für diese Installation gespeichert. Sie können sie später unter <strong>Einstellungen → Firmendaten</strong> ändern.</p>
+    </div>
+
+    {% if messages %}
+    <div class="setup-messages" aria-label="Meldungen">
+      {% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if can_edit_company %}
+    <form method="post" class="setup-form" autocomplete="on">
+      {% csrf_token %}
+      {% if company_form.errors %}
+      <div class="form-errors" role="alert" tabindex="-1">
+        <h2>Bitte prüfen Sie Ihre Angaben.</h2>
+        {{ company_form.non_field_errors }}
+        {% if not company_form.non_field_errors %}<p>Die betroffenen Felder sind unten gekennzeichnet. Ihre Eingaben bleiben erhalten.</p>{% endif %}
+      </div>
+      {% endif %}
+
+      <p class="required-note"><span aria-hidden="true">*</span> Pflichtfeld. Weitere benötigte Angaben sind im jeweiligen Abschnitt erklärt.</p>
+
+      <fieldset class="setup-section">
+        <legend><span class="section-number" aria-hidden="true">1</span> Unternehmen &amp; Kontakt</legend>
+        <p class="section-description">Tragen Sie den vollständigen Namen und die Anschrift ein, die auf Ihren Belegen erscheinen sollen.</p>
+        <div class="field-grid">
+          {% for field in company_form %}
+          {% if field.name == 'name' or field.name == 'street' or field.name == 'postcode' or field.name == 'city' or field.name == 'country' or field.name == 'phone' or field.name == 'email' or field.name == 'ceo' or field.name == 'register' %}
+          <div class="setup-field{% if field.name == 'name' or field.name == 'street' or field.name == 'register' %} field-wide{% endif %}{% if field.errors %} has-error{% endif %}">
+            <label for="{{ field.id_for_label }}">{% if field.name == 'register' %}Registerangaben{% else %}{{ field.label }}{% endif %}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% else %} <span class="field-note">(falls zutreffend)</span>{% endif %}</label>
+            {{ field }}
+            {{ field.errors }}
+            {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="setup-section" aria-describedby="tax-description">
+        <legend><span class="section-number" aria-hidden="true">2</span> Steuerdaten &amp; Kennung</legend>
+        <p class="section-description" id="tax-description">Bitte geben Sie mindestens eine Steuernummer oder Umsatzsteuer-ID an. Wenn Sie keine Umsatzsteuer-ID haben, benötigt SEDO für E-Rechnungen zusätzlich eine eigene Unternehmens- oder Lieferantenkennung.</p>
+        <div class="field-grid">
+          {% for field in company_form %}
+          {% if field.name == 'tax_no' or field.name == 'vat_id' or field.name == 'seller_id' %}
+          <div class="setup-field{% if field.name == 'seller_id' %} field-wide{% endif %}{% if field.errors %} has-error{% endif %}">
+            <label for="{{ field.id_for_label }}">{% if field.name == 'seller_id' %}Unternehmens- / Lieferantenkennung <span class="field-note">(ohne Umsatzsteuer-ID erforderlich)</span>{% else %}{{ field.label }} <span class="field-note">(eine der beiden Angaben erforderlich)</span>{% endif %}</label>
+            {{ field }}
+            {{ field.errors }}
+            {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="setup-section" aria-describedby="bank-description">
+        <legend><span class="section-number" aria-hidden="true">3</span> Bankverbindung</legend>
+        <p class="section-description" id="bank-description">Dieses Konto wird auf Ihren Rechnungen für die Zahlung angegeben. Hier wird kein Online-Banking-Zugang eingerichtet.</p>
+        <div class="field-grid">
+          {% for field in company_form %}
+          {% if field.name == 'iban' or field.name == 'bic' or field.name == 'bank_name' %}
+          <div class="setup-field{% if field.name == 'iban' %} field-wide{% endif %}{% if field.errors %} has-error{% endif %}">
+            <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="required-mark" aria-hidden="true">*</span>{% else %} <span class="field-note">(optional)</span>{% endif %}</label>
+            {{ field }}
+            {{ field.errors }}
+            {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="setup-actions">
+        <p>Eine Installation ist für ein Unternehmen vorgesehen.</p>
+        <button class="button-primary" type="submit">Firmendaten speichern und SEDO starten <span aria-hidden="true">→</span></button>
+      </div>
+    </form>
+    <p class="restore-link">Bereits mit SEDO gearbeitet? <a href="{% url 'sedo:backup' %}">Vorhandene Sicherung wiederherstellen</a></p>
+    {% else %}
+    <section class="admin-notice" aria-labelledby="admin-heading">
+      <h2 id="admin-heading">Einrichtung durch die Administration</h2>
+      <p>Die Firmendaten dieser Installation müssen vervollständigt werden. Melden Sie sich über „Abmelden“ mit einem Administrationskonto neu an oder bitten Sie Ihre Administration, das Unternehmen einzurichten.</p>
+      <p>Danach stehen die Arbeitsbereiche auch für Ihr Konto bereit.</p>
+    </section>
+    {% endif %}
+  </main>
+</body>
+</html>

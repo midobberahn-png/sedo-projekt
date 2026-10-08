@@ -5,6 +5,23 @@ bleiben Feldbezeichnungen, konkrete Statuswerte, Fehlermeldungen und erforderlic
 Aktionsbestätigungen sichtbar. Die folgenden Abschnitte sind nach Bildschirm geordnet.
 Platzhalter in doppelten Klammern stehen für die jeweiligen Daten eines Vorgangs.
 
+### Erststart: Unternehmen einrichten
+
+Nach der ersten Anmeldung führt SEDO zur Einrichtung des eigenen Unternehmens.
+Ein Administrationskonto erfasst Firma, Anschrift, Kontakt, Steuerkennungen und
+Bankverbindung. Die Arbeitsbereiche öffnen sich nach erfolgreichem Speichern.
+Fehlende oder ungültige Angaben werden direkt an der Eingabe angezeigt.
+
+Die Firmendaten gelten für diese Installation und bleiben beim nächsten Start
+und bei Programmupdates erhalten. Änderungen sind später unter Einstellungen →
+Firmendaten möglich. Bereits ausgestellte Originalbelege bleiben unverändert.
+Eine Installation ist für ein Unternehmen vorgesehen.
+
+Bei einem Rechnerwechsel kann auf der Erststartseite eine vorhandene Sicherung
+wiederhergestellt werden. Dafür müssen die Firmendaten nicht erneut eingegeben
+werden. Konten ohne Administrationsrechte erhalten einen Hinweis, wer die
+Einrichtung abschließen kann.
+
 ### aareon_import.html
 
 GWG-Mapping importieren, Leistungen wählen und Monatsrechnungen erzeugen.

@@ -126,6 +126,7 @@ MIDDLEWARE = [
     'sedo.middleware.LoginRequiredMiddleware',
     'sedo.middleware.LoginThrottleMiddleware',
     'sedo.middleware.RoleRequiredMiddleware',
+    'sedo.middleware.CompanySetupMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'sedo.company_profile.SellerProfileMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

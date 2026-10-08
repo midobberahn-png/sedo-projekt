@@ -57,10 +57,15 @@ notarisiertes oder allgemein freigegebenes Installationspaket.
 
 ## Einrichtung und sicherer Betrieb
 
-1. Unter **Einstellungen → Firmendaten** das eigene Absenderprofil
-   einrichten. Echte Firmen-, Bank- und Steuerdaten liegen nur in der lokalen
-   Datenbank; sie sind keine Programmvorgaben. Ohne vollständiges Profil werden
-   keine abrechnungsfähigen Belege erzeugt. Anschließend Empfängerkennungen,
+1. Nach der ersten Anmeldung öffnet sich **Firmendaten einrichten**.
+   Mit einem Administrationskonto die eigenen Firmen-, Kontakt-, Steuer- und
+   Bankdaten eingeben. Erst mit einem gültigen Profil werden die Arbeitsbereiche
+   freigegeben. Die Angaben werden lokal für diese Installation gespeichert;
+   es sind keine Firmendaten vorbelegt. Bestehende gültige Profile bleiben bei
+   Updates erhalten. Spätere Änderungen erfolgen unter **Einstellungen →
+   Firmendaten**. Wer umzieht, kann auf der Erststartseite stattdessen eine
+   vorhandene Sicherung wiederherstellen. Eine Installation verwaltet ein
+   Unternehmen. Anschließend Empfängerkennungen,
    Steuersätze, Leistungszeiträume und erzeugte Rechnungsdateien vor dem
    Echtbetrieb fachlich prüfen.
 2. Administrationskonten sparsam vergeben. Die explizite Rolle

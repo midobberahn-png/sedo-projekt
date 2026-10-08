@@ -101,7 +101,7 @@ def check() -> int:
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/app.css', timeout=10) as response:
             assets = response.status == 200 and bool(response.read())
-        for name in ('dashboard-widgets.css', 'dashboard-widgets.js', 'calendar.css', 'quiet-ui.css', 'quiet-ui.js', 'mail.js', 'accessibility-v2.js', 'incoming-print.js'):
+        for name in ('company-setup.css', 'dashboard-widgets.css', 'dashboard-widgets.js', 'calendar.css', 'quiet-ui.css', 'quiet-ui.js', 'mail.js', 'accessibility-v2.js', 'incoming-print.js'):
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/{name}', timeout=10) as response:
                 assets = assets and response.status == 200 and bool(response.read())
     except OSError:

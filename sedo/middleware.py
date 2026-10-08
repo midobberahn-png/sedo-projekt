@@ -4,6 +4,7 @@ from django.shortcuts import redirect
 from django.utils.http import urlencode
 
 from .backup_utils import ensure_weekly_backup
+from .company_profile import SellerProfileError, load_profile
 from .security import (ADMIN_VIEWS, READ_ONLY_VIEWS, SAFE_METHODS, LoginThrottle,
                        LoginThrottleUnavailable, is_administrator, is_read_only,
                        trusted_proxy)
@@ -73,6 +74,31 @@ class RoleRequiredMiddleware:
             return HttpResponseForbidden('Für diese Aktion ist ein Administrationskonto erforderlich.')
         if is_read_only(user) and (request.method not in SAFE_METHODS or name not in READ_ONLY_VIEWS):
             return HttpResponseForbidden('Dieses Konto hat nur Leserechte. Diese Aktion ist nicht freigegeben.')
+        return None
+
+
+class CompanySetupMiddleware:
+    """Keep a new installation in onboarding until its own sender is valid."""
+    RECOVERY_VIEWS = frozenset({'sedo:company_setup', 'sedo:backup',
+                                'sedo:readiness', 'sedo:security_status'})
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        user = getattr(request, 'user', None)
+        match = request.resolver_match
+        name = match.view_name if match else ''
+        if not user or not user.is_authenticated or not name.startswith('sedo:') or name in self.RECOVERY_VIEWS:
+            return None
+        try:
+            load_profile()
+        except SellerProfileError:
+            response = redirect('sedo:company_setup')
+            response['Cache-Control'] = 'no-store'
+            return response
         return None
 
 

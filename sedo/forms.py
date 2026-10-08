@@ -12,10 +12,25 @@ class CompanyProfileForm(forms.Form):
     def __init__(self, *args, **kwargs):
         from .company_profile import PROFILE_FIELDS
         super().__init__(*args, **kwargs)
+        autocomplete = {'name': 'organization', 'street': 'street-address',
+                        'postcode': 'postal-code', 'city': 'address-level2',
+                        'country': 'country', 'phone': 'tel', 'email': 'email',
+                        'ceo': 'name'}
         for name, (label, max_length, required) in PROFILE_FIELDS.items():
+            attrs = {**CUSTOMER_WIDGET_CLASS, 'autocomplete': autocomplete.get(name, 'off')}
+            widget = forms.EmailInput if name == 'email' else forms.TextInput
+            if name == 'phone':
+                attrs['type'] = 'tel'
+            if name in ('country', 'iban', 'bic', 'tax_no', 'vat_id', 'seller_id'):
+                attrs['spellcheck'] = 'false'
+            if name == 'country':
+                attrs['placeholder'] = 'z. B. DE'
             self.fields[name] = forms.CharField(
                 label=label, max_length=max_length, required=required,
-                strip=False, widget=forms.TextInput(attrs=CUSTOMER_WIDGET_CLASS))
+                strip=False, widget=widget(attrs=attrs))
+        self.order_fields(['name', 'street', 'postcode', 'city', 'country', 'phone',
+                           'email', 'ceo', 'register', 'tax_no', 'vat_id', 'seller_id',
+                           'iban', 'bic', 'bank_name'])
 
     def clean(self):
         from .company_profile import SellerProfileError, validate_profile
@@ -25,6 +40,9 @@ class CompanyProfileForm(forms.Form):
         try:
             return validate_profile(values)
         except SellerProfileError as exc:
+            if exc.field in self.fields:
+                self.add_error(exc.field, str(exc))
+                return values
             raise forms.ValidationError(str(exc)) from None
 
 class CustomerForm(forms.ModelForm):

@@ -24,7 +24,7 @@ PREFIX = 'sedo-credential-v1:'
 SERVICES = {
     'smtp': {'secret': 'smtp_password', 'env': 'SEDO_SMTP_PASSWORD',
              'fields': ('host', 'port', 'user', 'tls', 'from_name'),
-             'defaults': {'port': '587', 'tls': '1', 'from_name': 'SEDO'}},
+             'defaults': {'port': '587', 'tls': '1', 'from_name': ''}},
     'fints': {'secret': 'fints_pin', 'env': 'SEDO_FINTS_PIN',
               'fields': ('blz', 'endpoint', 'login', 'iban', 'product_id'), 'defaults': {}},
 }

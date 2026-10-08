@@ -22,7 +22,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.http import FileResponse, JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.debug import sensitive_post_parameters
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.cache import never_cache
 
 from .forms import CustomerForm, CustomerObjectForm, CustomerNoteForm, InvoiceForm, InvoiceItemFormSet, OfferForm, OfferItemFormSet, OfferFollowUpForm, BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm, CashbookEntryForm, RecurringInvoiceTemplateForm, RecurringInvoiceItemFormSet, ServiceCatalogItemForm, WorkTaskForm
 from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, Payment, CashbookEntry, AareonMapping, RecurringInvoiceTemplate, RecurringInvoiceItem, AppSetting, AuditLog, ServiceCatalogItem, WorkTask
@@ -2770,6 +2771,44 @@ def recurring_monthly_generate(request):
     if failed:
         messages.error(request, 'Fehlgeschlagen (vollständig zurückgerollt): ' + ', '.join(failed[:5]))
     return redirect('sedo:recurring_monthly')
+
+@login_required
+@never_cache
+@require_http_methods(['GET', 'HEAD', 'POST'])
+@sensitive_post_parameters()
+def company_setup(request):
+    """First-run company identity, stored only in this installation's data home."""
+    from .company_profile import SellerProfileError, initialize_profile
+    from .forms import CompanyProfileForm
+    from .security import is_administrator
+
+    try:
+        load_profile()
+    except SellerProfileError:
+        pass
+    else:
+        return redirect('sedo:dashboard')
+
+    can_edit = is_administrator(request.user)
+    if request.method == 'POST' and not can_edit:
+        return HttpResponseForbidden('Nur die Administration kann die Firmendaten einrichten.')
+    form = CompanyProfileForm(request.POST if request.method == 'POST' else None)
+    if request.method == 'POST' and form.is_valid():
+        try:
+            with transaction.atomic():
+                initialized = initialize_profile(form.cleaned_data)
+                if initialized:
+                    write_audit(request, 'create', object_type='AppSetting', object_repr='Firmendaten',
+                                message='Lokales Absenderprofil eingerichtet', pflicht=True)
+        except AuditWriteError:
+            form.add_error(None, 'Die Einrichtung konnte nicht sicher protokolliert werden. Bitte erneut versuchen.')
+        except SellerProfileError as exc:
+            form.add_error(None, str(exc))
+        else:
+            messages.success(request, 'Firmendaten eingerichtet. SEDO kann jetzt für Ihr Unternehmen verwendet werden.' if initialized else 'Das Unternehmen wurde bereits eingerichtet.')
+            return redirect('sedo:dashboard')
+    return render(request, 'sedo/company_setup.html', {'company_form': form, 'can_edit_company': can_edit})
+
 
 @login_required
 @sensitive_post_parameters('weather_api_key', 'fints_pin', 'smtp_password', 'ai_api_key')

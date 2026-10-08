@@ -41,6 +41,9 @@ _COUNTRIES = frozenset(('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB B
 
 class SellerProfileError(WorkflowError):
     """Only fixed messages/field labels, never supplied business values."""
+    def __init__(self, message, *, field=None):
+        super().__init__(message)
+        self.field = field
 
 
 def validate_profile(value: Mapping) -> dict[str, str]:
@@ -51,43 +54,43 @@ def validate_profile(value: Mapping) -> dict[str, str]:
     for name, (label, max_length, required) in PROFILE_FIELDS.items():
         item = value.get(name, '')
         if not isinstance(item, str):
-            raise SellerProfileError(f'{label}: Bitte Text eingeben.')
+            raise SellerProfileError(f'{label}: Bitte Text eingeben.', field=name)
         # Validate before strip: CR/LF, bidi/control and invisible formatting
         # characters must not be smuggled into PDF/XML or mail headers.
         if any(unicodedata.category(char).startswith('C') for char in item):
-            raise SellerProfileError(f'{label}: Steuerzeichen sind nicht erlaubt.')
+            raise SellerProfileError(f'{label}: Steuerzeichen sind nicht erlaubt.', field=name)
         item = item.strip()
         if len(item) > max_length or (required and not item):
-            raise SellerProfileError(f'{label}: Bitte vollständig und mit höchstens {max_length} Zeichen ausfüllen.')
+            raise SellerProfileError(f'{label}: Bitte vollständig und mit höchstens {max_length} Zeichen ausfüllen.', field=name)
         result[name] = item
     result['country'] = result['country'].upper()
     if result['country'] not in _COUNTRIES:
-        raise SellerProfileError('Land: Bitte einen zweistelligen ISO-Ländercode eingeben.')
+        raise SellerProfileError('Land: Bitte einen zweistelligen ISO-Ländercode eingeben.', field='country')
     from django.core.exceptions import ValidationError
     from django.core.validators import validate_email
     try:
         validate_email(result['email'])
     except ValidationError:
-        raise SellerProfileError('E-Mail-Adresse: Bitte eine gültige Adresse eingeben.') from None
+        raise SellerProfileError('E-Mail-Adresse: Bitte eine gültige Adresse eingeben.', field='email') from None
     result['iban'] = result['iban'].replace(' ', '').upper()
     iban = result['iban']
     if not re.fullmatch(r'[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}', iban) or iban[:2] not in _COUNTRIES:
-        raise SellerProfileError('IBAN: Format oder Prüfsumme ist ungültig.')
+        raise SellerProfileError('IBAN: Format oder Prüfsumme ist ungültig.', field='iban')
     digits = ''.join(str(ord(c) - 55) if c.isalpha() else c for c in iban[4:] + iban[:4])
     if int(digits) % 97 != 1:
-        raise SellerProfileError('IBAN: Format oder Prüfsumme ist ungültig.')
+        raise SellerProfileError('IBAN: Format oder Prüfsumme ist ungültig.', field='iban')
     result['bic'] = result['bic'].upper()
     if (not re.fullmatch(r'[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?', result['bic'])
             or result['bic'][4:6] not in _COUNTRIES):
-        raise SellerProfileError('BIC: Bitte 8 oder 11 gültige Zeichen eingeben.')
+        raise SellerProfileError('BIC: Bitte 8 oder 11 gültige Zeichen eingeben.', field='bic')
     if not result['tax_no'] and not result['vat_id']:
         raise SellerProfileError('Bitte Steuernummer oder Umsatzsteuer-ID hinterlegen.')
     if not result['vat_id'] and not result['seller_id']:
-        raise SellerProfileError('Ohne Umsatzsteuer-ID ist für die E-Rechnung eine eigene Unternehmens-/Lieferantenkennung erforderlich.')
+        raise SellerProfileError('Ohne Umsatzsteuer-ID ist für die E-Rechnung eine eigene Unternehmens-/Lieferantenkennung erforderlich.', field='seller_id')
     if result['tax_no'] and not re.fullmatch(r'[A-Za-z0-9 ./-]{3,40}', result['tax_no']):
-        raise SellerProfileError('Steuernummer: Das Format ist ungültig.')
+        raise SellerProfileError('Steuernummer: Das Format ist ungültig.', field='tax_no')
     if result['vat_id'] and not re.fullmatch(r'[A-Z]{2}[A-Z0-9]{2,18}', result['vat_id']):
-        raise SellerProfileError('Umsatzsteuer-ID: Das Format ist ungültig.')
+        raise SellerProfileError('Umsatzsteuer-ID: Das Format ist ungültig.', field='vat_id')
     return result
 
 
@@ -116,6 +119,28 @@ def save_profile(value: Mapping) -> dict[str, str]:
     clean = validate_profile(value)
     AppSetting.set(PROFILE_KEY, json.dumps(clean, ensure_ascii=False, sort_keys=True))
     return clean
+
+
+def initialize_profile(value: Mapping) -> bool:
+    """Complete setup once; never replace a valid profile from another request.
+
+    Call inside the audit transaction. The conditional update also protects
+    SQLite, where select_for_update does not provide row-level locks.
+    """
+    from .models import AppSetting
+    clean = validate_profile(value)
+    entry, _ = AppSetting.objects.get_or_create(key=PROFILE_KEY, defaults={'value': ''})
+    try:
+        validate_profile(json.loads(entry.value))
+    except (SellerProfileError, ValueError, TypeError):
+        pass
+    else:
+        return False
+    changed = AppSetting.objects.filter(pk=entry.pk, value=entry.value).update(
+        value=json.dumps(clean, ensure_ascii=False, sort_keys=True))
+    if not changed:
+        raise SellerProfileError('Die Firmendaten wurden zwischenzeitlich geändert. Bitte die Seite neu laden.')
+    return True
 
 
 @contextmanager

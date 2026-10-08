@@ -29,6 +29,7 @@ ADMIN_VIEWS = frozenset({
 # durable exports, prepare outgoing mail, or run restore simulations. New routes
 # must be classified before they become available to the read-only group.
 READ_ONLY_VIEWS = frozenset({
+    'sedo:company_setup',
     'sedo:dashboard', 'sedo:customer_list', 'sedo:customer_detail',
     'sedo:customer_data_api', 'sedo:global_search', 'sedo:invoice_list',
     'sedo:invoice_detail', 'sedo:offer_list', 'sedo:offer_detail',

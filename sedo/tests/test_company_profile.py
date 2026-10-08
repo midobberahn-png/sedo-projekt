@@ -15,9 +15,10 @@ from django.urls import reverse
 from lxml import etree
 from pypdf import PdfReader
 
+from sedo.audit import AuditWriteError
 from sedo.company_profile import (
     PROFILE_KEY, SELLER, SellerProfileError, load_profile, save_profile,
-    seller_snapshot, validate_profile,
+    seller_snapshot, validate_profile, initialize_profile,
 )
 from sedo.core.rechnungslauf_core import InvoiceRow, build_xml, create_pdf
 from sedo.models import AppSetting, AuditLog, Customer, CustomerObject, Invoice, InvoiceItem, NumberRange, Offer, OfferItem
@@ -146,21 +147,96 @@ class CompanyProfileTests(TestCase):
                 with self.subTest(profile=bool(raw), route=route):
                     before = [list(table.objects.order_by('pk').values()) for table in tables]
                     response = self.client.post(reverse(route), data)
-                    self.assertEqual(response.status_code, 400)
+                    self.assertRedirects(response, reverse('sedo:company_setup'))
                     self.assertEqual([list(table.objects.order_by('pk').values()) for table in tables], before)
 
-    def test_unconfigured_form_get_remains_read_only_and_available(self):
+    def test_unconfigured_installation_routes_to_company_setup_without_writing_documents(self):
         user = get_user_model().objects.create_user('profile-form', password='synthetic-test')
         self.client.force_login(user)
         for route in ('sedo:invoice_create', 'sedo:offer_create'):
-            self.assertEqual(self.client.get(reverse(route)).status_code, 200)
+            self.assertRedirects(self.client.get(reverse(route)), reverse('sedo:company_setup'))
         self.assertFalse(NumberRange.objects.exists())
+
+    def test_first_run_requires_admin_and_valid_company_before_business_pages(self):
+        admin = get_user_model().objects.create_user('setup-admin', password='synthetic-test', is_staff=True)
+        employee = get_user_model().objects.create_user('setup-employee', password='synthetic-test')
+        url = reverse('sedo:company_setup')
+        self.client.force_login(employee)
+        self.assertRedirects(self.client.get(reverse('sedo:dashboard')), url)
+        self.assertContains(self.client.get(url), 'Administrationskonto')
+        self.assertEqual(self.client.post(url, SYNTHETIC_PROFILE).status_code, 403)
+        self.assertFalse(AppSetting.objects.filter(key=PROFILE_KEY).exists())
+        self.client.force_login(admin)
+        self.assertContains(self.client.get(url), 'Firmendaten einrichten')
+        invalid = self.client.post(url, {**SYNTHETIC_PROFILE, 'iban': 'ungültig'})
+        self.assertContains(invalid, 'IBAN: Format oder Prüfsumme ist ungültig.')
+        self.assertIn('iban', invalid.context['company_form'].errors)
+        self.assertFalse(AppSetting.objects.filter(key=PROFILE_KEY).exists())
+        self.assertRedirects(self.client.post(url, SYNTHETIC_PROFILE), reverse('sedo:dashboard'))
+        self.assertEqual(load_profile(), SYNTHETIC_PROFILE)
+        self.assertRedirects(self.client.get(url), reverse('sedo:dashboard'))
+        self.assertEqual(self.client.get(reverse('sedo:dashboard')).status_code, 200)
+
+    def test_setup_is_blank_and_recovery_remains_accessible(self):
+        user = get_user_model().objects.create_user('setup-recovery', password='synthetic-test', is_staff=True)
+        self.client.force_login(user)
+        response = self.client.get(reverse('sedo:company_setup'))
+        for field in response.context['company_form']:
+            self.assertFalse(field.value())
+        self.assertIn('no-store', response['Cache-Control'])
+        self.assertEqual(self.client.get(reverse('sedo:backup')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('sedo:readiness')).status_code, 200)
+
+    def test_setup_cannot_overwrite_a_profile_saved_after_initial_check(self):
+        user = get_user_model().objects.create_user('setup-race', password='synthetic-test', is_staff=True)
+        self.client.force_login(user)
+        existing = {**SYNTHETIC_PROFILE, 'name': 'Bereits eingerichtete Testfirma'}
+        save_profile(existing)
+        before = AuditLog.objects.count()
+        with patch('sedo.views.load_profile', side_effect=SellerProfileError('Simulierter früherer Stand')):
+            response = self.client.post(reverse('sedo:company_setup'), SYNTHETIC_PROFILE)
+        self.assertRedirects(response, reverse('sedo:dashboard'))
+        self.assertEqual(load_profile(), existing)
+        self.assertEqual(AuditLog.objects.count(), before)
+
+    def test_setup_audit_failure_rolls_back_profile_and_allows_retry(self):
+        user = get_user_model().objects.create_user('setup-audit-retry', password='synthetic-test', is_staff=True)
+        self.client.force_login(user)
+        AppSetting.set('auto_weekly_backup_enabled', '0')
+        url = reverse('sedo:company_setup')
+        before = AuditLog.objects.count()
+        with patch('sedo.views.write_audit', side_effect=AuditWriteError('Synthetischer Protokollfehler')) as audit:
+            response = self.client.post(url, SYNTHETIC_PROFILE)
+        self.assertTrue(audit.call_args.kwargs['pflicht'])
+        self.assertContains(response, 'Die Einrichtung konnte nicht sicher protokolliert werden.')
+        self.assertEqual(response.context['company_form']['name'].value(), SYNTHETIC_PROFILE['name'])
+        self.assertFalse(AppSetting.objects.filter(key=PROFILE_KEY).exists())
+        self.assertEqual(AuditLog.objects.count(), before)
+        self.assertRedirects(self.client.get(reverse('sedo:dashboard')), url)
+        self.assertRedirects(self.client.post(url, SYNTHETIC_PROFILE), reverse('sedo:dashboard'))
+        self.assertEqual(load_profile(), SYNTHETIC_PROFILE)
+        self.assertEqual(AuditLog.objects.count(), before + 1)
+
+    def test_initialization_repairs_invalid_profile_but_never_replaces_valid_profile(self):
+        AppSetting.set(PROFILE_KEY, 'not-json')
+        self.assertTrue(initialize_profile(SYNTHETIC_PROFILE))
+        self.assertFalse(initialize_profile({**SYNTHETIC_PROFILE, 'name': 'Andere Testfirma'}))
+        self.assertEqual(load_profile(), SYNTHETIC_PROFILE)
+
+    def test_read_only_user_can_see_setup_but_cannot_complete_it(self):
+        user = get_user_model().objects.create_user('setup-readonly', password='synthetic-test', is_staff=True)
+        user.groups.add(Group.objects.get_or_create(name=READ_ONLY_GROUP)[0])
+        self.client.force_login(user)
+        url = reverse('sedo:company_setup')
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.post(url, SYNTHETIC_PROFILE).status_code, 403)
+        self.assertFalse(AppSetting.objects.filter(key=PROFILE_KEY).exists())
 
     def test_admin_can_save_profile_and_invalid_form_keeps_previous(self):
         user = get_user_model().objects.create_user('profile-admin', password='synthetic-test', is_staff=True)
         self.client.force_login(user)
-        response = self.client.post(reverse('sedo:settings'), {'action': 'save_company', **SYNTHETIC_PROFILE})
-        self.assertRedirects(response, reverse('sedo:settings') + '#company-settings')
+        response = self.client.post(reverse('sedo:company_setup'), SYNTHETIC_PROFILE)
+        self.assertRedirects(response, reverse('sedo:dashboard'))
         self.assertEqual(load_profile(), SYNTHETIC_PROFILE)
         response = self.client.post(reverse('sedo:settings'), {'action': 'save_company', **SYNTHETIC_PROFILE, 'iban': 'invalid'})
         self.assertEqual(response.status_code, 200)
@@ -178,8 +254,8 @@ class CompanyProfileTests(TestCase):
         user = get_user_model().objects.create_user('profile-superuser', password='synthetic-test',
                                                     is_superuser=True, is_staff=False)
         self.client.force_login(user)
-        self.assertContains(self.client.get(reverse('sedo:settings')), 'Firmendaten speichern')
-        response = self.client.post(reverse('sedo:settings'), {'action': 'save_company', **SYNTHETIC_PROFILE})
+        self.assertContains(self.client.get(reverse('sedo:company_setup')), 'Firmendaten speichern')
+        response = self.client.post(reverse('sedo:company_setup'), SYNTHETIC_PROFILE)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(load_profile(), SYNTHETIC_PROFILE)
 
@@ -196,8 +272,8 @@ class CompanyProfileTests(TestCase):
         user = get_user_model().objects.create_user('profile-csrf', password='synthetic-test', is_staff=True)
         client = Client(enforce_csrf_checks=True)
         client.force_login(user)
-        url = reverse('sedo:settings')
-        data = {'action': 'save_company', **SYNTHETIC_PROFILE}
+        url = reverse('sedo:company_setup')
+        data = SYNTHETIC_PROFILE
         self.assertEqual(client.post(url, data).status_code, 403)
         self.assertFalse(AppSetting.objects.filter(key=PROFILE_KEY).exists())
         self.assertEqual(client.get(url).status_code, 200)
@@ -211,6 +287,7 @@ class CompanyProfileTests(TestCase):
     def test_unhandled_profile_error_returns_helpful_400_not_500(self):
         user = get_user_model().objects.create_user('profile-reader', password='synthetic-test', is_staff=True)
         self.client.force_login(user)
+        save_profile(SYNTHETIC_PROFILE)
         with patch('sedo.views.get_smtp_config', side_effect=SellerProfileError('Firmendaten fehlen.')):
             response = self.client.get(reverse('sedo:settings'))
         self.assertEqual(response.status_code, 400)

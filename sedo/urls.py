@@ -3,6 +3,7 @@ from . import views, mail_views, dashboard_views, incoming_views, mail_spam_view
 
 app_name = 'sedo'
 urlpatterns = [
+    path('einrichtung/firma/', views.company_setup, name='company_setup'),
     path('dokumente/<path:path>', document_views.preview, name='document_preview'),
     path('kalender/', calendar_views.index, name='calendar_index'),
     path('kalender/einstellungen/', calendar_views.settings_page, name='calendar_settings'),
