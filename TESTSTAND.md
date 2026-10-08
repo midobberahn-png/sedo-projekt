@@ -61,6 +61,23 @@ Isolation geprüft. Ein synthetisches Firmenprofil und eine vollständige
 Rechnung durchlaufen Finalisierung, PDF-/XML-Erzeugung und Belegvalidierung.
 Normaler Programmstart delegiert unverändert an `desktop.main`.
 
+Der aktuelle native Mac-Build ist **Apple Silicon (ARM64), macOS 14 oder neuer**;
+für Intel ist ein eigener geprüfter Build erforderlich. Der Paketprüfer liest die
+Architektur und Mindestversion jeder eingebetteten Mach-O-Bibliothek. Fehlende
+oder zu niedrige Angaben in der App-Metadatei brechen den Build ab. Das belegt die
+Binäranforderung, keine Bedienungsabnahme auf allen möglichen Zielsystemen.
+
+Am neu erzeugten Bundle werden ausschließlich die signaturunzulässigen Attribute
+FinderInfo/ResourceFork entfernt; Quarantäne- und Sicherheitsattribute bleiben
+unangetastet. Die strenge Signaturprüfung muss am Bundle und erneut nach frischem
+Entpacken des ZIPs bestehen. Das ZIP bewahrt Laufzeit-Symlinks, übernimmt aber keine
+Ressourcenforks oder erweiterten Dateiattribute. Auch eine gültige ad-hoc Signatur
+ist noch keine Herausgebersignatur oder Notarisierung.
+Diese Signaturprüfungen finden außerhalb synchronisierter FileProvider-Ordner
+im privaten temporären Buildverzeichnis statt. Die zusätzliche entpackte App
+unter `desktop/` dient nur lokalen Bedienungstests; nachträglich vom Dateisystem
+angehängte Finder-Metadaten machen sie nicht zum Signaturnachweis für das ZIP.
+
 `BUILD_MANIFEST.json`, `installed.txt`, `self-check.json` und Archivprüfsumme gehören
 zum nativen Teststand. Checksummen machen die Dateien vergleichbar; sie sind keine
 Signatur und kein Schutz gegen jemanden, der Datei und Manifest zusammen ersetzt.

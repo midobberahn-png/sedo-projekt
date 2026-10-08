@@ -40,6 +40,7 @@ READ_ONLY_VIEWS = frozenset({
     'sedo:mail_html', 'sedo:mail_original', 'sedo:mail_attachment',
     'sedo:mail_status', 'sedo:calendar_index', 'sedo:calendar_detail',
     'sedo:security_status', 'sedo:readiness', 'sedo:audit_log', 'protected_media',
+    'sedo:document_preview',
 })
 
 

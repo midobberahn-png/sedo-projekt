@@ -1,0 +1,9 @@
+{% extends 'sedo/base.html' %}
+{% block title %}{{ filename }} · SEDO{% endblock %}
+{% block content %}
+<header class="topbar"><div><div class="eyebrow">Gespeicherter Beleg</div><h1 class="h1">{{ filename }}</h1></div><div class="toolbar"><a class="btn" href="{{ back_url }}">← Zurück</a><a class="btn primary" href="{{ document_url }}?download=1" download>Original herunterladen</a></div></header>
+<p class="hint">Die Anzeige bleibt in SEDO. Das gespeicherte Original wird nicht verändert.</p>
+{% if preview_error %}<p class="notice warning" role="status">{{ preview_error }}</p>
+{% elif is_pdf %}<iframe class="document-preview" title="PDF: {{ filename }}" src="{{ document_url }}?inline=1"></iframe>
+{% else %}<pre class="card document-text">{{ document_text }}</pre>{% endif %}
+{% endblock %}

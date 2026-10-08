@@ -2,6 +2,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, date, timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 import csv
 import json
 import zipfile
@@ -2180,7 +2181,10 @@ def cashbook_pdf(request):
     if not path.exists():
         messages.error(request, 'Die Kassenbuch-PDF konnte nicht erzeugt werden.')
         return redirect(f"{reverse('sedo:cashbook_list')}?month={month}")
-    return FileResponse(open(path, 'rb'), content_type='application/pdf', filename=path.name)
+    document_path = path.resolve().relative_to(Path(settings.MEDIA_ROOT).resolve()).as_posix()
+    return redirect(reverse('sedo:document_preview', kwargs={'path': document_path})
+                    + '?' + urlencode({
+                        'back': reverse('sedo:cashbook_list') + '?month=' + month}))
 
 
 

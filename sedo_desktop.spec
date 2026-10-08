@@ -121,6 +121,10 @@ if sys.platform == 'darwin':
             'CFBundleDisplayName': 'SEDO Rechnungstool',
             'CFBundleShortVersionString': source_info['CFBundleShortVersionString'],
             'CFBundleVersion': source_info['CFBundleVersion'],
+            # The locked ARM64 av/numpy/onnxruntime wheels require macOS 14.
+            # tools/macos_bundle.py checks every embedded Mach-O deployment target.
+            'LSMinimumSystemVersion': '14.0',
+            'LSArchitecturePriority': ['arm64'],
             'NSMicrophoneUsageDescription':
                 'SEDO nutzt das Mikrofon für das lokale Diktat von Angebotspositionen. '
                 'Die Aufnahme wird auf diesem Rechner transkribiert und danach gelöscht.',

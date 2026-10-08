@@ -7,9 +7,9 @@
   {% elif invoice.lifecycle == 'issued' and invoice.invoice_type != '457' and invoice.payment_state != 'paid' %}
     <a class="btn primary detail-primary-action" href="{% url 'sedo:invoice_add_payment' invoice.pk %}">Zahlung erfassen</a>
   {% elif invoice.zugferd_file %}
-    <a class="btn primary detail-primary-action" href="{{ invoice.zugferd_file.url }}" target="_blank">Originalbeleg öffnen</a>
+    <a class="btn primary detail-primary-action" href="{% url 'sedo:document_preview' invoice.zugferd_file.name %}?back={{ request.get_full_path|urlencode }}">Originalbeleg öffnen</a>
   {% elif invoice.pdf_file %}
-    <a class="btn primary detail-primary-action" href="{{ invoice.pdf_file.url }}" target="_blank">PDF öffnen</a>
+    <a class="btn primary detail-primary-action" href="{% url 'sedo:document_preview' invoice.pdf_file.name %}?back={{ request.get_full_path|urlencode }}">PDF öffnen</a>
   {% endif %}
 
   <div class="detail-secondary-actions">
@@ -17,7 +17,7 @@
       <a class="btn" href="{% url 'sedo:invoice_edit' invoice.pk %}">Bearbeiten</a>
     {% else %}
       <form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}">{% csrf_token %}<button type="submit" class="btn">E-Mail senden</button></form>
-      {% if invoice.pdf_file %}<a class="btn" href="{{ invoice.pdf_file.url }}" target="_blank">PDF</a>{% endif %}
+      {% if invoice.pdf_file %}<a class="btn" href="{% url 'sedo:document_preview' invoice.pdf_file.name %}?back={{ request.get_full_path|urlencode }}">PDF</a>{% endif %}
     {% endif %}
   </div>
 
@@ -26,10 +26,10 @@
     <div class="action-menu-panel">
       <div class="action-menu-group">
         <span class="action-menu-label">Dokumente</span>
-        {% if invoice.zugferd_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{{ invoice.zugferd_file.url }}" target="_blank">ZUGFeRD öffnen</a>{% endif %}
+        {% if invoice.zugferd_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{% url 'sedo:document_preview' invoice.zugferd_file.name %}?back={{ request.get_full_path|urlencode }}">ZUGFeRD öffnen</a>{% endif %}
         {% if invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{% url 'sedo:invoice_zugferd_validation' invoice.pk %}">ZUGFeRD prüfen</a>{% endif %}
-        {% if invoice.pdf_file %}<a class="action-menu-item" href="{{ invoice.pdf_file.url }}" target="_blank">PDF öffnen</a>{% endif %}
-        {% if invoice.xml_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{{ invoice.xml_file.url }}" target="_blank">XML öffnen</a>{% endif %}
+        {% if invoice.pdf_file %}<a class="action-menu-item" href="{% url 'sedo:document_preview' invoice.pdf_file.name %}?back={{ request.get_full_path|urlencode }}">PDF öffnen</a>{% endif %}
+        {% if invoice.xml_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{% url 'sedo:document_preview' invoice.xml_file.name %}?back={{ request.get_full_path|urlencode }}">XML öffnen</a>{% endif %}
         {% if invoice.lifecycle == 'draft' %}
           <form method="post" action="{% url 'sedo:invoice_generate' invoice.pk %}">{% csrf_token %}<button type="submit" class="action-menu-item">Entwurfs-PDF neu erzeugen</button></form>
         {% endif %}

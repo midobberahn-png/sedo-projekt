@@ -1,8 +1,9 @@
 from django.urls import path
-from . import views, mail_views, dashboard_views, incoming_views, mail_spam_views, calendar_views
+from . import views, mail_views, dashboard_views, incoming_views, mail_spam_views, calendar_views, document_views
 
 app_name = 'sedo'
 urlpatterns = [
+    path('dokumente/<path:path>', document_views.preview, name='document_preview'),
     path('kalender/', calendar_views.index, name='calendar_index'),
     path('kalender/einstellungen/', calendar_views.settings_page, name='calendar_settings'),
     path('kalender/abgleichen/', calendar_views.sync_now, name='calendar_sync'),

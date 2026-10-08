@@ -94,10 +94,10 @@
             <details class="archive-documents">
               <summary>Dokumente<span class="sr-only"> zu {{ r.number }}</span></summary>
               <div>
-                {% if r.pdf_file %}<a href="{{ r.pdf_file.url }}" target="_blank" rel="noopener">{% if r.lifecycle == 'draft' %}Entwurfs-PDF{% else %}PDF{% endif %} öffnen</a>{% endif %}
+                {% if r.pdf_file %}<a href="{% url 'sedo:document_preview' r.pdf_file.name %}?back={{ request.get_full_path|urlencode }}">{% if r.lifecycle == 'draft' %}Entwurfs-PDF{% else %}PDF{% endif %} öffnen</a>{% endif %}
                 {% if r.lifecycle != 'draft' %}
-                  {% if r.zugferd_file %}<a href="{{ r.zugferd_file.url }}" target="_blank" rel="noopener">ZUGFeRD öffnen</a>{% endif %}
-                  {% if r.xml_file %}<a href="{{ r.xml_file.url }}" target="_blank" rel="noopener">XML öffnen</a>{% endif %}
+                  {% if r.zugferd_file %}<a href="{% url 'sedo:document_preview' r.zugferd_file.name %}?back={{ request.get_full_path|urlencode }}">ZUGFeRD öffnen</a>{% endif %}
+                  {% if r.xml_file %}<a href="{% url 'sedo:document_preview' r.xml_file.name %}?back={{ request.get_full_path|urlencode }}">XML öffnen</a>{% endif %}
                 {% endif %}
                 {% if not r.pdf_file and r.lifecycle == 'draft' %}<span class="muted">Kein Entwurfs-PDF hinterlegt.</span>{% elif not r.pdf_file and not r.xml_file and not r.zugferd_file %}<span class="muted">Keine Dokumente hinterlegt. Bitte Rechnung öffnen und Archivhinweis prüfen.</span>{% endif %}
               </div>

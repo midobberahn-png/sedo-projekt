@@ -197,7 +197,10 @@ def frozen(output: Path, app: Path = APP) -> Path:
     validate_lock(app)
     output.mkdir(parents=True, exist_ok=False)
     source_zip = source(output, app)
-    with tempfile.TemporaryDirectory(prefix='sedo-native-build-') as tmp:
+    # FileProvider-backed output directories may recreate FinderInfo on apps.
+    # Keep signing/verification on a private native filesystem until ZIP creation.
+    with tempfile.TemporaryDirectory(prefix='sedo-native-build-',
+                                     dir='/private/tmp' if sys.platform == 'darwin' else None) as tmp:
         staged = Path(tmp) / 'source'
         manifest = stage_source(source_zip, staged)
         envpython = install(Path(tmp) / 'venv', staged)
@@ -209,11 +212,14 @@ def frozen(output: Path, app: Path = APP) -> Path:
         run([str(envpython), 'manage.py', 'test', 'sedo', '--noinput'],
             cwd=staged, env=build_env, timeout=600)
         run([str(envpython), '-c', 'from faster_whisper import WhisperModel; import webview, waitress'], env=build_env)
+        native_dist = Path(tmp) / 'desktop' if sys.platform == 'darwin' else output / 'desktop'
         run([str(envpython), '-m', 'PyInstaller', str(staged / 'sedo_desktop.spec'),
-             '--noconfirm', '--workpath', str(Path(tmp) / 'work'), '--distpath', str(output / 'desktop')], cwd=staged, env=build_env)
+             '--noconfirm', '--workpath', str(Path(tmp) / 'work'), '--distpath', str(native_dist)], cwd=staged, env=build_env)
         if sys.platform == 'darwin':
-            bundle = output / 'desktop/SEDO Rechnungstool.app'
+            bundle = native_dist / 'SEDO Rechnungstool.app'
             exe = bundle / 'Contents/MacOS/SEDO Rechnungstool'
+            run([str(envpython), str(staged / 'tools/macos_bundle.py'), str(bundle),
+                 '--clean-build-metadata', '--report', str(output / 'bundle-check.json')])
         elif os.name == 'nt':
             bundle = output / 'desktop/SEDO Rechnungstool'
             exe = bundle / 'SEDO Rechnungstool.exe'
@@ -228,15 +234,33 @@ def frozen(output: Path, app: Path = APP) -> Path:
             raise BuildError('Der gebündelte Selbsttest ist nicht vollständig bestanden.')
         installed = subprocess.check_output([str(envpython), '-m', 'pip', 'freeze', '--all'], text=True)
         (output / 'installed.txt').write_text(installed, encoding='utf-8')
+        name = f"SEDO-{LABEL}-{manifest['commit'][:12]}-{platform.system()}-{platform.machine()}"
+        if sys.platform == 'darwin':
+            archive = output / (name + '.zip')
+            run(['ditto', '-c', '-k', '--norsrc', '--noextattr', '--keepParent', str(bundle), str(archive)])
+            with zipfile.ZipFile(archive) as package:
+                if package.testzip() is not None:
+                    raise BuildError('Das native Mac-Archiv ist beschädigt.')
+            extracted = Path(tmp) / 'archive-check'
+            run(['ditto', '-x', '-k', str(archive), str(extracted)])
+            # Never clean the extracted copy: the distributed archive itself
+            # must survive strict verification, including all resource symlinks.
+            run([str(envpython), str(staged / 'tools/macos_bundle.py'), str(extracted / bundle.name),
+                 '--report', str(output / 'archive-check.json')])
+            # This convenient workspace copy is for GUI checks, not signature
+            # evidence: a local FileProvider may add Finder metadata immediately.
+            run(['ditto', '-x', '-k', '--norsrc', '--noextattr', str(archive), str(output / 'desktop')])
+        else:
+            archive = Path(shutil.make_archive(str(output/name), 'zip', bundle.parent, bundle.name))
     manifest.update(kind='native-teststand', os=platform.system(), machine=platform.machine(),
                     lock_sha256=sha((app/'requirements-release.lock').read_bytes()),
                     self_check=check, target_pc_tested=False, signed_release=False)
-    name = f"SEDO-{LABEL}-{manifest['commit'][:12]}-{platform.system()}-{platform.machine()}"
     if sys.platform == 'darwin':
-        archive = output / (name + '.zip')
-        run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(bundle), str(archive)])
-    else:
-        archive = Path(shutil.make_archive(str(output/name), 'zip', bundle.parent, bundle.name))
+        manifest['macos_signature_evidence'] = 'private-build-and-freshly-extracted-archive'
+        manifest['desktop_copy_purpose'] = 'local-gui-check'
+        for label in ('bundle-check', 'archive-check'):
+            evidence = json.loads((output / (label + '.json')).read_text(encoding='utf-8'))
+            manifest[label] = {key: value for key, value in evidence.items() if key != 'binaries'}
     manifest['archive_sha256'] = sha(archive.read_bytes())
     (output / 'BUILD_MANIFEST.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     return archive

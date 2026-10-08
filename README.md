@@ -38,6 +38,11 @@ Konfiguration nur anhand von [.env.example](.env.example) vornehmen.
 
 ## Gebündeltes Desktop-Programm
 
+Das hier geprüfte Mac-Paket ist für **Apple Silicon (ARM64), macOS 14 oder neuer**.
+Intel-Macs benötigen einen eigenen geprüften Build; dieses Paket ist nicht universal.
+Die angegebene Mindestversion beschreibt die Binäranforderung, nicht eine bereits
+erfolgte Bedienungsabnahme auf jeder macOS-Version.
+
 Ein auf dem jeweiligen Betriebssystem gebautes Desktop-Paket benötigt keine
 separate Python-Installation. Es speichert Daten getrennt vom Programm:
 
