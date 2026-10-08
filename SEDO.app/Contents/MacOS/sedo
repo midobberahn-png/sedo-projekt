@@ -1,0 +1,5 @@
+#!/bin/bash
+# Source-checkout shortcut. The bundled desktop program is built separately.
+set -euo pipefail
+APP_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+exec /usr/bin/open -a Terminal "$APP_DIR/START_HIER.command"

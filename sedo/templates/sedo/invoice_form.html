@@ -1,0 +1,273 @@
+{% extends 'sedo/base.html' %}{% load l10n static %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'sedo/invoice-wizard-v2.css' %}?v=1">
+{{ wizard_initial|json_script:'invoice-wizard-initial' }}
+<form method="post" id="invoice-form">
+{% csrf_token %}
+{% if source_offer %}<input type="hidden" name="source_offer" value="{{ source_offer.pk|unlocalize }}">{% endif %}
+{% if correction_source %}<input type="hidden" name="correction_of" value="{{ correction_source.pk|unlocalize }}">{% endif %}
+
+<div class="work-dialog invoice-flow">
+  <div class="work-dialog-header">
+    <div class="work-title">
+      <div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-invoice"/></svg></div>
+      <div>
+        <h1>{{ title }}</h1>
+
+      </div>
+    </div>
+    <a class="work-close" href="{% url 'sedo:invoice_list' %}" title="Abbrechen" aria-label="Rechnungserstellung abbrechen">×</a>
+  </div>
+
+  <div class="work-body" data-wizard{% if source_offer or correction_source %} data-wizard-unlocked{% endif %}>
+    <ol class="wizard-nav" data-wizard-nav hidden></ol>
+
+    {% if source_offer %}<div class="card info-card" style="margin-bottom:12px"><strong>Angebotsbezug:</strong> Diese Rechnung wird aus Angebot {{ source_offer.number }} erstellt. Positionen können vor dem Speichern angepasst werden.</div>{% endif %}
+    {% if correction_source %}<div class="card warning-card" style="margin-bottom:12px"><strong>Korrektur:</strong> Diese Korrekturrechnung bezieht sich auf {{ correction_source.number }}.</div>{% endif %}
+    {% if form.non_field_errors %}<div class="card warning-card wizard-step-error">{{ form.non_field_errors }}</div>{% endif %}
+
+    <!-- ─── SCHRITT 1 · EMPFÄNGER ─────────────────────────────────── -->
+    <section class="wizard-step" id="step-kunde" data-wizard-step data-step-label="Empfänger">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></div>
+        <div><h2>Wer bekommt die Rechnung?</h2></div>
+      </div>
+      <div class="form-card" id="section-customer">
+        <div class="form-card-title">
+          Kunde / Rechnungsempfänger
+          <span class="autofill-badge">Gespeicherte Daten</span>
+        </div>
+
+        <div class="field-wide" style="margin-bottom:14px">
+          <label for="customer-search">Kunden suchen</label>
+          <div class="customer-search-wrap">
+            <input type="search" id="customer-search" placeholder="Kunden suchen…" autocomplete="off">
+          </div>
+          <label for="id_customer">Oder aus der Kundenliste wählen</label>
+          {{ form.customer }}{{ form.customer.errors }}
+
+
+          <div class="customer-selected-pill" id="customer-pill">
+            <strong id="pill-name">—</strong>
+            <span id="pill-info"></span>
+            <span id="pill-email"></span>
+            <span class="hint">Gespeicherter Rechnungsempfänger</span>
+          </div>
+        </div>
+
+        <p id="customer-load-status" role="status" aria-live="polite"></p>
+        <div class="wizard-data-actions" id="customer-data-actions" hidden>
+          <button type="button" class="btn small" id="customer-details-toggle" aria-controls="customer-fields" aria-expanded="true">Details ausblenden</button>
+          <button type="button" class="btn small" id="clear-customer">Neuen Empfänger erfassen</button>
+          <button type="button" class="btn small" id="customer-retry" hidden>Erneut laden</button>
+        </div>
+
+        <div class="work-grid compact-form" id="customer-fields">
+
+          <div><label for="id_salutation">{{ form.salutation.label }}</label>{{ form.salutation }}{{ form.salutation.errors }}</div>
+          <div><label for="id_name">{{ form.name.label }} *</label>{{ form.name }}{{ form.name.errors }}</div>
+          <div><label for="id_name2">{{ form.name2.label }}</label>{{ form.name2 }}{{ form.name2.errors }}</div>
+          <div><label for="id_customer_no">{{ form.customer_no.label }}</label>{{ form.customer_no }}{{ form.customer_no.errors }}</div>
+          <div><label for="id_customer_type">{{ form.customer_type.label }}</label>{{ form.customer_type }}{{ form.customer_type.errors }}</div>
+          <div><label for="id_contact_person">{{ form.contact_person.label }}</label>{{ form.contact_person }}{{ form.contact_person.errors }}</div>
+          <div><label for="id_phone">{{ form.phone.label }}</label>{{ form.phone }}{{ form.phone.errors }}</div>
+          <div><label for="id_email">{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}</div>
+          <div><label for="id_street">{{ form.street.label }}</label>{{ form.street }}{{ form.street.errors }}</div>
+          <div><label for="id_postcode">{{ form.postcode.label }}</label>{{ form.postcode }}{{ form.postcode.errors }}</div>
+          <div><label for="id_city">{{ form.city.label }}</label>{{ form.city }}{{ form.city.errors }}</div>
+          <div><label for="id_country">{{ form.country.label }}</label>{{ form.country }}{{ form.country.errors }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 2 · LEISTUNGSORT ──────────────────────────────── -->
+    <section class="wizard-step" id="step-objekt" data-wizard-step data-step-label="Leistungsort">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></div>
+        <div><h2>Wo wurde gearbeitet?</h2></div>
+      </div>
+      <div class="form-card" id="section-object">
+        <div class="form-card-title">
+          Objekt / Leistungsort
+          <span class="autofill-badge">Gespeicherte Daten</span>
+        </div>
+        <div class="work-grid">
+          <div class="field-wide">
+            <label for="id_obj">Gespeichertes Objekt</label>
+            {{ form.obj }}{{ form.obj.errors }}
+
+          </div>
+        </div>
+        <div class="wizard-address-card" id="object-summary" hidden><strong id="object-summary-name"></strong><span id="object-summary-address"></span><span class="hint">Gespeicherter Leistungsort</span></div>
+        <div class="wizard-data-actions" id="object-data-actions" hidden>
+          <button type="button" class="btn small" id="object-details-toggle" aria-controls="object-fields" aria-expanded="true">Details ausblenden</button>
+          <button type="button" class="btn small" id="clear-object">Anderen Leistungsort eingeben</button>
+        </div>
+
+        <div class="work-grid" id="object-fields">
+          <div><label for="id_object_name">{{ form.object_name.label }}</label>{{ form.object_name }}{{ form.object_name.errors }}</div>
+          <div><label for="id_object_street">{{ form.object_street.label }}</label>{{ form.object_street }}{{ form.object_street.errors }}</div>
+          <div><label for="id_object_postcode">{{ form.object_postcode.label }}</label>{{ form.object_postcode }}{{ form.object_postcode.errors }}</div>
+          <div><label for="id_object_city">{{ form.object_city.label }}</label>{{ form.object_city }}{{ form.object_city.errors }}</div>
+          <div><label for="id_object_country">{{ form.object_country.label }}</label>{{ form.object_country }}{{ form.object_country.errors }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 3 · RECHNUNGSDATEN ────────────────────────────── -->
+    <section class="wizard-step" id="step-rechnungsdaten" data-wizard-step data-step-label="Rechnungsdaten">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></div>
+        <div><h2>Datum, Zahlungsziel, Zeitraum</h2></div>
+      </div>
+      <div class="form-card">
+        <div class="work-grid compact-form">
+          <div><label for="id_issue_date">{{ form.issue_date.label }}</label>{{ form.issue_date }}{{ form.issue_date.errors }}</div>
+          <div>
+            <label for="id_payment_days">{{ form.payment_days.label }}</label>
+            {{ form.payment_days }}{{ form.payment_days.errors }}
+            <div class="due-preview hidden" id="due-preview">Fällig am: <strong id="due-date-val">—</strong></div>
+          </div>
+          <div><label for="id_period_start">{{ form.period_start.label }}</label>{{ form.period_start }}{{ form.period_start.errors }}</div>
+          <div><label for="id_period_end">{{ form.period_end.label }}</label>{{ form.period_end }}{{ form.period_end.errors }}</div>
+          <div><label for="id_vat_rate">{{ form.vat_rate.label }}</label>{{ form.vat_rate }}{{ form.vat_rate.errors }}</div>
+          <div class="field-wide"><label for="id_note">{{ form.note.label }}</label>{{ form.note }}{{ form.note.errors }}</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 4 · POSITIONEN ────────────────────────────────── -->
+    <section class="wizard-step" id="step-positionen" data-wizard-step data-step-label="Positionen">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg></div>
+        <div><h2>Was wird abgerechnet? </h2></div>
+      </div>
+      <div class="form-card">
+        {% if formset.non_form_errors %}<div class="card warning-card wizard-step-error" style="margin-bottom:12px">{{ formset.non_form_errors }}</div>{% endif %}
+
+        {{ formset.management_form }}
+        <div class="pos-table-wrap">
+        <table class="pos-table" id="position-list">
+          <thead><tr>
+            <th class="pos-c-no">Pos.</th><th>Bezeichnung</th><th class="pos-c-qty r">Menge</th>
+            <th class="pos-c-unit">Einheit</th><th class="pos-c-price r">Einzelpreis netto</th>
+            <th class="pos-c-total r">Gesamt</th><th class="pos-c-del"></th>
+          </tr></thead>
+        {% for f in formset %}
+          <tbody class="position-form{% if f.long_text.value or f.article_no.value or f.leistungsart_id.value or f.leistungsart_text.value or f.long_text.errors or f.article_no.errors or f.leistungsart_id.errors or f.leistungsart_text.errors %} has-desc{% endif %}">
+            <tr class="pos-main-row">
+              <td class="pos-no-cell">{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}<span class="pos-no">{{ forloop.counter }}</span></td>
+              <td class="pos-cell-desc">{{ f.description }}{{ f.description.errors }}</td>
+              <td class="pos-cell-qty">{{ f.quantity }}{{ f.quantity.errors }}</td>
+              <td class="pos-cell-unit">{{ f.unit }}{{ f.unit.errors }}</td>
+              <td class="pos-cell-price">{{ f.unit_price }}{{ f.unit_price.errors }}</td>
+              <td class="pos-line-total"><span class="pos-line-total-val">—</span></td>
+              <td class="pos-cell-del">{{ f.DELETE }}</td>
+            </tr>
+            <tr class="pos-desc-row">
+              <td></td>
+              <td colspan="5">
+                <button type="button" class="pos-desc-toggle">+ Beschreibung &amp; Details</button>
+                <div class="pos-desc-body">
+                  <div class="pos-desc-field"><label>Leistungsbeschreibung</label>{{ f.long_text }}{{ f.long_text.errors }}</div>
+                  <div class="pos-extra-field"><label>Artikelnr.</label>{{ f.article_no }}{{ f.article_no.errors }}</div>
+                  <div class="pos-extra-field"><label>Leistungsart-ID</label>{{ f.leistungsart_id }}{{ f.leistungsart_id.errors }}</div>
+                  <div class="pos-extra-field"><label>Leistungsart-Text</label>{{ f.leistungsart_text }}{{ f.leistungsart_text.errors }}</div>
+                </div>
+              </td>
+              <td></td>
+            </tr>
+          </tbody>
+        {% endfor %}
+        </table>
+        </div>
+        <!-- „+ Position hinzufügen" steht unter der jeweils letzten Position -->
+        <div class="add-position-row"><button class="btn small" type="button" id="add-position">+ Position hinzufügen</button></div>
+        <template id="empty-form-template"><tbody class="position-form"><tr class="pos-main-row"><td class="pos-no-cell">{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}<span class="pos-no">__num__</span></td><td class="pos-cell-desc">{{ formset.empty_form.description }}</td><td class="pos-cell-qty">{{ formset.empty_form.quantity }}</td><td class="pos-cell-unit">{{ formset.empty_form.unit }}</td><td class="pos-cell-price">{{ formset.empty_form.unit_price }}</td><td class="pos-line-total"><span class="pos-line-total-val">—</span></td><td class="pos-cell-del">{{ formset.empty_form.DELETE }}</td></tr><tr class="pos-desc-row"><td></td><td colspan="5"><button type="button" class="pos-desc-toggle">+ Beschreibung &amp; Details</button><div class="pos-desc-body"><div class="pos-desc-field"><label>Leistungsbeschreibung</label>{{ formset.empty_form.long_text }}</div><div class="pos-extra-field"><label>Artikelnr.</label>{{ formset.empty_form.article_no }}</div><div class="pos-extra-field"><label>Leistungsart-ID</label>{{ formset.empty_form.leistungsart_id }}</div><div class="pos-extra-field"><label>Leistungsart-Text</label>{{ formset.empty_form.leistungsart_text }}</div></div></td><td></td></tr></tbody></template>
+
+        <!-- Live-Summe -->
+        <div class="live-summary" id="live-summary">
+          <div class="sum-line">
+            <span class="sum-label">Nettobetrag</span>
+            <span class="sum-val" id="calc-net">0,00 €</span>
+          </div>
+          <div class="sum-line">
+            <span class="sum-label">USt <span id="calc-vat-rate">19</span>%</span>
+            <span class="sum-val" id="calc-vat">0,00 €</span>
+          </div>
+          <div class="sum-line gross">
+            <span class="sum-label">Gesamtbetrag</span>
+            <span class="sum-val" id="calc-gross">0,00 €</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── SCHRITT 5 · PRÜFEN ────────────────────────────────────── -->
+    <section class="wizard-step" id="step-pruefen" data-wizard-step data-step-label="Prüfen">
+      <div class="wizard-step-head">
+        <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></div>
+        <div><h2>Rechnung prüfen</h2></div>
+      </div>
+      <div class="form-card invoice-review">
+        <div class="invoice-review-head"><h3>Rechnungsübersicht</h3><span class="hint">Noch nicht ausgestellt</span></div>
+        <div class="invoice-review-grid">
+          <div><h4>Empfänger</h4><strong id="rc-customer">—</strong><p id="rc-customer-address"></p><p id="rc-email"></p><button class="btn small" type="button" data-review-goto="step-kunde" hidden>Empfänger prüfen</button></div>
+          <div><h4>Leistungsort</h4><strong id="rc-object">—</strong><p id="rc-object-address"></p><button class="btn small" type="button" data-review-goto="step-objekt" hidden>Leistungsort prüfen</button></div>
+          <div><h4>Rechnungsdatum</h4><strong id="rc-date">—</strong><h4>Leistungszeitraum</h4><span id="rc-period">—</span></div>
+          <div><h4>Fällig am</h4><strong id="rc-due">—</strong><p><button class="btn small" type="button" data-review-goto="step-rechnungsdaten" hidden>Datum und Zahlungsziel prüfen</button></p></div>
+        </div>
+        <h4>Leistungen · <span id="rc-count">0</span> Positionen</h4>
+        <ul id="rc-items" class="invoice-review-items"></ul>
+        <button class="btn small" type="button" data-review-goto="step-positionen" hidden>Positionen prüfen</button>
+        <div class="invoice-review-totals"><span>Netto <strong id="rc-net">0,00 €</strong></span><span>Umsatzsteuer <strong id="rc-vat">0,00 €</strong></span><span class="review-gross">Gesamtbetrag <strong id="rc-gross">0,00 €</strong></span></div>
+
+        <div id="rc-warnings"></div>
+        <noscript></noscript>
+      </div>
+
+      <details class="form-card wizard-recurring" {% if request.POST.save_as_recurring %}open{% endif %}>
+        <summary>Optional: als Monatsrechnung merken</summary>
+        <div class="abo-box">
+          <label class="check-line">
+            <input type="checkbox" name="save_as_recurring" value="1" {% if request.POST.save_as_recurring %}checked{% endif %}>
+            Diese Rechnung zusätzlich als Abo-/Monatsrechnungsvorlage speichern
+          </label>
+
+          <div style="margin-top:10px">
+            <label style="font-size:13px;color:#4b5563;font-weight:800;margin-bottom:5px;display:block">Vorlagenname (optional)</label>
+            <input class="form-control form-control-sm" type="text" name="recurring_title" value="{{ request.POST.recurring_title }}" placeholder="z. B. Monatliche Treppenhausreinigung · Musterstraße 1">
+          </div>
+        </div>
+      </details>
+
+    </section>
+
+    <div class="sticky-actions wizard-bar">
+      <a class="btn ghost" href="{% url 'sedo:invoice_list' %}">Abbrechen</a>
+      <div class="wizard-bar-right">
+        <span class="wizard-progress" data-wizard-progress hidden>Schritt <b data-wizard-current>1</b> von <b data-wizard-total>5</b></span>
+        <button class="btn" type="button" data-wizard-prev hidden>← Zurück</button>
+        <button class="btn primary" type="button" data-wizard-next hidden>Weiter →</button>
+        <span class="wizard-final" data-wizard-final>
+          <button class="btn" type="submit" name="action" value="preview">Vorschau</button>
+          <button class="btn" type="submit" name="action" value="draft">Als Entwurf speichern</button>
+
+          <button class="btn primary" type="submit" name="action" value="create">Rechnung erstellen</button>
+          <button class="btn" type="submit" name="action" value="send">Erstellen &amp; E-Mail vorbereiten</button>
+        </span>
+      </div>
+    </div>
+  </div><!-- /work-body -->
+</div><!-- /work-dialog -->
+</form>
+
+<script src="{% static 'sedo/invoice-form-v2.js' %}?v=2"></script>
+<script>window.__sedoMagicUrls={polish:"{% url 'sedo:ai_polish_text' %}"};</script>
+<script src="/static/sedo/magic_tone.js?v=3_23"></script>
+<script>window.__sedoPlausiUrls={check:"{% url 'sedo:ai_plausibility' %}"};</script>
+<script src="/static/sedo/plausibility.js?v=3_23"></script>
+<script src="/static/sedo/customer_search.js?v=3_23"></script>
+<script src="/static/sedo/positions_table.js?v=3_23"></script>
+<script src="/static/sedo/unsaved_guard.js?v=2_1"></script>
+{% endblock %}

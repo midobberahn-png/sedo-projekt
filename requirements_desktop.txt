@@ -1,0 +1,6 @@
+# Zusatzpakete für desktop.py und PyInstaller.
+# Das Komplettpaket enthält auch faster-whisper aus requirements.txt.
+# Testbuilds installieren ausschließlich requirements-release.lock.
+pywebview
+waitress
+pyinstaller

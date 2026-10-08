@@ -1,0 +1,124 @@
+{% extends 'sedo/base.html' %}{% load l10n %}{% block content %}
+<div class="topbar detail-topbar">
+  <div>
+    <div class="eyebrow">Rechnungsakte</div>
+    <div class="h1">Rechnung {{ invoice.number }}</div>
+    <div class="sub">{{ invoice.customer }}{% if invoice.obj %} · {{ invoice.obj }}{% endif %} · {{ invoice.issue_date }}</div>
+  </div>
+  {% include 'sedo/_invoice_actions.html' %}
+</div>
+
+{% if mahn_hindernis and invoice.lifecycle != 'draft' %}
+<div class="card">
+  <h2>Mahnungen gesperrt</h2>
+  <p>{{ mahn_hindernis }}</p>
+</div>
+{% endif %}
+
+{% if archiv_status %}
+<div class="card {% if archiv_status.fehler %}warning-card{% endif %}">
+  <h2>{% if archiv_status.fehler %}Belegarchiv prüfen{% else %}Originaldateien geschützt{% endif %}</h2>
+  {% if archiv_status.fehler %}
+    <p role="alert">{{ archiv_status.fehler.0 }}</p>
+    <p>Die Wiederherstellung <code>belegarchiv_wiederherstellen</code> übernimmt ausschließlich fehlende Originale mit passender gespeicherter Prüfsumme.</p>
+  {% else %}
+
+  {% endif %}
+  {% if archiv_status.mit_pruefsummen %}<p class="hint">SHA-256-Nachweis der Erstausstellung vorhanden.</p>{% else %}<p class="hint">Altbeleg ohne ursprünglichen Prüfsummennachweis.</p>{% endif %}
+</div>
+{% endif %}
+
+{% if invoice.lifecycle == 'draft' %}
+<div class="card warning-card">
+  <h2>Entwurf {{ invoice.number }} – noch nicht ausgestellt</h2>
+
+  <div class="draft-guidance-actions">
+    <a class="btn" href="{% url 'sedo:invoice_edit' invoice.pk %}">Entwurfsdaten prüfen</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="detail-hero invoice-hero">
+  <div class="hero-main">
+    {% include 'sedo/_invoice_state_stack.html' with invoice=invoice %}
+    <h2>{{ invoice.gross_total }} €</h2>
+    <p>Bruttobetrag · bezahlt {{ invoice.paid_amount }} € · offen {{ invoice.open_amount }} €{% if invoice.is_overdue %} · {{ invoice.days_overdue }} Tage überfällig{% endif %}</p>
+  </div>
+  <div class="hero-facts">
+    <div><span>Rechnungsart</span><strong>{{ invoice.get_invoice_type_display }}</strong></div>
+    <div><span>Fällig</span><strong>{{ invoice.due_date|default:'—' }}</strong></div>
+    <div><span>Leistungszeitraum</span><strong>{% if invoice.period_start or invoice.period_end %}{{ invoice.period_start|default:'—' }} – {{ invoice.period_end|default:'—' }}{% else %}—{% endif %}</strong></div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="card info-card">
+    <div class="section-head"><h2>Kunde & Objekt</h2></div>
+    <div class="info-list">
+      <div><span>Kunde</span><strong>{{ invoice.customer }}</strong></div>
+      <div><span>Objekt</span><strong>{{ invoice.obj|default:'—' }}</strong></div>
+      <div><span>Rechnungsdatum</span><strong>{{ invoice.issue_date }}</strong></div>
+      <div><span>Belegzustand</span><strong>{{ invoice.get_lifecycle_display }}</strong></div>
+      <div><span>Zahlung</span><strong>{% if invoice.lifecycle != 'issued' or invoice.invoice_type == '457' %}—{% elif invoice.payment_state == 'paid' %}Bezahlt{% elif invoice.payment_state == 'partial' %}Teilbezahlt{% else %}Offen{% endif %}</strong></div>
+    </div>
+    {% if invoice.reference_invoice %}<div class="notice-line">Bezug: <a href="{% url 'sedo:invoice_detail' invoice.reference_invoice.pk %}">{{ invoice.reference_invoice.number }}</a> ({{ invoice.reference_invoice.get_invoice_type_display }})</div>{% endif %}
+    {% for followup in invoice.active_followups %}<div class="notice-line">{{ followup.get_invoice_type_display }}: <a href="{% url 'sedo:invoice_detail' followup.pk %}">{{ followup.number }}</a></div>{% endfor %}
+    {% if invoice.note %}<div class="note-box"><strong>Hinweis</strong><br>{{ invoice.note }}</div>{% endif %}
+  </div>
+
+  <div class="card totals-card">
+    <h2>Summen</h2>
+    <div class="sum-row"><span>Netto</span><strong>{{ invoice.net_total }} €</strong></div>
+    <div class="sum-row"><span>USt {{ invoice.vat_rate }} %</span><strong>{{ invoice.vat_amount }} €</strong></div>
+    <div class="sum-row total"><span>Brutto</span><strong>{{ invoice.gross_total }} €</strong></div>
+
+    {% if invoice.open_amount > 0 and invoice.lifecycle != 'draft' and invoice.lifecycle != 'corrected' and invoice.lifecycle != 'cancelled' %}<form method="post" action="{% url 'sedo:invoice_mark_paid' invoice.pk %}" class="mt-3">{% csrf_token %}<button class="btn primary-context-action" type="submit">Restbetrag als bezahlt markieren</button></form>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><h2>Positionen</h2><span class="muted">{{ invoice.items.count }} Position(en)</span></div>
+  <div class="table-wrap"><table class="table table-modern">
+    <tr><th>Pos.</th><th>Bezeichnung</th><th>Menge</th><th>Einzelpreis</th><th>Gesamt</th></tr>
+    {% for p in invoice.items.all %}<tr><td><strong>{{ p.position }}</strong></td><td>{{ p.description }}{% if p.long_text %}<div class="muted" style="font-size:12px;margin-top:3px;white-space:pre-line">{{ p.long_text }}</div>{% endif %}{% if p.leistungsart_id %}<br><span class="muted">Leistungsart: {{ p.leistungsart_id }}</span>{% endif %}</td><td>{{ p.quantity }} {{ p.unit }}</td><td>{{ p.unit_price }} €</td><td><strong>{{ p.line_total }} €</strong></td></tr>{% endfor %}
+  </table></div>
+</div>
+
+<div class="split">
+  <div class="card">
+    <div class="section-head"><h2>Zahlungen</h2><span class="muted">zugeordnet</span></div>
+    <div class="table-wrap"><table class="table table-modern"><tr><th>Datum</th><th>Betrag</th><th>Name</th><th>Verwendungszweck</th></tr>{% for p in invoice_payments %}<tr><td>{{ p.booking_date }}</td><td><strong>{{ p.amount }} €</strong></td><td>{{ p.payer_name }}</td><td>{{ p.purpose|truncatechars:60 }}</td></tr>{% empty %}<tr><td colspan="4"><div class="empty-state compact">Keine Zahlungen zugeordnet.</div></td></tr>{% endfor %}</table></div>
+  </div>
+  <div class="card">
+    <div class="section-head"><h2>Mahnwesen</h2><span class="muted">Dokumente</span></div>
+    <div class="table-wrap"><table class="table table-modern"><tr><th>Datum</th><th>Art</th><th>Offen</th><th>PDF</th></tr>{% for d in invoice.dunning_documents.all %}<tr><td>{{ d.document_date }}</td><td>{{ d.get_kind_display }}</td><td>{{ d.amount_open }} €</td><td>{% if d.pdf_file %}<a class="btn small" href="{{ d.pdf_file.url }}" target="_blank">Öffnen</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="4"><div class="empty-state compact">Noch keine Zahlungserinnerung/Mahnung erzeugt.</div></td></tr>{% endfor %}</table></div>
+  </div>
+</div>
+
+{% comment %}
+Diese Karte enthält ein ZWEITES Formular auf sedo:invoice_email. Es muss
+dieselbe Entwurfssperre tragen wie der Knopf oben – sonst bliebe der Versand
+eines Entwurfs über diesen Weg offen.
+{% endcomment %}
+{% if invoice.lifecycle != 'draft' %}
+<div class="card" id="ai-cover-card">
+  <div class="section-head"><h2>E-Mail mit KI-Begleittext</h2><span class="muted">optional – der Standardtext bleibt verfügbar</span></div>
+
+  <label for="ai-cover-hint">Hinweis an die KI (optional, z. B. Anlass oder Ton)</label>
+  <input id="ai-cover-hint" placeholder="z. B. freundlich auf die kurzfristigen Zusatzarbeiten eingehen">
+  <div class="toolbar" style="margin:10px 0">
+    <button type="button" class="btn" id="ai-cover-btn"><svg class="ico" aria-hidden="true"><use href="#i-sparkles"/></svg> Begleittext erzeugen</button>
+  </div>
+  <form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}">
+    {% csrf_token %}
+    <label for="ai-cover-body">Begleittext (prüfen und bei Bedarf anpassen)</label>
+    <textarea id="ai-cover-body" name="body" rows="7" placeholder="Hier erscheint der KI-Begleittext – alternativ eigenen Text schreiben. Leer lassen = Standardtext."></textarea>
+    <div class="toolbar" style="margin-top:10px">
+      <button type="submit" class="btn success"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg> E-Mail mit diesem Text senden</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+<script>window.__sedoMagicUrls={polish:"{% url 'sedo:ai_polish_text' %}",coverLetter:"{% url 'sedo:ai_cover_letter' %}",invoiceId:{{ invoice.pk|unlocalize }}};</script>
+<script src="/static/sedo/magic_tone.js?v=3_21"></script>
+{% endblock %}

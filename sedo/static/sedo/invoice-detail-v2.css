@@ -1,0 +1,147 @@
+/* SEDO Invoice Detail v2 · UX-04
+   Eine klare Hauptaktion, wenige sichtbare Sekundäraktionen und ein echtes Mehr-Menü. */
+
+.detail-topbar{
+  align-items:flex-start;
+  gap:24px;
+}
+.detail-action-system{
+  display:flex;
+  align-items:flex-start;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+  max-width:640px;
+}
+.detail-primary-action .btn,
+.detail-primary-action.btn{
+  min-height:42px;
+  padding-inline:16px;
+  font-weight:720;
+}
+.detail-secondary-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.detail-secondary-actions form{margin:0}
+
+.action-menu{position:relative}
+.action-menu>summary{
+  list-style:none;
+  min-height:40px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:8px 12px;
+  border:1px solid var(--ds-border-strong);
+  border-radius:var(--ds-radius-md);
+  background:#fff;
+  color:var(--ds-text);
+  font-size:13px;
+  font-weight:650;
+  cursor:pointer;
+  user-select:none;
+}
+.action-menu>summary::-webkit-details-marker{display:none}
+.action-menu>summary:hover{background:var(--ds-surface-subtle);border-color:#aebed1}
+.action-menu[open]>summary{border-color:#9bb9d8;box-shadow:var(--ds-focus)}
+.action-menu-panel{
+  position:absolute;
+  right:0;
+  top:46px;
+  width:268px;
+  z-index:30;
+  padding:7px;
+  border:1px solid var(--ds-border);
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 18px 42px rgba(15,23,42,.16);
+}
+.action-menu-group{padding:6px 4px}
+.action-menu-group+.action-menu-group{border-top:1px solid #edf2f7}
+.action-menu-label{
+  display:block;
+  padding:5px 8px;
+  color:var(--ds-text-muted);
+  font-size:10px;
+  font-weight:760;
+  letter-spacing:.075em;
+  text-transform:uppercase;
+}
+.action-menu-item,
+.action-menu-panel form button.action-menu-item{
+  width:100%;
+  min-height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:8px;
+  padding:8px 9px;
+  border:0;
+  border-radius:8px;
+  background:#fff;
+  color:#334155;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  text-decoration:none;
+  cursor:pointer;
+  text-align:left;
+}
+.action-menu-item:hover,
+.action-menu-panel form button.action-menu-item:hover{background:#f4f7fb;color:#0f172a}
+.action-menu-item.danger,
+.action-menu-panel form button.action-menu-item.danger{color:#b42318}
+.action-menu-item.danger:hover,
+.action-menu-panel form button.action-menu-item.danger:hover{background:#fff1f2}
+.action-menu-panel form{margin:0}
+.action-menu-disabled{
+  display:block;
+  padding:8px 9px;
+  color:#94a3b8;
+  font-size:12px;
+}
+
+.invoice-work-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px solid var(--ds-border);
+  border-radius:12px;
+  background:#f8fbff;
+}
+.invoice-work-summary-main{display:flex;flex-direction:column;gap:2px}
+.invoice-work-summary strong{color:var(--ds-text-strong);font-size:13px}
+.invoice-work-summary span{color:var(--ds-text-muted);font-size:12px}
+
+/* Entwurfs-Hinweis bleibt Information; die Hauptaktion sitzt jetzt bereits oben. */
+.draft-guidance-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
+/* Detailkarten etwas stärker als Arbeitsansicht staffeln. */
+.invoice-hero{margin-top:18px}
+.detail-grid{align-items:start}
+.totals-card .primary-context-action{margin-top:14px}
+
+@media(max-width:900px){
+  .detail-topbar{align-items:stretch}
+  .detail-action-system{max-width:none;justify-content:flex-start}
+  .action-menu-panel{right:auto;left:0}
+}
+
+@media(max-width:640px){
+  .detail-action-system,.detail-secondary-actions{width:100%}
+  .detail-primary-action{width:100%}
+  .detail-primary-action .btn,.detail-primary-action.btn{width:100%;justify-content:center}
+  .detail-secondary-actions>.btn,.detail-secondary-actions>form{flex:1 1 auto}
+  .detail-secondary-actions>form .btn{width:100%}
+  .action-menu{width:100%}
+  .action-menu>summary{width:100%}
+  .action-menu-panel{position:static;width:100%;margin-top:6px}
+  .invoice-work-summary{align-items:flex-start;flex-direction:column}
+}

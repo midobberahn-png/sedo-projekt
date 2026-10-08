@@ -1,0 +1,33 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<div class="topbar"><div><div class="eyebrow">Finanzen</div><h1 class="h1">Zahlungskontrolle</h1></div></div>
+
+<div class="card">
+  <a class="settings-icon" href="{% url 'sedo:settings' %}#bank-settings" aria-label="Bankzugang einrichten"><svg class="ico" aria-hidden="true"><use href="#i-cog"/></svg></a><h2>Kontoumsätze abrufen (FinTS) </h2>
+  {% if banking_configured %}
+  <form method="post" class="toolbar" style="gap:10px;flex-wrap:wrap;align-items:end">{% csrf_token %}
+    <input type="hidden" name="action" value="fints_fetch">
+    <div class="field" style="min-width:140px"><label for="payment_list-field-1">Zeitraum</label>
+      <select id="payment_list-field-1" name="days"><option value="14">14 Tage</option><option value="30" selected>30 Tage</option><option value="60">60 Tage</option><option value="90">90 Tage</option></select></div>
+    {% if not banking_pin_stored %}
+    <div class="field" style="min-width:180px"><label for="payment_list-field-2">Online-Banking-PIN</label>
+      <input id="payment_list-field-2" type="password" name="fints_pin_once" autocomplete="off" placeholder="nur für diesen Abruf"></div>
+    {% endif %}
+    <button class="btn primary" type="submit"><svg class="ico" aria-hidden="true"><use href="#i-payment"/></svg> Umsätze abrufen</button>
+  </form>
+  {% else %}
+
+  {% endif %}
+  <h2 style="margin-top:18px">Alternativ: Bank-Datei importieren </h2>
+  <form method="post" enctype="multipart/form-data" class="toolbar">{% csrf_token %}<label for="{{ form.file.id_for_label }}">Bank-Datei (JSON)</label>{{ form.file }}{{ form.file.errors }}{{ form.non_field_errors }}<button class="btn" type="submit">Importieren & zuordnen</button></form>
+</div>
+<div class="cards">
+  <div class="card"><div class="metric">{{ payments|length }}</div><div class="metric-label">importierte Zahlungen</div></div>
+  <div class="card"><div class="metric">{{ open_invoices|length }}</div><div class="metric-label">offene Rechnungen</div></div>
+</div>
+<div class="card"><h2>Zahlungen</h2>
+<div class="table-wrap"><div class="responsive-table" tabindex="0" role="region" aria-label="Zahlungen und offene Rechnungen – Tabelle"><table class="table responsive-records"><tr><th scope="col">Datum</th><th scope="col">Betrag</th><th scope="col">Name</th><th scope="col">Verwendungszweck</th><th scope="col">Zuordnung</th><th scope="col">Aktion</th></tr>
+{% for p in payments %}<tr><td>{{ p.booking_date }}</td><td>{{ p.amount }} €</td><td>{{ p.payer_name }}</td><td>{{ p.purpose|truncatechars:70 }}</td><td>{% if p.invoice %}<a class="badge green" href="{% url 'sedo:invoice_detail' p.invoice.pk %}">{{ p.invoice.number }}</a>{% else %}<span class="badge amber">unklar</span>{% endif %}</td><td>{% if not p.invoice %}<a class="btn" href="{% url 'sedo:payment_assign' p.pk %}">Zuordnen</a>{% endif %}<details class="secondary-actions"><summary>Weitere Aktionen</summary><a href="{% url 'sedo:payment_delete' p.pk %}">Zahlung löschen…</a></details></td></tr>{% empty %}<tr><td colspan="6" class="muted">Noch keine Zahlungen importiert.</td></tr>{% endfor %}</table></div></div></div>
+<div class="card"><h2>Offene Rechnungen</h2>
+<div class="responsive-table" tabindex="0" role="region" aria-label="Zahlungen und offene Rechnungen – Tabelle"><table class="table responsive-records"><tr><th scope="col">Nr.</th><th scope="col">Kunde</th><th scope="col">Fällig</th><th scope="col">Brutto</th><th scope="col">Offen</th><th scope="col">Status</th></tr>
+{% for i in open_invoices %}<tr><td><a href="{% url 'sedo:invoice_detail' i.pk %}">{{ i.number }}</a></td><td>{{ i.customer }}</td><td>{{ i.due_date|default:'—' }}</td><td>{{ i.gross_total }} €</td><td>{{ i.open_amount }} €</td><td>{% include 'sedo/_invoice_state_stack.html' with invoice=i compact=1 %}</td></tr>{% empty %}<tr><td colspan="6" class="muted">Keine offenen Rechnungen.</td></tr>{% endfor %}</table></div></div>
+{% endblock %}

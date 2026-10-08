@@ -1,0 +1,341 @@
+/* SEDO Design System v2 · UX-01
+   Additive Schicht über app.css. Keine Fachlogik, keine Navigation.
+   Ziel: einheitliche Tokens, Typografie, Buttons, Zustände, Formulare,
+   Tabellen, Karten, Dialoge, Fokus und responsive Grundregeln. */
+
+:root{
+  /* Farbe */
+  --ds-bg:#f4f7fb;
+  --ds-surface:#ffffff;
+  --ds-surface-subtle:#f8fafc;
+  --ds-surface-muted:#f1f5f9;
+  --ds-text:#172033;
+  --ds-text-strong:#0f172a;
+  --ds-text-muted:#64748b;
+  --ds-text-faint:#94a3b8;
+  --ds-border:#e2e8f0;
+  --ds-border-strong:#cbd5e1;
+  --ds-primary:#0b5cad;
+  --ds-primary-hover:#084b8f;
+  --ds-primary-soft:#eaf4ff;
+  --ds-success:#15803d;
+  --ds-success-soft:#ecfdf3;
+  --ds-warning:#c66a06;
+  --ds-warning-soft:#fff7e8;
+  --ds-danger:#c62828;
+  --ds-danger-soft:#fff1f2;
+  --ds-neutral:#475569;
+
+  /* Typografie */
+  --ds-font:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Arial,sans-serif;
+  --ds-size-xs:12px;
+  --ds-size-sm:13px;
+  --ds-size-md:15px;
+  --ds-size-lg:18px;
+  --ds-size-xl:24px;
+  --ds-size-2xl:32px;
+  --ds-line-tight:1.2;
+  --ds-line-normal:1.5;
+
+  /* Abstand */
+  --ds-space-1:4px;
+  --ds-space-2:8px;
+  --ds-space-3:12px;
+  --ds-space-4:16px;
+  --ds-space-5:20px;
+  --ds-space-6:24px;
+  --ds-space-8:32px;
+
+  /* Form */
+  --ds-radius-sm:8px;
+  --ds-radius-md:10px;
+  --ds-radius-lg:14px;
+  --ds-control-h:40px;
+  --ds-control-h-sm:34px;
+
+  /* Tiefe */
+  --ds-shadow-xs:0 1px 2px rgba(15,23,42,.05);
+  --ds-shadow-sm:0 2px 8px rgba(15,23,42,.06);
+  --ds-shadow-md:0 10px 30px rgba(15,23,42,.08);
+  --ds-focus:0 0 0 3px rgba(11,92,173,.16);
+}
+
+/* Basis */
+body{
+  font-family:var(--ds-font);
+  background:var(--ds-bg);
+  color:var(--ds-text);
+  font-size:var(--ds-size-md);
+  line-height:var(--ds-line-normal);
+}
+.main{padding:30px 34px 40px}
+.page-shell{max-width:1520px}
+.h1{
+  color:var(--ds-text-strong);
+  font-size:var(--ds-size-2xl);
+  font-weight:720;
+  line-height:1.08;
+  letter-spacing:-.035em;
+}
+.sub{color:var(--ds-text-muted);line-height:1.45}
+.eyebrow,.section-eyebrow{
+  color:var(--ds-primary);
+  font-size:var(--ds-size-xs);
+  font-weight:750;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+}
+.muted,.hint{color:var(--ds-text-muted)}
+.metric,.sum-val,.table td[style*="text-align:right"],.totals-card strong{
+  font-variant-numeric:tabular-nums lining-nums;
+}
+
+/* Karten: ruhiger und präziser. Nur explizit interaktive Karten bekommen Hover-Lift. */
+.card,.soft-panel,.form-card,.work-dialog,.detail-hero{
+  background:var(--ds-surface);
+  border:1px solid var(--ds-border);
+  border-radius:var(--ds-radius-lg);
+  box-shadow:var(--ds-shadow-xs);
+}
+.card{padding:20px}
+.card:hover{box-shadow:var(--ds-shadow-xs)}
+a.card:hover,.action-card:hover,.clickable-card:hover{
+  border-color:#cbdcf0;
+  box-shadow:var(--ds-shadow-md);
+  transform:translateY(-1px);
+}
+.card h2,.section-head h2,.section-title h2{
+  color:var(--ds-text-strong);
+  font-size:19px;
+  letter-spacing:-.02em;
+}
+
+/* Buttons: vier semantische Rollen */
+.btn,button.btn{
+  min-height:var(--ds-control-h);
+  padding:9px 14px;
+  border:1px solid var(--ds-border-strong);
+  border-radius:var(--ds-radius-md);
+  background:var(--ds-surface);
+  color:var(--ds-text);
+  box-shadow:none;
+  font-size:14px;
+  font-weight:650;
+  transition:background .14s ease,border-color .14s ease,color .14s ease,box-shadow .14s ease,transform .08s ease;
+}
+.btn:hover,button.btn:hover{
+  transform:none;
+  border-color:#aebed1;
+  background:var(--ds-surface-subtle);
+  box-shadow:var(--ds-shadow-xs);
+}
+.btn.primary{
+  background:var(--ds-primary);
+  color:#fff;
+  border-color:var(--ds-primary);
+}
+.btn.primary:hover{background:var(--ds-primary-hover);border-color:var(--ds-primary-hover)}
+.btn.success{
+  background:var(--ds-success-soft);
+  border-color:#bbefcb;
+  color:#166534;
+}
+.btn.danger{
+  background:var(--ds-danger-soft);
+  border-color:#fecdd3;
+  color:#9f1239;
+}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--ds-neutral)}
+.btn.accent{
+  background:var(--ds-surface);
+  border-color:#f0c98e;
+  color:#8a4b08;
+}
+.btn.small{min-height:var(--ds-control-h-sm);padding:6px 10px;border-radius:var(--ds-radius-sm);font-size:13px}
+.btn:disabled,button.btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* Einheitlicher Tastaturfokus */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--ds-primary);
+  outline-offset:2px;
+  box-shadow:var(--ds-focus);
+}
+
+/* Formulare */
+input,select,textarea{
+  min-height:var(--ds-control-h);
+  border:1px solid var(--ds-border-strong);
+  border-radius:var(--ds-radius-sm);
+  background:var(--ds-surface);
+  color:var(--ds-text);
+  font-size:14px;
+  padding:9px 11px;
+}
+input:hover,select:hover,textarea:hover{border-color:#b6c4d4}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--ds-primary);
+  box-shadow:var(--ds-focus);
+}
+input:disabled,select:disabled,textarea:disabled{
+  background:var(--ds-surface-muted);
+  color:var(--ds-text-muted);
+}
+label{color:#475569;font-size:var(--ds-size-sm);font-weight:650;margin-bottom:6px}
+.form-grid,.work-grid{gap:16px 20px}
+.form-card{background:#fbfdff;padding:18px}
+.form-card-title{font-size:15px;font-weight:720;color:var(--ds-text-strong)}
+.form-card-title::before{background:var(--ds-primary)}
+form ul.errorlist{
+  list-style:none;
+  margin:6px 0 0;
+  padding:7px 9px;
+  border-radius:7px;
+  background:var(--ds-danger-soft);
+  color:#9f1239;
+  font-size:12px;
+}
+
+/* Badges / Zustände */
+.badge{
+  min-height:26px;
+  padding:4px 9px;
+  gap:5px;
+  border-radius:999px;
+  border:1px solid #d8e2ef;
+  background:#f3f6fa;
+  color:#475569;
+  font-size:12px;
+  font-weight:720;
+  line-height:1.2;
+}
+.badge.green,.status-bezahlt{background:var(--ds-success-soft);color:#166534;border-color:#bde9ca}
+.badge.red,.status-ueberfaellig,.status-storniert{background:var(--ds-danger-soft);color:#b42318;border-color:#fecaca}
+.badge.amber,.status-gemahnt{background:var(--ds-warning-soft);color:#9a4f05;border-color:#fed7aa}
+.badge.yellow,.status-entwurf,.status-korrigiert{background:#fff9db;color:#854d0e;border-color:#fde68a}
+.badge.blue,.status-versendet{background:var(--ds-primary-soft);color:#174ea6;border-color:#bfdbfe}
+
+/* Tabellen: scanbar, kompakt, sticky Header */
+.table-wrap{
+  border:1px solid var(--ds-border);
+  border-radius:var(--ds-radius-lg);
+  background:var(--ds-surface);
+  box-shadow:none;
+}
+.table{background:var(--ds-surface);font-variant-numeric:tabular-nums lining-nums}
+.table th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:#f8fafc;
+  color:#64748b;
+  padding:11px 13px;
+  border-bottom:1px solid var(--ds-border);
+  font-size:11px;
+  font-weight:750;
+  letter-spacing:.055em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.table td{
+  padding:12px 13px;
+  border-bottom:1px solid #edf2f7;
+  color:var(--ds-text);
+  vertical-align:middle;
+}
+.table tbody tr:hover td,.table tr:hover td{background:#f8fbff}
+.table-actions,.row-actions{gap:6px;align-items:center}
+.row-warning td{background:#fffaf2}
+
+/* Empty States */
+.empty-state{
+  padding:34px 24px;
+  border:1px dashed var(--ds-border-strong);
+  border-radius:var(--ds-radius-lg);
+  background:var(--ds-surface-subtle);
+  color:var(--ds-text-muted);
+}
+.empty-state.compact{padding:20px}
+.empty-title{margin:8px 0 4px;color:var(--ds-text-strong);font-weight:720;font-size:15px}
+.empty-sub{margin:0;color:var(--ds-text-muted)}
+.empty-icon{color:var(--ds-primary)}
+
+/* Hinweise / systemweite Feedback-Komponenten */
+.notice,.page-help,.info-card,.warning-card{
+  border-radius:var(--ds-radius-lg);
+}
+.page-help{
+  background:#f7fbff;
+  border:1px solid #d9e8f7;
+  color:#475569;
+}
+.warning-card,.notice-warn{
+  background:var(--ds-warning-soft);
+  border-color:#fed7aa;
+}
+.info-card{border-left:4px solid var(--ds-primary);background:#f8fbff}
+
+/* Dialoge & sticky Aktionen */
+.work-dialog{overflow:hidden;box-shadow:var(--ds-shadow-sm)}
+.work-dialog-header{padding:16px 20px;background:var(--ds-surface);border-color:var(--ds-border)}
+.work-title h1{font-size:22px;font-weight:730;color:var(--ds-text-strong)}
+.work-icon{background:var(--ds-primary-soft);color:var(--ds-primary);border-radius:var(--ds-radius-md)}
+.work-body{padding:20px}
+.sticky-actions{
+  gap:10px;
+  padding:14px 20px;
+  border-top:1px solid var(--ds-border);
+  background:rgba(255,255,255,.96);
+  backdrop-filter:blur(10px);
+}
+
+/* KPI / Zahlen */
+.metric{font-size:32px;font-weight:730;color:var(--ds-text-strong);font-variant-numeric:tabular-nums lining-nums}
+.metric-label{font-size:13px;color:var(--ds-text-muted);font-weight:650}
+.kpi-positive .metric{color:var(--ds-success)}
+.kpi-danger .metric{color:var(--ds-danger)}
+.kpi-amber .metric{color:var(--ds-warning)}
+
+/* Hilfsklassen für die Folgetappen */
+.ds-actions-primary{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ds-action-menu{display:inline-flex;align-items:center;gap:6px}
+.ds-state-stack{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.ds-state-meta{font-size:12px;color:var(--ds-text-muted)}
+.ds-selection-bar{
+  position:sticky;
+  bottom:16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border:1px solid var(--ds-border-strong);
+  border-radius:var(--ds-radius-lg);
+  background:rgba(255,255,255,.97);
+  box-shadow:var(--ds-shadow-md);
+  backdrop-filter:blur(12px);
+  z-index:8;
+}
+.ds-tabs{display:flex;gap:4px;align-items:center;border-bottom:1px solid var(--ds-border)}
+.ds-tab{padding:10px 12px;color:var(--ds-text-muted);font-weight:650;border-bottom:2px solid transparent}
+.ds-tab.active{color:var(--ds-primary);border-bottom-color:var(--ds-primary)}
+
+@media(max-width:1050px){
+  .main{padding:18px}
+  .card{padding:16px}
+  .h1{font-size:27px}
+  .table th,.table td{padding:10px 11px}
+  .sticky-actions{padding:12px 14px}
+}
+
+@media(max-width:720px){
+  .main{padding:14px}
+  .topbar,.workspace-header{align-items:stretch}
+  .page-actions,.toolbar{width:100%}
+  .page-actions>.btn,.toolbar>.btn{flex:1 1 auto}
+  .h1{font-size:25px}
+  .metric{font-size:28px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}

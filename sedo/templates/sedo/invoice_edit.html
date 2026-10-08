@@ -1,0 +1,103 @@
+{% extends 'sedo/base.html' %}
+{% block content %}
+<style>
+.draft-workflow .draft-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.draft-workflow .field-wide {grid-column:1/-1;}
+.draft-workflow .draft-position {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.draft-workflow .draft-position legend {font-weight:700;padding:0 8px;}
+.draft-workflow .draft-check {display:flex;align-items:center;gap:8px;grid-column:1/-1;}
+.draft-workflow .draft-check input {width:18px;min-height:18px;height:18px;margin:0;}
+.draft-workflow .draft-check label {margin:0;}
+.draft-workflow .btn {white-space:normal;text-align:center;max-width:100%;}
+@media(max-width:760px){
+ body.sidebar-cover .main:has(.draft-workflow) {padding-left:90px!important;padding-right:12px!important;}
+ .draft-workflow .draft-fields,.draft-workflow .draft-position {grid-template-columns:minmax(0,1fr);}
+ .draft-workflow h1 {font-size:26px;overflow-wrap:anywhere;}
+}
+</style>
+<div class="draft-workflow">
+<div class="topbar">
+  <div><div class="eyebrow">Noch nicht ausgestellt</div><h1>Entwurf {{ invoice.number }} bearbeiten</h1>
+    </div>
+</div>
+<form method="post" id="entwurf-bearbeiten">
+  {% csrf_token %}
+  <input type="hidden" name="revision" value="{{ revision }}">
+  {{ form.non_field_errors }}
+  <div class="card">
+    <h2>Rechnungsdaten</h2>
+
+    <div class="draft-fields">
+    {% for field in form %}
+    <div class="form-group{% if field.name == 'note' %} field-wide{% endif %}">
+      {{ field.label_tag }}{{ field }}{{ field.errors }}
+
+    </div>
+    {% endfor %}
+    </div>
+
+  </div>
+  <div class="card">
+    <div class="section-head"><h2>Positionen</h2><span class="muted">Mindestens eine Position ist erforderlich.</span></div>
+    {{ formset.management_form }}
+    {{ formset.non_form_errors }}
+    <div id="entwurf-positionen">
+      {% for itemform in formset %}
+      <fieldset class="form-card draft-position">
+        <legend>Position {{ forloop.counter }}</legend>
+        {% for hidden in itemform.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
+        {{ itemform.non_field_errors }}
+        {% for field in itemform.visible_fields %}
+        <div class="form-group{% if field.name == 'description' or field.name == 'long_text' %} field-wide{% endif %}{% if field.name == 'DELETE' %} draft-check{% endif %}">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+    </div>
+    <button class="btn" id="position-hinzufuegen" type="button" hidden>Position hinzufügen</button>
+    <noscript></noscript>
+  </div>
+  <div class="toolbar card">
+    <a class="btn" href="{% url 'sedo:invoice_detail' invoice.pk %}">Abbrechen</a>
+    <button class="btn primary" type="submit">Entwurf speichern</button>
+  </div>
+</form>
+<template id="leere-entwurfsposition">
+  <fieldset class="form-card draft-position">
+    <legend>Neue Position</legend>
+    {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+    {% for field in formset.empty_form.visible_fields %}
+    <div class="form-group{% if field.name == 'description' or field.name == 'long_text' %} field-wide{% endif %}{% if field.name == 'DELETE' %} draft-check{% endif %}">{{ field.label_tag }}{{ field }}</div>
+    {% endfor %}
+  </fieldset>
+</template>
+{{ objekte|json_script:"entwurf-objekte" }}
+<script>
+(function () {
+  'use strict';
+  const button = document.getElementById('position-hinzufuegen');
+  const total = document.getElementById('id_{{ formset.prefix }}-TOTAL_FORMS');
+  const template = document.getElementById('leere-entwurfsposition');
+  const rows = document.getElementById('entwurf-positionen');
+  const customer = document.getElementById('id_customer');
+  const object = document.getElementById('id_obj');
+  if (customer && object) customer.addEventListener('change', function () {
+    const choices = JSON.parse(document.getElementById('entwurf-objekte').textContent);
+    object.replaceChildren(new Option('Kein Objekt', ''));
+    choices.filter(function (entry) { return String(entry.customer_id) === customer.value; })
+      .forEach(function (entry) { object.add(new Option(entry.name, String(entry.id))); });
+  });
+  if (!button || !total || !template || !rows) return;
+  button.hidden = false;
+  button.addEventListener('click', function () {
+    const index = Number(total.value);
+    const maximum = Number(document.getElementById('id_{{ formset.prefix }}-MAX_NUM_FORMS').value) || 1000;
+    if (!Number.isInteger(index) || index >= maximum) return;
+    const fragment = document.createElement('template');
+    fragment.innerHTML = template.innerHTML.replace(/__prefix__/g, String(index));
+    rows.appendChild(fragment.content.cloneNode(true));
+    total.value = String(index + 1);
+  });
+})();
+</script>
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+<div class="detail-action-system" aria-label="Rechnungsaktionen">
+  {# Genau eine Hauptaktion je fachlichem Zustand. #}
+  {% if invoice.lifecycle == 'draft' %}
+    <form class="detail-primary-action" method="post" action="{% url 'sedo:invoice_finalize' invoice.pk %}">
+      {% csrf_token %}<button class="btn primary" type="submit">Rechnung finalisieren</button>
+    </form>
+  {% elif invoice.lifecycle == 'issued' and invoice.invoice_type != '457' and invoice.payment_state != 'paid' %}
+    <a class="btn primary detail-primary-action" href="{% url 'sedo:invoice_add_payment' invoice.pk %}">Zahlung erfassen</a>
+  {% elif invoice.zugferd_file %}
+    <a class="btn primary detail-primary-action" href="{{ invoice.zugferd_file.url }}" target="_blank">Originalbeleg öffnen</a>
+  {% elif invoice.pdf_file %}
+    <a class="btn primary detail-primary-action" href="{{ invoice.pdf_file.url }}" target="_blank">PDF öffnen</a>
+  {% endif %}
+
+  <div class="detail-secondary-actions">
+    {% if invoice.lifecycle == 'draft' %}
+      <a class="btn" href="{% url 'sedo:invoice_edit' invoice.pk %}">Bearbeiten</a>
+    {% else %}
+      <form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}">{% csrf_token %}<button type="submit" class="btn">E-Mail senden</button></form>
+      {% if invoice.pdf_file %}<a class="btn" href="{{ invoice.pdf_file.url }}" target="_blank">PDF</a>{% endif %}
+    {% endif %}
+  </div>
+
+  <details class="action-menu">
+    <summary>Weitere Aktionen <span aria-hidden="true">▾</span></summary>
+    <div class="action-menu-panel">
+      <div class="action-menu-group">
+        <span class="action-menu-label">Dokumente</span>
+        {% if invoice.zugferd_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{{ invoice.zugferd_file.url }}" target="_blank">ZUGFeRD öffnen</a>{% endif %}
+        {% if invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{% url 'sedo:invoice_zugferd_validation' invoice.pk %}">ZUGFeRD prüfen</a>{% endif %}
+        {% if invoice.pdf_file %}<a class="action-menu-item" href="{{ invoice.pdf_file.url }}" target="_blank">PDF öffnen</a>{% endif %}
+        {% if invoice.xml_file and invoice.lifecycle != 'draft' %}<a class="action-menu-item" href="{{ invoice.xml_file.url }}" target="_blank">XML öffnen</a>{% endif %}
+        {% if invoice.lifecycle == 'draft' %}
+          <form method="post" action="{% url 'sedo:invoice_generate' invoice.pk %}">{% csrf_token %}<button type="submit" class="action-menu-item">Entwurfs-PDF neu erzeugen</button></form>
+        {% endif %}
+      </div>
+
+      {% if invoice.lifecycle != 'draft' %}
+      <div class="action-menu-group">
+        <span class="action-menu-label">Workflow</span>
+        {% if invoice.invoice_type != '457' and invoice.lifecycle != 'cancelled' and invoice.lifecycle != 'corrected' and not invoice.active_correction and not invoice.active_storno %}
+          <a class="action-menu-item" href="{% url 'sedo:invoice_correction' invoice.pk %}">Korrekturrechnung erstellen</a>
+        {% endif %}
+        {% if not mahn_hindernis %}
+          <form method="post" action="{% url 'sedo:invoice_reminder' invoice.pk 'reminder' %}">{% csrf_token %}<button type="submit" class="action-menu-item">Zahlungserinnerung erstellen</button></form>
+          <form method="post" action="{% url 'sedo:invoice_reminder' invoice.pk 'dunning' %}">{% csrf_token %}<button type="submit" class="action-menu-item">Mahnung erstellen</button></form>
+        {% elif invoice.lifecycle == 'issued' %}
+          <span class="action-menu-disabled" title="{{ mahn_hindernis }}">Mahnwesen derzeit gesperrt</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="action-menu-group">
+        <span class="action-menu-label">Verwaltung</span>
+        <a class="action-menu-item" href="{% url 'sedo:task_list' %}?invoice={{ invoice.pk }}">Wiedervorlage anlegen</a>
+        {% if invoice.invoice_type != '457' and invoice.lifecycle != 'draft' and invoice.lifecycle != 'cancelled' and invoice.lifecycle != 'corrected' and not invoice.active_storno and not invoice.active_correction %}
+          <form method="post" action="{% url 'sedo:invoice_storno' invoice.pk %}" onsubmit="return confirm('Stornorechnung zu {{ invoice.number }} erzeugen?');">{% csrf_token %}<button type="submit" class="action-menu-item danger">Stornorechnung erzeugen</button></form>
+        {% endif %}
+        {% if ausblenden_hindernis %}
+          <span class="action-menu-disabled" title="{{ ausblenden_hindernis }}">{% if invoice.lifecycle == 'draft' %}Entwurf kann nicht verworfen werden{% else %}Ausblenden nicht möglich{% endif %}</span>
+        {% else %}
+          <a class="action-menu-item danger" href="{% url 'sedo:invoice_delete' invoice.pk %}">{% if invoice.lifecycle == 'draft' %}Entwurf verwerfen{% else %}Rechnung ausblenden{% endif %}</a>
+        {% endif %}
+      </div>
+    </div>
+  </details>
+</div>

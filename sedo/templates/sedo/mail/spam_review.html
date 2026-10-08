@@ -1,0 +1,8 @@
+{% extends 'sedo/mail/base.html' %}
+{% block mail_content %}
+<div class="mail-pad"><h2>{% if action == 'trash' %}In Papierkorb verschieben{% elif action == 'spam' %}In Spam verschieben{% elif action == 'ham' %}Als kein Spam freigeben{% else %}Spamprüfung der Auswahl{% endif %}</h2>
+<p>{{ selection|length }} Nachricht(en) ausgewählt.</p>
+{% if action == 'trash' %}<p>Die ausgewählten Nachrichten werden in den Papierkorb verschoben.</p>{% elif action == 'check' %}<p>Die Auswahl wird nur geprüft und markiert. Nachrichten bleiben in ihren Ordnern.</p>{% else %}<p>{% if action == 'spam' %}Die Nachrichten erhalten die Markierung „Spam“ und werden in den zugeordneten Spamordner verschoben.{% else %}Die Nachrichten werden freigegeben und in den zugeordneten Posteingang verschoben.{% endif %} Eine dauerhafte Absenderregel wird dabei nicht angelegt.</p>{% endif %}
+<ul class="spam-review-list">{% for row in selection %}<li><strong>{{ row.item.message.subject|default:'Ohne Betreff' }}</strong><span>{{ row.item.folder.account.email }} · {{ row.item.folder.name }}</span><span>{{ row.item.message.sender }}</span>{% if action == 'check' %}<span>{{ row.state }} · {{ row.reason }}</span>{% endif %}</li>{% endfor %}</ul>
+<form method="post" action="{% url 'sedo:mail_spam_batch' %}">{% csrf_token %}<input type="hidden" name="ticket" value="{{ ticket }}"><p><label><input type="checkbox" name="confirm" value="yes" required> Diese Auswahl bearbeiten</label></p><div class="mail-toolbar"><button class="btn primary">{% if action == 'check' %}Prüfergebnis übernehmen{% else %}Bestätigen{% endif %}</button><a class="btn" href="{{ mailbox_url }}">Abbrechen</a></div></form></div>
+{% endblock %}

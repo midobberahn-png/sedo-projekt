@@ -1,0 +1,16 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<form method="post">{% csrf_token %}{{ form.non_field_errors }}
+<div class="work-dialog">
+  <div class="work-dialog-header"><div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-catalog"/></svg></div><div><h1>{{ title }}</h1></div></div><a class="work-close" aria-label="Abbrechen und zurück" href="{% url 'sedo:service_catalog_list' %}">×</a></div>
+  <div class="work-body">
+    <div class="work-grid">
+      <div class="field-wide"><label for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>{{ form.name }}{{ form.name.errors }}</div>
+      <div><label for="{{ form.default_unit.id_for_label }}">{{ form.default_unit.label }}</label>{{ form.default_unit }}{{ form.default_unit.errors }}</div>
+      <div class="field-wide"><label for="{{ form.long_text.id_for_label }}">{{ form.long_text.label }}</label>{{ form.long_text }}{{ form.long_text.errors }}</div>
+    </div>
+    {% if item and item.created_by_ai %}<p class="hint" style="margin-top:10px">⚠ Diese Leistung wurde von der KI angelegt und noch nicht geprüft. Nach dem Speichern gilt sie als geprüft.</p>{% endif %}
+  </div>
+  <div class="sticky-actions"><a class="btn" href="{% url 'sedo:service_catalog_list' %}">Abbrechen</a><button class="btn primary" type="submit">Speichern</button></div>
+</div>
+</form>
+{% endblock %}

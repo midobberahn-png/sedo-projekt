@@ -1,0 +1,10 @@
+# Ein Testbuild enthält dieselben Funktionen wie das bisherige Komplettpaket.
+# Insbesondere faster-whisper NICHT entfernen: lokales Diktat bleibt enthalten.
+-r requirements.txt
+-r requirements_desktop.txt
+-c requirements-release-constraints.txt
+# Auch die Werkzeuge für sdist-Pakete werden im Lock festgeschrieben.
+pip
+setuptools
+wheel
+packaging

@@ -1,0 +1,37 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<form method="post">{% csrf_token %}{{ form.non_field_errors }}{{ form.non_field_errors.errors }}{{ formset.non_form_errors }}
+<div class="work-dialog invoice-flow">
+  <div class="work-dialog-header">
+    <div class="work-title"><div class="work-icon"><svg class="ico" aria-hidden="true"><use href="#i-repeat"/></svg></div><div><h1>{{ title }}</h1></div></div>
+    <a class="work-close" aria-label="Abbrechen und zurück" href="{% url 'sedo:recurring_monthly' %}">×</a>
+  </div>
+  <div class="work-body">
+    <div class="form-card"><div class="form-card-title">Kunde, Objekt und Vorlage</div>
+      <div class="work-grid compact-form">
+        <div><label for="{{ form.customer.id_for_label }}">{{ form.customer.label }}</label>{{ form.customer }}{{ form.customer.errors }}</div>
+        <div><label for="{{ form.obj.id_for_label }}">{{ form.obj.label }}</label>{{ form.obj }}{{ form.obj.errors }}</div>
+        <div class="field-wide"><label for="{{ form.title.id_for_label }}">{{ form.title.label }}</label>{{ form.title }}{{ form.title.errors }}</div>
+        <div><label for="{{ form.status.id_for_label }}">{{ form.status.label }}</label>{{ form.status }}{{ form.status.errors }}</div>
+        <div><label for="{{ form.vat_rate.id_for_label }}">{{ form.vat_rate.label }}</label>{{ form.vat_rate }}{{ form.vat_rate.errors }}</div>
+        <div><label for="{{ form.payment_days.id_for_label }}">{{ form.payment_days.label }}</label>{{ form.payment_days }}{{ form.payment_days.errors }}</div>
+        <div class="field-wide"><label for="{{ form.note.id_for_label }}">{{ form.note.label }}</label>{{ form.note }}{{ form.note.errors }}</div>
+      </div>
+    </div>
+    <div class="form-card"><div class="form-card-title">Positionen</div>
+      <div class="section-head"><button type="button" class="btn small" id="add-position">+ Position hinzufügen</button></div>
+      {{ formset.management_form }}
+      <div id="position-list">
+      {% for f in formset %}
+        <div class="item-box position-form"><div class="item-title">Position <span class="pos-no">{{ forloop.counter }}</span></div><div class="form-grid compact-grid">
+          {% for field in f.visible_fields %}<div class="form-row"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+        </div>{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}</div>
+      {% endfor %}
+      </div>
+      <template id="empty-form-template"><div class="item-box position-form"><div class="item-title">Position <span class="pos-no">__num__</span></div><div class="form-grid compact-grid">{% for field in formset.empty_form.visible_fields %}<div class="form-row"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}</div>{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}</div></template>
+    </div>
+  </div>
+  <div class="sticky-actions"><a class="btn" href="{% url 'sedo:recurring_monthly' %}">Abbrechen</a><button class="btn primary">Vorlage speichern</button></div>
+</div>
+</form>
+<script>(function(){const addBtn=document.getElementById('add-position');const list=document.getElementById('position-list');const tmpl=document.getElementById('empty-form-template');const total=document.querySelector('#id_items-TOTAL_FORMS');if(addBtn&&list&&tmpl&&total){addBtn.addEventListener('click',function(){const idx=parseInt(total.value,10);const html=tmpl.innerHTML.replaceAll('__prefix__',idx).replaceAll('__num__',idx+1);list.insertAdjacentHTML('beforeend',html);total.value=idx+1;});}})();</script>
+{% endblock %}

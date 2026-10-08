@@ -1,0 +1,9 @@
+{% extends 'sedo/base.html' %}{% load static l10n %}
+{% block title %}Postfach-Einstellungen · SEDO{% endblock %}
+{% block content %}{% localize off %}
+<link rel="stylesheet" href="{% static 'sedo/mail.css' %}?v=2">
+<header class="topbar"><div><div class="eyebrow">Einstellungen</div><h1 class="h1">E-Mail-Postfächer</h1></div><a class="btn" href="{% url 'sedo:settings' %}#mail-settings">← Zurück</a></header>
+<nav class="toolbar" aria-label="Postfach-Einstellungen">{% for account in accounts %}<a class="btn" href="{% url 'sedo:mail_account' account.pk %}">{{ account.email }}</a>{% endfor %}<a class="btn" href="{% url 'sedo:mail_settings' %}">Postfach hinzufügen</a></nav>
+<div class="card">{% block mail_settings_content %}{% endblock %}</div>
+<script src="{% static 'sedo/mail.js' %}?v=3" defer></script>
+{% endlocalize %}{% endblock %}

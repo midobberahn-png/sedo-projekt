@@ -1,0 +1,27 @@
+Django>=5.2,<6.1
+# Statische Dateien bei DEBUG=0 (sicherer Default seit v3.22)
+whitenoise
+# Verschlüsselte Zugangsdaten der integrierten Postfächer; HTML-Mail-Bereinigung.
+cryptography>=46,<51
+certifi
+bleach
+# Echte Kontoanbindung (FinTS, rein lesender Umsatzabruf, seit v2.3)
+fints
+mt-940
+pandas
+openpyxl
+xlrd>=2.0.2,<3
+reportlab
+pypdf
+lxml
+# Ausführung der offiziellen EN-16931-CII-Schematron-Regeln (XPath 2.0)
+elementpath>=5.1,<6
+python-dateutil
+# Kalenderdaten einschließlich Zeitzonen, Serien und Serienausnahmen.
+icalendar>=7.3,<8
+recurring-ical-events>=3.8,<4
+qrcode[pil]
+# Lokale Spracherkennung für das KI-Diktat (optional – ohne bleibt die
+# Texteingabe verfügbar; kein Cloud-Fallback). Erstes Diktat lädt
+# das Whisper-Modell (~460 MB) einmalig herunter, danach offline.
+faster-whisper

@@ -1,0 +1,35 @@
+# Ausgangspunkt: geprüfte Python-3.13/Django-5.2-Umgebung nach PR #6.
+# Plattformübergreifende endgültige Auflösung samt Artefakthashes: requirements-release.lock.
+# Keine automatische Aktualisierung beim normalen Build.
+asgiref==3.12.1
+bleach==6.4.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+Django==5.2.17
+elementpath==5.1.4
+enum-tools==0.12.0
+et_xmlfile==2.0.0
+fints==5.0.0
+idna==3.19
+lxml==6.0.4
+mt-940==5.1.1
+numpy==2.5.3
+openpyxl==3.1.5
+pandas==3.0.5
+pillow==12.3.0
+Pygments==2.21.0
+pypdf==6.19.0
+python-dateutil==2.9.0.post0
+qrcode==8.2
+reportlab==5.0.1
+requests==2.34.2
+sepaxml==2.7.0
+six==1.17.0
+sqlparse==0.6.0
+text-unidecode==1.3
+typing_extensions==4.16.0
+urllib3==2.8.0
+webencodings==0.6.1
+whitenoise==6.12.0
+xmlschema==4.3.2
+xlrd==2.0.2

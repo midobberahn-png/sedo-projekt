@@ -1,0 +1,36 @@
+{% extends 'sedo/base.html' %}{% load l10n static %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">Verkauf</div><h1 class="h1">Abo-Rechnungen </h1>
+
+  </div>
+  <div class="page-actions"><a class="btn" href="{% url 'sedo:invoice_list' %}">Rechnungsarchiv</a></div>
+</div>
+<div class="process-strip"><div class="process-step active"><b>1</b><span>Vorlagen prüfen</span></div><div class="process-step"><b>2</b><span>Monat wählen</span></div><div class="process-step"><b>3</b><span>Rechnungen erzeugen</span></div><div class="process-step"><b>4</b><span>Archiv prüfen</span></div></div>
+<div class="card">
+  <div class="section-head"><div><h2>Vorschaukalender</h2></div><form method="get" class="toolbar"><label for="preview-date">Erster Rechnungstag</label><input id="preview-date" type="date" name="preview_date" value="{{ default_issue_date }}"><button class="btn">Vorschau aktualisieren</button></form></div>
+  <div class="preview-calendar">{% for month in preview_months %}<section class="preview-month"><div class="eyebrow">{{ month.period_start|date:'F Y' }}</div><h3>{{ month.pending_count }} geplante Rechnungen</h3><p class="hint">Rechnungsdatum {{ month.issue_date|date:'d.m.Y' }}</p>{% for row in month.rows %}<div class="preview-row {% if row.exists or row.duplicate %}preview-existing{% endif %}"><div><strong>{{ row.template.customer.name }}</strong><div class="muted">{{ row.template.title }} · fällig {{ row.due_date|date:'d.m.Y' }}</div></div><div><strong>{{ row.gross }} €</strong>{% if row.exists %}<div><span class="badge success">vorhanden</span></div>{% elif row.duplicate %}<div><span class="badge amber">gleicher Kunde/Objekt bereits geplant</span></div>{% endif %}</div></div>{% empty %}<div class="empty-state">Keine aktiven Vorlagen.</div>{% endfor %}<div class="preview-total"><span>Noch zu erzeugen</span><strong>{{ month.total }} €</strong></div></section>{% endfor %}</div>
+</div>
+<div class="card monthly-card" id="normal-block">
+  <div class="section-head"><div><h2>Monatsrechnungen / Abo-Rechnungen </h2></div><a class="btn primary" href="{% url 'sedo:recurring_create' %}">Vorlage anlegen</a></div>
+  <form method="post" action="{% url 'sedo:recurring_generate' %}" class="stacked-form compact-form" data-recurring-selection>
+    {% csrf_token %}
+    <div class="form-grid compact-grid">
+      <div class="form-row"><label for="recurring_monthly-field-1">Abrechnungsmonat</label><input id="recurring_monthly-field-1" type="month" name="month" value="{{ default_month }}" required></div>
+      <div class="form-row"><label for="recurring_monthly-field-2">Rechnungsdatum</label><input id="recurring_monthly-field-2" type="date" name="issue_date" value="{{ default_issue_date }}" required></div>
+      <div class="form-row full"><label class="check-line"><input type="checkbox" name="skip_existing" checked> Bereits erzeugte Abo-Rechnungen für denselben Monat/Kunde/Objekt überspringen</label></div>
+    </div>
+    <div class="page-actions">
+      <button class="btn" type="button" data-recurring-select-all hidden>Alle aktiven Vorlagen auswählen</button>
+      <button class="btn" type="button" data-recurring-select-none hidden>Auswahl aufheben</button>
+      <span data-recurring-selection-count role="status" aria-live="polite">Bitte aktive Vorlagen auswählen.</span>
+    </div>
+    <div class="table-wrap"><div class="responsive-table" tabindex="0" role="region" aria-label="Abo-Rechnungen – Tabelle"><table class="table responsive-records table-modern action-table"><tr><th scope="col">Auswahl</th><th scope="col">Vorlage</th><th scope="col">Kunde</th><th scope="col">Objekt</th><th scope="col">Positionen</th><th scope="col">Status</th><th scope="col">Aktionen</th></tr>{% for t in recurring_templates %}<tr><td><input class="row-check" type="checkbox" name="template_ids" value="{{ t.id|unlocalize }}" aria-label="Vorlage {{ t.title }} auswählen" {% if t.status != 'active' %}disabled{% endif %}></td><td><strong>{{ t.title }}</strong></td><td>{{ t.customer.name }}</td><td>{% if t.obj %}{{ t.obj.name }}{% else %}—{% endif %}</td><td>{{ t.items.count }}</td><td><span class="badge">{{ t.get_status_display }}</span></td><td class="table-actions"><a class="btn small" href="{% url 'sedo:recurring_update' t.id %}">Bearbeiten</a><a class="btn small danger" href="{% url 'sedo:recurring_delete' t.id %}">Löschen</a></td></tr>{% empty %}<tr><td colspan="7"><div class="empty-state">Noch keine Abo-/Monatsrechnungsvorlagen vorhanden.</div></td></tr>{% endfor %}</table></div></div>
+    <div class="sticky-runbar"><div><strong>Monatslauf starten</strong><span>Nur ausgewählte aktive Vorlagen werden verarbeitet.</span></div><button class="btn success" type="submit" data-recurring-generate {% if not recurring_templates %}disabled{% endif %}>Ausgewählte Monatsrechnungen erzeugen</button></div>
+  </form>
+  {% if last_recurring_invoices %}<div class="mt-3"><h2>Zuletzt erzeugte Monatsrechnungen</h2><div class="table-wrap"><div class="responsive-table" tabindex="0" role="region" aria-label="Abo-Rechnungen – Tabelle"><table class="table responsive-records table-modern action-table"><tr><th scope="col">Rechnung</th><th scope="col">Kunde</th><th scope="col">Objekt</th><th scope="col">Brutto</th><th scope="col">Aktionen</th></tr>{% for inv in last_recurring_invoices %}<tr><td>{{ inv.number }}</td><td>{{ inv.customer.name }}</td><td>{% if inv.obj %}{{ inv.obj.name }}{% endif %}</td><td>{{ inv.gross_total }} €</td><td class="table-actions"><a class="btn small" href="{% url 'sedo:invoice_detail' inv.id %}">Öffnen</a>{% if inv.zugferd_file %}<a class="btn small" href="{{ inv.zugferd_file.url }}" target="_blank">ZUGFeRD</a>{% endif %}</td></tr>{% endfor %}</table></div></div></div>{% endif %}
+</div>
+
+<script src="{% static 'sedo/recurring_selection.js' %}" defer></script>
+{% endblock %}

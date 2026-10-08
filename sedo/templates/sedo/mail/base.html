@@ -1,0 +1,30 @@
+{% extends 'sedo/base.html' %}{% load static l10n %}
+{% block title %}E-Mail · SEDO{% endblock %}
+{% block content %}{% localize off %}
+<link rel="stylesheet" href="{% static 'sedo/mail.css' %}?v=2">
+<header class="mail-heading"><h1>E-Mail</h1><div class="mail-heading-actions"><span class="mail-retrieval" data-mail-status="{% url 'sedo:mail_status' %}" role="status" aria-live="polite" hidden></span><a class="btn primary" href="{% url 'sedo:mail_new' %}">Neue E-Mail</a></div></header>
+<div class="mail-workspace">
+<details class="mail-folder-panel" data-mail-folder-panel open><summary>Postfächer und Ordner</summary>
+<aside class="mail-folders" aria-label="Postfächer und Ordner">
+  <form action="{% url 'sedo:mail_inbox' %}" method="get" class="mail-account-picker" data-mail-account-picker>
+    <label for="mail-account-filter">Postfach</label><input type="hidden" name="section" value="{{ section }}">
+    <select name="account" id="mail-account-filter"><option value="">Alle Postfächer</option>{% for account in accounts %}<option value="{{ account.pk }}" {% if account_id == account.pk %}selected{% endif %}>{{ account.email }}</option>{% endfor %}</select><noscript><button class="btn small">Öffnen</button></noscript>
+  </form>
+  <nav class="mail-core-folders" aria-label="Mailordner">
+    <a class="mail-folder-link {% if is_inbox and not section and not folder_id %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}{% if account_id %}?account={{ account_id }}{% endif %}">Posteingang</a>
+    <a class="mail-folder-link" href="{% url 'sedo:mail_drafts' %}">Entwürfe &amp; Versand {% if draft_count %}<b>{{ draft_count }}</b>{% endif %}</a>
+    <a class="mail-folder-link {% if section == 'sent' %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}?section=sent{% if account_id %}&amp;account={{ account_id }}{% endif %}">Gesendet</a>
+    <a class="mail-folder-link {% if section == 'spam' %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}?section=spam{% if account_id %}&amp;account={{ account_id }}{% endif %}">Spam {% if spam_count %}<b>{{ spam_count }}</b>{% endif %}</a>
+    <a class="mail-folder-link {% if section == 'archive' %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}?section=archive{% if account_id %}&amp;account={{ account_id }}{% endif %}">Archiv</a>
+    <a class="mail-folder-link {% if section == 'trash' %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}?section=trash{% if account_id %}&amp;account={{ account_id }}{% endif %}">Papierkorb</a>
+  </nav>
+  <details class="mail-extra-folders" data-mail-folder-group="additional" {% if folder_id %}open{% endif %}><summary>Weitere Ordner</summary>
+  {% for account in accounts %}{% if not account_id or account_id == account.pk %}<section class="mail-account"><h2>{{ account.email }}</h2>
+    {% for folder in folders %}{% if folder.account_id == account.pk %}<a class="mail-folder-link {% if folder.pk == folder_id %}is-current{% endif %}" href="{% url 'sedo:mail_inbox' %}?folder={{ folder.pk }}&amp;account={{ account.pk }}"><span>{{ folder.name }}</span>{% if folder.unread %}<b>{{ folder.unread }}</b>{% endif %}</a>{% endif %}{% endfor %}
+  </section>{% endif %}{% endfor %}</details>
+  <div class="mail-account-statuses">{% for account in accounts %}{% if not account_id or account_id == account.pk %}<section class="mail-account-status"><div class="mail-account-status-head"><span>{{ account.email }}</span></div><span class="mail-sync-state" data-account="{{ account.pk }}">{% if account.last_sync %}Abgerufen {{ account.last_sync|date:'d.m. H:i' }}{% endif %}</span>{% if not account.enabled %}<p class="mail-state">Abruf pausiert</p>{% endif %}<p class="mail-notice" data-mail-error="{{ account.pk }}" {% if not account.last_error %}hidden{% endif %}>{{ account.last_error }}</p></section>{% endif %}{% empty %}{% if request.user.is_staff %}<a class="btn" href="{% url 'sedo:settings' %}#mail-settings">Postfach einrichten</a>{% endif %}{% endfor %}</div>
+</aside></details>
+<section class="mail-main">{% block mail_content %}{% endblock %}</section>
+</div>
+<script src="{% static 'sedo/mail.js' %}?v=3" defer></script>
+{% endlocalize %}{% endblock %}

@@ -1,0 +1,129 @@
+{% extends 'sedo/base.html' %}{% load l10n static %}
+{% block content %}
+<link rel="stylesheet" href="{% static 'sedo/invoice-list-v2.css' %}?v=1">
+<div class="archive-page">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">Verkauf</div>
+      <h1 class="h1">Rechnungsarchiv</h1>
+
+    </div>
+    <div class="toolbar">
+      <a class="btn" href="{% url 'sedo:open_items' %}">Offene Posten</a>
+      <a class="btn primary" href="{% url 'sedo:invoice_create' %}">Neue Rechnung</a>
+    </div>
+  </div>
+
+  <div class="card archive-controls">
+    <nav class="archive-tabs" aria-label="Belegzustand">
+      {% for tab in archive_tabs %}
+      <a href="{{ tab.url }}" {% if tab.key == view %}class="active" aria-current="page"{% endif %}>{{ tab.label }}</a>
+      {% endfor %}
+    </nav>
+    <form method="get" class="archive-filters" role="search" aria-label="Rechnungsarchiv durchsuchen">
+      <input type="hidden" name="view" value="{{ view }}">
+      {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+      <div class="archive-search">
+        <label for="archive-q">Rechnung, Kunde oder Objekt</label>
+        <input type="search" id="archive-q" name="q" value="{{ q }}" placeholder="Nummer oder Name eingeben">
+      </div>
+      <div>
+        <label for="archive-year">Rechnungsjahr</label>
+        <select id="archive-year" name="year">
+          <option value="">Alle Jahre</option>
+          {% if year_without_results %}<option value="{{ year }}" selected>{{ year }} (keine Belege)</option>{% endif %}
+          {% for y in available_years %}<option value="{{ y|unlocalize }}" {% if year == y|stringformat:"s" %}selected{% endif %}>{{ y|unlocalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="archive-month">Monat</label>
+        <select id="archive-month" name="month">
+          <option value="">Alle Monate</option>
+        <option value="1"  {% if month == "1"  %}selected{% endif %}>Januar</option>
+        <option value="2"  {% if month == "2"  %}selected{% endif %}>Februar</option>
+        <option value="3"  {% if month == "3"  %}selected{% endif %}>März</option>
+        <option value="4"  {% if month == "4"  %}selected{% endif %}>April</option>
+        <option value="5"  {% if month == "5"  %}selected{% endif %}>Mai</option>
+        <option value="6"  {% if month == "6"  %}selected{% endif %}>Juni</option>
+        <option value="7"  {% if month == "7"  %}selected{% endif %}>Juli</option>
+        <option value="8"  {% if month == "8"  %}selected{% endif %}>August</option>
+        <option value="9"  {% if month == "9"  %}selected{% endif %}>September</option>
+        <option value="10" {% if month == "10" %}selected{% endif %}>Oktober</option>
+        <option value="11" {% if month == "11" %}selected{% endif %}>November</option>
+        <option value="12" {% if month == "12" %}selected{% endif %}>Dezember</option>
+        </select>
+      </div>
+      <button class="btn" type="submit">Filtern</button>
+      {% if has_filters %}<a class="btn ghost" href="{% url 'sedo:invoice_list' %}">Filter zurücksetzen</a>{% endif %}
+    </form>
+    {% if legacy_status_label %}<p class="muted">Übernommener Statusfilter: <strong>{{ legacy_status_label }}</strong></p>{% endif %}
+  </div>
+
+  <section class="card archive-results" aria-labelledby="archive-heading">
+    <div class="archive-result-head">
+      <div><h2 id="archive-heading">{{ view_label }}</h2><span class="muted">{{ page_obj.paginator.count }} Treffer{% if q %} für „{{ q }}“{% endif %}</span></div>
+      <div class="archive-total"><span>Bruttosumme aller Treffer</span><strong>{{ gross_total }} €</strong><span>Belegsumme einschließlich Entwürfen und Stornos, soweit gefiltert.</span></div>
+    </div>
+    {% if invoices %}
+    <div class="archive-table-wrap">
+      <table class="archive-table">
+        <caption class="sr-only">Rechnungsbelege, neueste zuerst</caption>
+        <thead><tr><th scope="col">Beleg / Kunde</th><th scope="col">Datum / Leistung</th><th scope="col">Brutto</th><th scope="col">Zustand</th><th scope="col">Nächster Schritt</th></tr></thead>
+        <tbody>
+        {% for r in invoices %}
+        <tr>
+          <td class="archive-identity">
+            <a class="archive-number" href="{% url 'sedo:invoice_detail' r.pk %}">{{ r.number }}</a>
+            <span>{{ r.customer }}</span>
+            {% if r.obj %}<span class="muted">{{ r.obj }}</span>{% endif %}
+            <span class="archive-meta">{{ r.get_invoice_type_display }}</span>
+          </td>
+          <td class="archive-dates"><span><span class="archive-mobile-label">Rechnungsdatum: </span>{{ r.issue_date|date:"d.m.Y" }}</span>
+            {% if r.period_start and r.period_end %}<span class="archive-meta">Leistung {{ r.period_start|date:"d.m.Y" }} – {{ r.period_end|date:"d.m.Y" }}</span>{% endif %}
+          </td>
+          <td class="archive-amount"><span class="archive-mobile-label">Brutto: </span><strong>{{ r.gross_total }} €</strong></td>
+          <td class="archive-state">{% include 'sedo/_invoice_state_stack.html' with invoice=r compact=1 %}</td>
+          <td class="archive-next">
+            {% if r.lifecycle == 'draft' %}
+              <span class="archive-meta">Entwurf prüfen und fertigstellen</span>
+              <a class="btn small" href="{% url 'sedo:invoice_edit' r.pk %}" aria-label="Entwurf {{ r.number }} bearbeiten">Bearbeiten</a>
+            {% else %}
+              <span class="archive-meta">{% if r.lifecycle == 'corrected' or r.lifecycle == 'cancelled' or r.invoice_type == '457' %}Belegverlauf nachschlagen{% elif r.payment_state == 'paid' %}Beleg nachschlagen{% else %}Rechnung und nächste Aktion prüfen{% endif %}</span>
+              <a class="btn small" href="{% url 'sedo:invoice_detail' r.pk %}" aria-label="Rechnung {{ r.number }} öffnen">Öffnen</a>
+            {% endif %}
+            <details class="archive-documents">
+              <summary>Dokumente<span class="sr-only"> zu {{ r.number }}</span></summary>
+              <div>
+                {% if r.pdf_file %}<a href="{{ r.pdf_file.url }}" target="_blank" rel="noopener">{% if r.lifecycle == 'draft' %}Entwurfs-PDF{% else %}PDF{% endif %} öffnen</a>{% endif %}
+                {% if r.lifecycle != 'draft' %}
+                  {% if r.zugferd_file %}<a href="{{ r.zugferd_file.url }}" target="_blank" rel="noopener">ZUGFeRD öffnen</a>{% endif %}
+                  {% if r.xml_file %}<a href="{{ r.xml_file.url }}" target="_blank" rel="noopener">XML öffnen</a>{% endif %}
+                {% endif %}
+                {% if not r.pdf_file and r.lifecycle == 'draft' %}<span class="muted">Kein Entwurfs-PDF hinterlegt.</span>{% elif not r.pdf_file and not r.xml_file and not r.zugferd_file %}<span class="muted">Keine Dokumente hinterlegt. Bitte Rechnung öffnen und Archivhinweis prüfen.</span>{% endif %}
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p class="empty-title">{% if has_filters %}Keine passenden Belege{% else %}Noch keine Rechnungen{% endif %}</p>
+      <p class="empty-sub">{% if has_filters %}Ändere die Suche oder setze die Filter zurück.{% else %}Erstelle deine erste Rechnung. Entwürfe und ausgestellte Belege findest du anschließend hier.{% endif %}</p>
+      {% if has_filters %}<a class="btn" href="{% url 'sedo:invoice_list' %}">Alle Belege anzeigen</a>{% else %}<a class="btn primary" href="{% url 'sedo:invoice_create' %}">Erste Rechnung erstellen</a>{% endif %}
+    </div>
+    {% endif %}
+    {% if page_obj.paginator.count %}
+    <nav class="archive-pagination" aria-label="Rechnungsseiten">
+      <span>{{ page_obj.start_index }}–{{ page_obj.end_index }} von {{ page_obj.paginator.count }} · Seite {{ page_obj.number }} von {{ page_obj.paginator.num_pages }}</span>
+      <div>
+        {% if page_obj.has_previous %}<a class="btn small" href="?{{ page_query }}&amp;page={{ page_obj.previous_page_number|unlocalize }}">Zurück</a>{% endif %}
+        {% if page_obj.has_next %}<a class="btn small" href="?{{ page_query }}&amp;page={{ page_obj.next_page_number|unlocalize }}">Weiter</a>{% endif %}
+      </div>
+    </nav>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

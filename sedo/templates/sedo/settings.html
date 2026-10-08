@@ -1,0 +1,213 @@
+{% extends 'sedo/base.html' %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">System</div><h1 class="h1">Einstellungen</h1>
+
+  </div>
+</div>
+
+<nav class="toolbar settings-destinations" aria-label="Einrichtung"><a class="btn" href="{% url 'sedo:readiness' %}">Startklar</a><a class="btn" href="{% url 'sedo:service_catalog_list' %}">Leistungskatalog</a></nav>
+{% if can_edit_company %}
+<section class="card" id="company-settings" aria-labelledby="company-settings-heading">
+  <div class="section-head"><h2 id="company-settings-heading">Firmendaten / Rechnungsabsender</h2><span class="badge {% if company_configured %}green{% else %}amber{% endif %}">{% if company_configured %}Eingerichtet{% else %}Einrichtung erforderlich{% endif %}</span></div>
+  <p>Vor dem ersten Beleg die eigenen vollständigen Firmendaten prüfen und speichern. Diese Angaben bleiben in der lokalen Datenbank und erscheinen auf neu erzeugten Belegen. Bereits ausgestellte Originale ändern sich nicht. Keine Bank-PIN oder Passwörter eintragen.</p>
+  <form method="post" class="stacked-form compact-form">{% csrf_token %}<input type="hidden" name="action" value="save_company">
+    {{ company_form.non_field_errors }}
+    <div class="form-grid compact-grid">{% for field in company_form %}<div class="form-row">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}</div>
+    <button class="btn primary" type="submit">Firmendaten speichern</button>
+  </form>
+</section>
+{% endif %}
+{% if request.user.is_staff %}
+<section class="card" id="mail-settings" aria-labelledby="mail-settings-heading">
+  <h2 id="mail-settings-heading">E-Mail-Postfächer</h2>
+  <div class="toolbar">{% for account in mail_settings_accounts %}<a class="btn" href="{% url 'sedo:mail_account' account.pk %}">{{ account.email }}</a>{% endfor %}<a class="btn" href="{% url 'sedo:mail_settings' %}">Postfach hinzufügen</a></div>
+</section>
+<section class="card" data-settings-section id="weather-settings" aria-labelledby="weather-settings-heading">
+  <div class="section-head"><div><h2 id="weather-settings-heading">Wetter.com im Dashboard</h2></div><span class="badge {% if weather_configured %}green{% else %}amber{% endif %}">{% if weather_configured %}Zugang hinterlegt{% else %}Zugang fehlt{% endif %}</span></div>
+
+  <form method="post" class="stacked-form compact-form">{% csrf_token %}<input type="hidden" name="action" value="save_weather">
+    <div class="form-row"><label for="weather-api-key">Wetter.com-Zugangsschlüssel</label><input id="weather-api-key" name="weather_api_key" type="password" maxlength="512" autocomplete="new-password" placeholder="{% if weather_configured %}Hinterlegt – leer lassen zum Behalten{% else %}Zugangsschlüssel eingeben{% endif %}"></div>
+    <label><input type="checkbox" name="weather_api_key_clear"> Lokal gespeicherten Schlüssel entfernen</label>
+
+    <div class="toolbar"><button class="btn primary" type="submit">Wetterzugang speichern</button><a class="btn" href="{% url 'sedo:dashboard' %}">Zum Dashboard</a></div>
+  </form>
+</section>
+{% endif %}
+<!-- E-Mail / SMTP -->
+<div class="card" data-settings-section id="smtp-settings">
+  <div class="section-head">
+    <div>
+      <h2>E-Mail-Versand (SMTP)</h2>
+
+    </div>
+    {% if smtp_configured %}<span class="badge green">Aktiv</span>{% else %}<span class="badge amber">Nicht konfiguriert</span>{% endif %}
+  </div>
+  <form method="post" class="stacked-form compact-form">
+    {% csrf_token %}<input type="hidden" name="action" value="save_smtp">
+    <div class="form-grid compact-grid">
+      <div class="form-row">
+        <label for="settings-field-1">SMTP-Host</label>
+        <input id="settings-field-1" name="smtp_host" value="{{ smtp_host }}" placeholder="z. B. smtp.office365.com oder smtp.gmail.com">
+      </div>
+      <div class="form-row">
+        <label for="settings-field-2">Port</label>
+        <input id="settings-field-2" name="smtp_port" type="number" value="{{ smtp_port }}" placeholder="587">
+
+      </div>
+      <div class="form-row">
+        <label for="settings-field-3">Benutzer / E-Mail-Adresse</label>
+        <input id="settings-field-3" name="smtp_user" value="{{ smtp_user }}" placeholder="">
+      </div>
+      <div class="form-row">
+        <label for="settings-field-4">Passwort</label>
+        <input id="settings-field-4" name="smtp_password" type="password" placeholder="{% if smtp_configured %}● ● ● ● ● ● ● ● (leer lassen = unverändert){% else %}SMTP-Passwort{% endif %}">
+
+      </div>
+      <div class="form-row">
+        <label for="settings-field-5">Absendername</label>
+        <input id="settings-field-5" name="smtp_from_name" value="{{ smtp_from_name }}" placeholder="SEDO">
+      </div>
+      <div class="form-row full">
+        <label class="check-line">
+          <input type="checkbox" name="smtp_tls" {% if smtp_tls %}checked{% endif %}>
+          STARTTLS verwenden (empfohlen für Port 587)
+        </label>
+      </div>
+    </div>
+    <div class="toolbar"><button class="btn primary">SMTP speichern</button></div>
+  </form>
+
+  {% if smtp_configured %}
+  <hr style="margin:16px 0; border-color: var(--border)">
+  <form method="post" class="stacked-form compact-form">
+    {% csrf_token %}<input type="hidden" name="action" value="test_smtp">
+    <div class="form-row" style="max-width:360px">
+      <label for="settings-field-6">Test-E-Mail senden an</label>
+      <input id="settings-field-6" name="test_email" type="email" placeholder="test@example.invalid">
+    </div>
+    <div class="toolbar"><button class="btn">Test senden</button></div>
+  </form>
+  {% endif %}
+</div>
+
+<!-- Bankkonto (FinTS) -->
+<div class="card" data-settings-section id="bank-settings">
+  <div class="section-head">
+    <div>
+      <h2>Bankkonto (FinTS) </h2>
+      {% if banking_configured %}<span class="badge green">Eingerichtet</span>{% else %}<span class="badge amber">Nicht konfiguriert</span>{% endif %}
+    </div>
+  </div>
+  <form method="post" class="form-grid compact-grid">{% csrf_token %}<input type="hidden" name="action" value="save_banking">
+    <div class="form-row"><label for="settings-field-7">Bankleitzahl</label><input id="settings-field-7" name="fints_blz" value="{{ banking_cfg.blz }}" placeholder="z. B. 81053272"></div>
+    <div class="form-row"><label for="settings-field-8">FinTS-Adresse der Bank</label><input id="settings-field-8" name="fints_endpoint" value="{{ banking_cfg.endpoint }}" placeholder="https://banking-sa3.s-fints-pt-sa.de/fints30"></div>
+    <div class="form-row"><label for="settings-field-9">Anmeldename / Legitimations-ID</label><input id="settings-field-9" name="fints_login" value="{{ banking_cfg.login }}" autocomplete="off"></div>
+    <div class="form-row"><label for="settings-field-10">IBAN des Kontos (bei mehreren Konten)</label><input id="settings-field-10" name="fints_iban" value="{{ banking_cfg.iban }}" placeholder="optional"></div>
+    <div class="form-row"><label for="settings-field-11">Online-Banking-PIN</label><input id="settings-field-11" type="password" name="fints_pin" autocomplete="new-password" placeholder="{% if banking_pin_stored %}gespeichert – leer lassen zum Behalten{% else %}optional speichern{% endif %}">
+
+      {% if banking_pin_stored %}<label class="check-line"><input type="checkbox" name="fints_pin_clear" value="1"> Gespeicherte PIN löschen</label>{% endif %}</div>
+    <div class="form-row"><label for="settings-field-12">DK-Produktkennung</label><input id="settings-field-12" name="fints_product_id" value="{{ banking_cfg.product_id }}" placeholder="optional"></div>
+    <div class="form-actions"><button class="btn primary" type="submit">Bankzugang speichern</button></div>
+  </form>
+</div>
+
+<!-- Lokaler KI-Assistent -->
+<div class="card" data-settings-section id="ki-assistent">
+  <div class="section-head">
+    <div>
+      <h2>KI-Assistent (Bonsai · lokal)</h2>
+
+    </div>
+    {% if ai_configured %}<span class="badge green">Lokal aktiviert</span>{% else %}<span class="badge amber">Deaktiviert</span>{% endif %}
+  </div>
+
+  {% if request.user.is_staff %}
+  <form method="post" class="stacked-form compact-form">
+    {% csrf_token %}<input type="hidden" name="action" value="save_ai">
+    <div class="form-grid compact-grid">
+      <div class="form-row full"><label class="check-line"><input type="checkbox" name="ai_local_enabled" {% if ai_cfg.enabled %}checked{% endif %}>Lokalen KI-Assistenten verwenden</label></div>
+      <div class="form-row full">
+        <label class="check-line"><input type="checkbox" name="ai_local_autostart" {% if ai_cfg.autostart %}checked{% endif %}>Bonsai beim Start der SEDO-App automatisch mitstarten</label>
+
+      </div>
+      <div class="form-row full">
+        <label for="ai-runtime-dir">Bonsai-Ordner (optional)</label>
+        <input id="ai-runtime-dir" name="ai_local_runtime_dir" value="{{ ai_cfg.runtime_dir }}" placeholder="Automatisch: Dokumente/Bonsai-demo">
+
+      </div>
+      <div class="form-row">
+        <label for="settings-field-13">Lokale Modelladresse</label>
+        <input id="settings-field-13" name="ai_local_base_url" value="{{ ai_cfg.base_url }}" required {% if ai_cfg.endpoint_from_env %}readonly{% endif %}>
+
+      </div>
+      <div class="form-row">
+        <label for="settings-field-14">Modellkennung (optional)</label>
+        <input id="settings-field-14" name="ai_local_model" value="{{ ai_cfg.text_model }}" maxlength="512" placeholder="Geladenes Modell automatisch erkennen" {% if ai_cfg.model_from_env %}readonly{% endif %}>
+
+      </div>
+    </div>
+    <div class="toolbar"><button class="btn primary" type="submit">KI-Einstellungen speichern</button></div>
+  </form>
+  <form method="post" class="toolbar">
+    {% csrf_token %}
+    <button class="btn" type="submit" name="action" value="start_ai">Bonsai jetzt starten</button>
+    <button class="btn" type="submit" name="action" value="test_ai">Gespeicherte Verbindung prüfen</button>
+  </form>
+  <p class="hint" role="status">{{ ai_start_status }}</p>
+  {% else %}{% endif %}
+</div>
+
+<div class="grid two-col">
+  <div class="card" data-settings-section id="gwg-settings">
+    <h2>GWG-Abrechnung</h2>
+
+    <form method="post" class="stacked-form compact-form">
+      {% csrf_token %}<input type="hidden" name="action" value="save_settings">
+      <div class="form-grid compact-grid">
+        <div class="form-row full">
+          <label for="settings-field-15">GWG/ARP Rechnungssteller-ID / Kreditor-ID</label>
+          <input id="settings-field-15" name="aareon_seller_id" value="{{ aareon_seller_id }}" placeholder="vom Kunden/ARP vorgegebene Rechnungssteller-ID">
+
+        </div>
+        <div class="form-row full">
+          <label class="check-line"><input type="checkbox" name="aareon_include_seller_assigned_id" {% if aareon_include_seller_assigned_id == '1' %}checked{% endif %}> NkSl/SellerAssignedID zusätzlich in der XML ausgeben</label>
+
+        </div>
+      </div>
+      <div class="toolbar"><button class="btn primary">Einstellungen speichern</button></div>
+    </form>
+  </div>
+
+  <div class="card" data-settings-section id="mapping-upload">
+    <h2>Mapping-Datei</h2>
+
+    <form method="post" enctype="multipart/form-data" class="stacked-form compact-form">
+      {% csrf_token %}<input type="hidden" name="action" value="import_mapping">
+      <div class="form-row full">
+        <label for="settings-field-16">Mapping-Datei (.xlsx)</label>
+        <input id="settings-field-16" type="file" name="file" accept=".xlsx,.xls" required>
+
+      </div>
+      <div class="toolbar"><button class="btn primary">Mapping importieren</button></div>
+    </form>
+    <div class="stat-row">
+      <div class="mini-stat"><strong>{{ mapping_count }}</strong><span>Mapping-Zeilen</span></div>
+      <div class="mini-stat"><strong>{{ unit_count }}</strong><span>Abrechnungseinheiten</span></div>
+      <div class="mini-stat"><strong>{{ service_count }}</strong><span>Leistungsarten</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><div><h2>Mapping-Vorschau</h2></div><a class="btn" href="{% url 'sedo:aareon_monthly' %}">Zur GWG-Monatsrechnung</a></div>
+  <div class="table-wrap"><div class="responsive-table" tabindex="0" role="region" aria-label="Mapping – Tabelle"><table class="table responsive-records table-modern"><tr><th scope="col">Abrechnungseinheit</th><th scope="col">Leistungsart-ID</th><th scope="col">WE intern</th><th scope="col">AE intern</th><th scope="col">NkSl intern</th><th scope="col">Sachkonto</th></tr>{% for m in mappings %}<tr><td>{{ m.billing_unit_sender }}</td><td>{{ m.service_id }}</td><td>{{ m.we_internal }}</td><td>{{ m.ae_internal }}</td><td>{{ m.nksl_internal }}</td><td>{{ m.account }}</td></tr>{% empty %}<tr><td colspan="6"><div class="empty-state">Noch kein Mapping importiert.</div></td></tr>{% endfor %}</table></div></div>
+</div>
+
+<div class="card">
+  <h2>Hinweise Veröffentlichung</h2>
+
+  <p class="muted"><a href="{% url 'sedo:security_status' %}">Sicherheitsstatus öffnen</a> · <a href="{% url 'sedo:audit_log' %}">Audit-Log öffnen</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends 'sedo/base.html' %}{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">Stammdaten</div><h1 class="h1">Leistungskatalog</h1>
+
+  </div>
+  <a class="btn primary" href="{% url 'sedo:service_catalog_create' %}">Neue Leistung</a>
+</div>
+<div class="card">
+  <form method="get" class="toolbar" style="margin-bottom:12px">
+    <label class="control-label" for="service_catalog_list-q">Leistung suchen</label><input id="service_catalog_list-q" name="q" value="{{ q }}" placeholder="Suchen …" style="max-width:280px">
+    <button class="btn">Suchen</button>
+    {% if q %}<a class="btn" href="{% url 'sedo:service_catalog_list' %}">Zurücksetzen</a>{% endif %}
+  </form>
+  {% if items %}
+  <div class="responsive-table" tabindex="0" role="region" aria-label="Leistungskatalog – Tabelle"><table class="table responsive-records">
+    <thead><tr><th scope="col">Leistung</th><th scope="col">Einheit</th><th scope="col">Beschreibung</th><th scope="col">Quelle</th><th scope="col">Aktionen</th></tr></thead>
+    <tbody>
+    {% for item in items %}
+      <tr>
+        <td><strong>{{ item.name }}</strong></td>
+        <td>{{ item.default_unit|default:'–' }}</td>
+        <td class="muted" style="max-width:420px">{{ item.long_text|truncatechars:140 }}</td>
+        <td>{% if item.created_by_ai %}<span class="badge amber">KI-gelernt</span>{% else %}<span class="badge green">Geprüft</span>{% endif %}</td>
+        <td style="white-space:nowrap">
+          <a class="btn small" href="{% url 'sedo:service_catalog_update' item.pk %}">Bearbeiten</a>
+          <a class="btn small danger" href="{% url 'sedo:service_catalog_delete' item.pk %}">Löschen</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon"><svg class="ico" aria-hidden="true"><use href="#i-catalog"/></svg></div>
+    <p>Noch keine Leistungen im Katalog.</p>
+
+    <a class="btn primary" href="{% url 'sedo:service_catalog_create' %}">Neue Leistung</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

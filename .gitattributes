@@ -1,0 +1,12 @@
+# Bytegleicher Checkout für Quell-/Lockhashes auf Windows und macOS.
+# Keine rückwirkende Zeilenenden-Normalisierung bestehender CRLF-Starter.
+# Textdiffs bleiben aktiv; lediglich die automatische EOL-Konvertierung entfällt.
+* -text
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.sqlite3 binary
+*.zip binary
+*.pdf binary

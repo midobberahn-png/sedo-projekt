@@ -1,0 +1,92 @@
+{% extends 'sedo/base.html' %}{% load static l10n %}{% block content %}
+<link rel="stylesheet" href="{% static 'sedo/workspace-overview-v2.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'sedo/customer-timeline-v1.css' %}?v=1">
+<div class="work-page customer-file">
+  <a class="work-back" href="{% url 'sedo:customer_list' %}">← Alle Kunden</a>
+  <div class="topbar">
+    <div><div class="eyebrow">Kundenakte</div><h1 class="h1">{{ customer.name }}</h1><p class="sub">{{ customer.get_customer_type_display }}{% if customer.customer_no %} · Kunden-Nr. {{ customer.customer_no }}{% endif %}</p></div>
+    <div class="page-actions"><a class="btn primary" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk|unlocalize }}">Rechnung erstellen</a><a class="btn" href="{% url 'sedo:offer_create' %}?customer={{ customer.pk|unlocalize }}">Angebot erstellen</a><a class="btn" href="{% url 'sedo:task_list' %}?customer={{ customer.pk|unlocalize }}">Wiedervorlage</a></div>
+  </div>
+  <nav class="work-tabs" aria-label="Bereiche der Kundenakte">
+    {% for tab in customer_tabs %}<a href="?section={{ tab.key }}" {% if section == tab.key %}class="active" aria-current="page"{% endif %}>{{ tab.label }}{% if tab.key == 'invoices' %} <span>({{ invoice_count }})</span>{% elif tab.key == 'offers' %} <span>({{ offer_count }})</span>{% elif tab.key == 'objects' %} <span>({{ object_count }})</span>{% endif %}</a>{% endfor %}
+  </nav>
+
+  {% if section == 'overview' %}
+  <section class="work-metrics" aria-label="Aufgaben dieses Kunden">
+    <a class="card" href="?section=invoices&amp;filter=open"><span>Offene Forderungen</span><strong>{{ open_total }} €</strong><span>{{ open_count }} offene Rechnung{{ open_count|pluralize:"en" }} →</span></a>
+    <a class="card" href="?section=invoices&amp;filter=overdue"><span>Überfällige Rechnungen</span><strong{% if overdue_count %} class="work-attention"{% endif %}>{{ overdue_count }}</strong><span>Forderungen prüfen →</span></a>
+    <a class="card" href="?section=invoices&amp;filter=draft"><span>Entwürfe</span><strong>{{ draft_count }}</strong><span>Rechnungen weiterbearbeiten →</span></a>
+  </section>
+  <section class="card" aria-labelledby="contact-heading">
+    <div class="work-section-head"><h2 id="contact-heading">Kontakt & Zahlungsziel</h2><a class="btn small" href="?section=details">Alle Stammdaten</a></div>
+    <dl class="work-facts"><div><dt>Ansprechpartner</dt><dd>{{ customer.contact_person|default:'Nicht hinterlegt' }}</dd></div><div><dt>E-Mail</dt><dd>{% if customer.email %}<a href="mailto:{{ customer.email }}">{{ customer.email }}</a>{% else %}Nicht hinterlegt{% endif %}</dd></div><div><dt>Telefon</dt><dd>{{ customer.phone|default:'Nicht hinterlegt' }}</dd></div><div><dt>Zahlungsziel</dt><dd>{{ customer.payment_days }} Tage</dd></div></dl>
+  </section>
+  {% endif %}
+
+  {% if section == 'overview' or section == 'timeline' %}
+  <section class="card timeline-card" aria-labelledby="timeline-heading">
+    <div class="work-section-head"><div><h2 id="timeline-heading">{% if section == 'overview' %}Letzte Aktivitäten{% else %}Kunden-Chronik{% endif %}</h2></div>{% if section == 'overview' %}<a class="btn small" href="?section=timeline">Ganze Chronik</a>{% endif %}</div>
+    {% if section == 'timeline' %}
+      <form class="timeline-note" method="post" action="{% url 'sedo:customer_note_create' customer.pk %}">{% csrf_token %}<label for="id_text"><strong>Notiz hinzufügen</strong><span>Gespräch, Vereinbarung oder nächsten Schritt festhalten.</span></label>{{ note_form.text }}<button class="btn primary" type="submit">Notiz speichern</button></form>
+      <nav class="timeline-filters" aria-label="Chronik filtern">{% for key, label in timeline_kinds %}<a href="?section=timeline{% if key != 'all' %}&amp;kind={{ key }}{% endif %}"{% if timeline_kind == key %} class="active" aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+    {% endif %}
+    <ol class="timeline-list">
+      {% for event in timeline_entries %}<li class="timeline-entry kind-{{ event.kind }}"><div class="timeline-marker" aria-hidden="true"></div><div class="timeline-content"><div class="timeline-meta"><span class="timeline-kind">{% if event.kind == 'invoice' %}Rechnung{% elif event.kind == 'offer' %}Angebot{% elif event.kind == 'payment' %}Zahlung{% elif event.kind == 'dunning' %}Mahnung{% elif event.kind == 'email' %}E-Mail{% else %}Notiz{% endif %}</span><time datetime="{{ event.occurred_at|date:'c' }}">{% if event.show_time %}{{ event.occurred_at|date:'d.m.Y · H:i' }}{% else %}{{ event.occurred_at|date:'d.m.Y' }}{% endif %}</time>{% if event.actor %}<span>{{ event.actor }}</span>{% endif %}</div><h3>{% if event.link %}<a href="{{ event.link }}">{{ event.title }}</a>{% else %}{{ event.title }}{% endif %}</h3>{% if event.detail %}<p>{{ event.detail|linebreaksbr }}</p>{% endif %}</div>{% if event.has_amount %}<strong class="timeline-amount">{{ event.amount }} €</strong>{% endif %}</li>
+      {% empty %}<li class="empty-state"><p class="empty-title">Noch keine Aktivitäten</p></li>{% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if section == 'invoices' or section == 'offers' or section == 'objects' %}
+  <form method="get" class="card work-filters" role="search" aria-label="{{ section_label }} dieses Kunden durchsuchen">
+    <input type="hidden" name="section" value="{{ section }}">
+    <div class="work-search"><label for="customer-query">{% if section == 'objects' %}Objekt, Straße oder Ort{% else %}Belegnummer oder Objekt{% endif %}</label><input type="search" id="customer-query" name="q" value="{{ q }}" placeholder="In dieser Kundenakte suchen"></div>
+    {% if section == 'invoices' %}<div><label for="customer-filter">Ansicht</label><select id="customer-filter" name="filter"><option value="all" {% if invoice_filter == 'all' %}selected{% endif %}>Alle Belege</option><option value="draft" {% if invoice_filter == 'draft' %}selected{% endif %}>Entwürfe</option><option value="open" {% if invoice_filter == 'open' %}selected{% endif %}>Offene Forderungen</option><option value="overdue" {% if invoice_filter == 'overdue' %}selected{% endif %}>Überfällige Forderungen</option></select></div>{% endif %}
+    <button class="btn" type="submit">Suchen</button>{% if q or invoice_filter != 'all' %}<a class="btn ghost" href="?section={{ section }}">Zurücksetzen</a>{% endif %}
+  </form>
+  {% endif %}
+
+  {% if section == 'overview' or section == 'invoices' %}
+  <section class="card" aria-labelledby="customer-invoices-heading">
+    <div class="work-section-head"><div><h2 id="customer-invoices-heading">{% if section == 'overview' %}Letzte Rechnungen{% else %}{{ section_label }}{% endif %}</h2><p class="muted">{% if section == 'overview' %}Bis zu fünf neueste Belege nach Rechnungsdatum.{% else %}{{ page_obj.paginator.count }} Treffer · neueste Belege zuerst{% endif %}</p></div>{% if section == 'overview' %}<a class="btn small" href="?section=invoices">Alle Rechnungen</a>{% endif %}</div>
+    <ul class="work-records">
+      {% for r in customer_invoices %}<li class="work-record">
+        <div class="work-identity"><a href="{% url 'sedo:invoice_detail' r.pk %}"><strong>{{ r.number }}</strong></a><span>{{ r.obj|default:'Ohne Objektzuordnung' }}</span><span class="muted">{{ r.issue_date|date:"d.m.Y" }} · {{ r.get_invoice_type_display }}</span></div>
+        <div class="work-amount"><span>Brutto</span><strong>{{ r.gross_total }} €</strong></div>
+        <div>{% include 'sedo/_invoice_state_stack.html' with invoice=r compact=1 %}</div>
+        <div>{% if r.lifecycle == 'draft' %}<a class="btn small" href="{% url 'sedo:invoice_edit' r.pk %}" aria-label="Entwurf {{ r.number }} weiterbearbeiten">Weiterbearbeiten</a>{% else %}<a class="btn small" href="{% url 'sedo:invoice_detail' r.pk %}" aria-label="Rechnung {{ r.number }} öffnen">Öffnen</a>{% endif %}</div>
+      </li>{% empty %}<li class="empty-state"><p class="empty-title">{% if q or invoice_filter != 'all' %}Keine passenden Rechnungen{% else %}Noch keine Rechnungen{% endif %}</p>{% if q or invoice_filter != 'all' %}<a class="btn" href="?section=invoices">Alle Kundenrechnungen anzeigen</a>{% else %}<a class="btn" href="{% url 'sedo:invoice_create' %}?customer={{ customer.pk|unlocalize }}">Erste Rechnung erstellen</a>{% endif %}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if section == 'overview' or section == 'offers' %}
+  <section class="card" aria-labelledby="customer-offers-heading">
+    <div class="work-section-head"><div><h2 id="customer-offers-heading">{% if section == 'overview' %}Letzte Angebote{% else %}Angebote{% endif %}</h2><p class="muted">{% if section == 'overview' %}Bis zu drei neueste Angebote nach Angebotsdatum.{% else %}{{ page_obj.paginator.count }} Treffer · neueste Angebote zuerst{% endif %}</p></div>{% if section == 'overview' %}<a class="btn small" href="?section=offers">Alle Angebote</a>{% endif %}</div>
+    <ul class="work-records">
+      {% for o in customer_offers %}<li class="work-record"><div class="work-identity"><a href="{% url 'sedo:offer_detail' o.pk %}"><strong>{{ o.number }}</strong></a><span>{{ o.obj|default:'Ohne Objektzuordnung' }}</span><span class="muted">{{ o.issue_date|date:"d.m.Y" }}{% if o.valid_until %} · gültig bis {{ o.valid_until|date:"d.m.Y" }}{% endif %}</span></div><div class="work-amount"><span>Brutto</span><strong>{{ o.gross_total }} €</strong></div><div><span class="badge">{{ o.get_status_display }}</span></div><div><a class="btn small" href="{% url 'sedo:offer_detail' o.pk %}" aria-label="Angebot {{ o.number }} öffnen">Öffnen</a></div></li>
+      {% empty %}<li class="empty-state"><p class="empty-title">{% if q %}Keine passenden Angebote{% else %}Noch keine Angebote{% endif %}</p>{% if q %}<a class="btn" href="?section=offers">Alle Kundenangebote anzeigen</a>{% else %}<a class="btn" href="{% url 'sedo:offer_create' %}?customer={{ customer.pk|unlocalize }}">Erstes Angebot erstellen</a>{% endif %}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if section == 'objects' %}
+  <section class="card" aria-labelledby="customer-objects-heading">
+    <div class="work-section-head"><div><h2 id="customer-objects-heading">Objekte & Leistungsorte</h2><p class="muted">{{ page_obj.paginator.count }} Treffer</p></div><a class="btn" href="{% url 'sedo:object_create' %}?customer={{ customer.pk|unlocalize }}">Objekt anlegen</a></div>
+    <ul class="work-objects">{% for o in customer_objects %}<li><h3>{{ o.name }}</h3><p>{{ o.street|default:'Keine Straße hinterlegt' }}<br>{{ o.postcode }} {{ o.city }} · {{ o.country }}</p><a class="btn small" href="{% url 'sedo:object_update' o.pk %}" aria-label="Objekt {{ o.name }} bearbeiten">Bearbeiten</a><details class="work-object-actions"><summary>Weitere Aktionen<span class="sr-only"> für {{ o.name }}</span></summary><a href="{% url 'sedo:object_delete' o.pk %}">Objekt löschen…</a></details></li>{% empty %}<li class="empty-state"><p class="empty-title">{% if q %}Keine passenden Objekte{% else %}Noch keine Objekte{% endif %}</p>{% if q %}<a class="btn" href="?section=objects">Alle Kundenobjekte anzeigen</a>{% else %}{% endif %}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if section == 'details' %}
+  <section class="card" aria-labelledby="customer-details-heading">
+    <div class="work-section-head"><h2 id="customer-details-heading">Stammdaten</h2><a class="btn" href="{% url 'sedo:customer_update' customer.pk %}">Stammdaten bearbeiten</a></div>
+    <div class="work-address">{{ customer.salutation }} {{ customer.name }}{% if customer.name2 %}<br>{{ customer.name2 }}{% endif %}<br>{{ customer.street|default:'Keine Straße hinterlegt' }}<br>{{ customer.postcode }} {{ customer.city }}<br>{{ customer.country }}</div>
+    <dl class="work-facts"><div><dt>Ansprechpartner</dt><dd>{{ customer.contact_person|default:'Nicht hinterlegt' }}</dd></div><div><dt>Telefon</dt><dd>{{ customer.phone|default:'Nicht hinterlegt' }}</dd></div><div><dt>E-Mail</dt><dd>{% if customer.email %}<a href="mailto:{{ customer.email }}">{{ customer.email }}</a>{% else %}Nicht hinterlegt{% endif %}</dd></div><div><dt>Zahlungsziel</dt><dd>{{ customer.payment_days }} Tage</dd></div><div><dt>Aareon/ARP Rechnungsempfänger-ID</dt><dd>{{ customer.aareon_receiver_id|default:'Nicht hinterlegt' }}</dd></div></dl>
+  </section>
+  {% endif %}
+
+  {% if page_obj and page_obj.paginator.count %}
+  <nav class="work-pagination" aria-label="{{ section_label }} – Seiten"><span>{{ page_obj.start_index }}–{{ page_obj.end_index }} von {{ page_obj.paginator.count }} · Seite {{ page_obj.number }} von {{ page_obj.paginator.num_pages }}</span><div>{% if page_obj.has_previous %}<a class="btn small" href="?{{ page_query }}&amp;page={{ page_obj.previous_page_number|unlocalize }}">Zurück</a>{% endif %}{% if page_obj.has_next %}<a class="btn small" href="?{{ page_query }}&amp;page={{ page_obj.next_page_number|unlocalize }}">Weiter</a>{% endif %}</div></nav>
+  {% endif %}
+</div>
+{% endblock %}

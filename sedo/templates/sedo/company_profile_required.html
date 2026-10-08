@@ -1,0 +1,8 @@
+{% extends 'sedo/base.html' %}
+{% block content %}
+<section class="card">
+  <h1>Firmendaten erforderlich</h1>
+  <p>{{ profile_error }}</p>
+  {% if can_edit_company %}<a class="btn primary" href="{% url 'sedo:settings' %}#company-settings">Firmendaten einrichten</a>{% else %}<p>Bitte die Administration um Prüfung und Einrichtung bitten.</p>{% endif %}
+</section>
+{% endblock %}

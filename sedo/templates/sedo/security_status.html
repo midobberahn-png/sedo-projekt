@@ -1,0 +1,72 @@
+{% extends 'sedo/base.html' %}
+{% block title %}Sicherheitsstatus{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="eyebrow">System · Sicherheit</div>
+    <h1 class="h1">Sicherheitsstatus</h1>
+
+  </div>
+  <div class="toolbar"><a class="btn" href="{% url 'sedo:audit_log' %}">Audit-Log öffnen</a></div>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="metric">{{ ok_count }}/{{ total_count }}</div>
+    <div class="metric-label">Sicherheitsprüfungen erfüllt</div>
+  </div>
+  <div class="card">
+    <div class="metric">{% if bank_ready %}Vorbereitet{% else %}Nacharbeit{% endif %}</div>
+    <div class="metric-label">Bankanbindung-Grundlage</div>
+  </div>
+  {% comment %}
+  Diese Kachel behauptete bisher unbedingt "Audit aktiv" – auch dann, wenn
+  write_audit reihenweise scheiterte, denn Fehler wurden stumm verschluckt
+  (Nebenbefund NEU-1). Jetzt hängt sie am tatsächlichen Zustand.
+  {% endcomment %}
+  <div class="card {% if audit_fehler %}kpi-danger{% endif %}">
+    <div class="metric">{% if audit_fehler %}Protokoll gestört{% else %}Audit aktiv{% endif %}</div>
+    <div class="metric-label">{% if audit_fehler %}Letzter Versuch fehlgeschlagen{% if audit_fehler_at %} ({{ audit_fehler_at }}){% endif %}{% else %}kritische Aktionen werden protokolliert{% endif %}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><h2>Prüfstatus</h2></div>
+  <div class="table-wrap">
+    <div class="responsive-table" tabindex="0" role="region" aria-label="Sicherheitsstatus – Tabelle"><table class="table responsive-records table-modern">
+      <tr><th scope="col">Status</th><th scope="col">Prüfung</th><th scope="col">Wert</th><th scope="col">Hinweis</th></tr>
+      {% for c in checks %}
+      <tr>
+        <td>{% if c.ok %}<span class="badge success">OK</span>{% else %}<span class="badge danger">Prüfen</span>{% endif %}</td>
+        <td><strong>{{ c.label }}</strong></td>
+        <td>{{ c.value }}</td>
+        <td></td>
+      </tr>
+      {% endfor %}
+    </table></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head"><div><h2>Letzte Audit-Ereignisse</h2></div><a class="btn" href="{% url 'sedo:audit_log' %}">Alle anzeigen</a></div>
+  <div class="table-wrap">
+    <div class="responsive-table" tabindex="0" role="region" aria-label="Sicherheitsstatus – Tabelle"><table class="table responsive-records table-modern">
+      <tr><th scope="col">Zeit</th><th scope="col">Benutzer</th><th scope="col">Aktion</th><th scope="col">Objekt</th><th scope="col">Hinweis</th></tr>
+      {% for log in recent_logs %}
+      <tr><td>{{ log.created_at|date:'d.m.Y H:i' }}</td><td>{{ log.user|default:'System' }}</td><td>{{ log.get_action_display }}</td><td>{{ log.object_repr|default:log.object_type }}</td><td>{{ log.message }}</td></tr>
+      {% empty %}<tr><td colspan="5"><div class="empty-state">Noch keine Audit-Ereignisse vorhanden.</div></td></tr>{% endfor %}
+    </table></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Belegketten prüfen</h2>
+
+
+</div>
+
+<div class="card warn-card">
+  <h2>Bankanbindung: Mindeststandard</h2>
+
+</div>
+{% endblock %}

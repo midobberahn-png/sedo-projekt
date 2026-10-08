@@ -1,0 +1,31 @@
+SEDO Rechnungstool – Erstinstallation unter Windows
+
+1. Die ZIP-Datei vollständig entpacken (Rechtsklick, „Alle extrahieren“).
+2. Die Datei SEDO_Rechnungstool_Setup_<Version>.exe doppelklicken und installieren.
+3. „SEDO Rechnungstool“ über das neue Desktop-Symbol öffnen.
+4. Beim ersten Start das angezeigte Passwort für den Benutzer admin notieren.
+
+Python muss nicht installiert werden. Windows 10/11 mit 64 Bit wird benötigt;
+32-Bit-Windows wird nicht unterstützt. Fehlende Microsoft-Laufzeiten
+(Visual C++ und WebView2) richtet das Setup ein. Dafür werden eine
+Internetverbindung und gegebenenfalls eine Windows-Administratorfreigabe benötigt.
+Das Setup ist noch nicht mit einem Herausgeber-Zertifikat signiert.
+
+Dies ist eine leere Erstinstallation. Rechnungen, Kundendaten und Kennwörter
+vom Mac sind nicht enthalten. Unter Einstellungen werden Firma, Postfächer,
+Bank und weitere Verbindungen eingerichtet. E-Mail-Kennwörter bitte dort
+direkt eingeben. Die Postfach-Einstellungen stehen im normalen Menü
+Einstellungen → E-Mail-Postfächer.
+
+Die lokale Bonsai-KI wird getrennt auf dem Windows-Rechner eingerichtet.
+Das Sprachmodell für Diktate wird bei der ersten Verwendung heruntergeladen.
+Die normalen Programmfunktionen sind auch ohne eingerichtete KI nutzbar.
+
+Eigene Daten liegen unter %APPDATA%\SEDO. Updates und die Deinstallation
+entfernen diese Daten nicht. Vor einem Update eine SEDO-Sicherung erstellen.
+
+Für eine Übernahme vorhandener Firmendaten den SEDO-Backup-Assistenten nutzen.
+Zunächst absprechen, welcher Rechner anschließend den führenden Datenbestand
+führt: Zwei getrennte Installationen gleichen Rechnungsdaten nicht automatisch ab.
+
+Das Setup wurde mit Inno Setup (https://jrsoftware.org/) erstellt.

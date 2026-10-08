@@ -1,0 +1,151 @@
+{% extends 'sedo/base.html' %}{% load l10n %}{% block content %}
+<link rel="stylesheet" href="/static/sedo/open-items-v2.css?v=1">
+
+<div class="topbar detail-topbar">
+  <div>
+    <div class="eyebrow">Finanzen</div>
+    <div class="h1">Offene Posten</div>
+
+  </div>
+  <div class="toolbar">
+    <a class="btn" href="{% url 'sedo:payment_list' %}">Zahlungen / Bankimport</a>
+    <a class="btn primary" href="{% url 'sedo:invoice_create' %}">Neue Rechnung</a>
+  </div>
+</div>
+
+<div class="op-summary-grid" aria-label="Forderungsübersicht">
+  <div class="op-summary-card"><strong>{{ open_total }} €</strong><span>Offene Forderungen</span></div>
+  <div class="op-summary-card {% if overdue_count > 0 %}attention{% endif %}"><strong>{{ overdue_count }}</strong><span>Überfällige Rechnungen</span></div>
+  <div class="op-summary-card {% if overdue_total > 0 %}attention{% endif %}"><strong>{{ overdue_total }} €</strong><span>Überfälliger Betrag</span></div>
+  <div class="op-summary-card {% if dunning_candidates_count > 0 %}attention{% endif %}"><strong>{{ dunning_candidates_count }}</strong><span>Jetzt mahnfähig</span></div>
+</div>
+
+{% if dunning_candidates_count > 0 %}
+<details class="op-review">
+  <summary>
+    <span class="op-review-title">
+      <strong>Mahnlauf prüfen</strong>
+      <span>{{ dunning_candidates_count }} Rechnung{{ dunning_candidates_count|pluralize:"en" }} haben laut Mahnwächter eine fällige nächste Stufe.</span>
+    </span>
+    <span class="op-review-count">{{ dunning_candidates_count }}</span>
+  </summary>
+  <div class="op-review-body">
+    <div class="op-review-list">
+      <div class="op-review-row header"><span>Rechnung</span><span>Kunde</span><span>Überfällig</span><span>Offen</span><span>Nächste Stufe</span></div>
+      {% for i in dunning_candidates %}
+      <div class="op-review-row">
+        <span><a href="{% url 'sedo:invoice_detail' i.pk %}"><strong>{{ i.number }}</strong></a></span>
+        <span>{{ i.customer }}{% if i.obj %} · {{ i.obj }}{% endif %}</span>
+        <span>{{ i.days_overdue }} Tage</span>
+        <span><strong>{{ i.open_amount }} €</strong></span>
+        <span>{{ i.next_kind_label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <form method="post" action="{% url 'sedo:bulk_dunning' %}" class="op-review-confirm" id="auto-dunning-form">
+      {% csrf_token %}<input type="hidden" name="kind" value="auto">
+      <label><input type="checkbox" id="auto-review-confirm"> Kandidaten und nächste Mahnstufe geprüft</label>
+      <button class="btn primary" id="auto-dunning-submit" type="submit" disabled>Nächste Stufen ausführen</button>
+    </form>
+  </div>
+</details>
+{% endif %}
+
+<div class="op-workbench">
+  <nav class="op-tabs" aria-label="Forderungsfilter">
+    <a class="op-tab {% if status == 'open' %}active{% endif %}" href="?status=open">Offen</a>
+    <a class="op-tab {% if status == 'overdue' %}active{% endif %}" href="?status=overdue">Überfällig</a>
+    <a class="op-tab {% if status == 'paid' %}active{% endif %}" href="?status=paid">Bezahlt</a>
+    <a class="op-tab {% if status == 'all' %}active{% endif %}" href="?status=all">Alle</a>
+  </nav>
+  <form method="get" class="op-search">
+    <input type="hidden" name="status" value="{{ status }}">
+    <input class="form-control" type="search" name="q" value="{{ q }}" placeholder="Rechnung, Kunde oder Objekt">
+    <button class="btn" type="submit">Suchen</button>
+  </form>
+</div>
+
+<div class="card op-queue">
+  <div class="op-queue-head">
+    <span><input type="checkbox" id="check-all" title="Alle sichtbaren Rechnungen auswählen"></span>
+    <span>Rechnung</span><span>Kunde / Objekt</span><span>Fälligkeit</span><span>Forderung</span><span>Nächster Schritt</span>
+  </div>
+  {% for i in invoices %}
+  <div class="op-row {% if i.is_overdue %}overdue{% endif %}">
+    <div class="op-check"><input type="checkbox" form="batch-form" name="invoice_ids" value="{{ i.pk|unlocalize }}" class="row-check" aria-label="{{ i.number }} auswählen"></div>
+    <div class="op-invoice">
+      <a href="{% url 'sedo:invoice_detail' i.pk %}">{{ i.number }}</a>
+      <span class="op-sub">{{ i.issue_date }} · {% include 'sedo/_invoice_state_stack.html' with invoice=i compact=1 %}</span>
+    </div>
+    <div class="op-customer"><strong>{{ i.customer }}</strong>{% if i.obj %}<span class="op-sub">{{ i.obj }}</span>{% endif %}</div>
+    <div class="op-due">
+      {{ i.due_date|default:'—' }}
+      {% if i.is_overdue %}<span class="op-overdue-days">{{ i.days_overdue }} Tage überfällig</span>{% endif %}
+    </div>
+    <div class="op-money">
+      <strong>{{ i.open_amount }} € offen</strong>
+      <span class="op-sub">{{ i.paid_amount }} € von {{ i.gross_total }} € bezahlt</span>
+    </div>
+    <div class="op-next">
+      <div class="op-next-copy">
+        {% if i.open_amount <= 0 %}
+          <strong>Abgeschlossen</strong><span>Kein offener Betrag</span>
+        {% elif i.is_overdue %}
+          <strong>Mahnschritt prüfen</strong><span>Fälligkeit überschritten</span>
+        {% else %}
+          <strong>Zahlung abwarten / erfassen</strong><span>Noch nicht überfällig</span>
+        {% endif %}
+      </div>
+      {% if i.open_amount <= 0 %}
+        <a class="btn small" href="{% url 'sedo:invoice_detail' i.pk %}">Öffnen</a>
+      {% elif i.is_overdue %}
+        <a class="btn small" href="{% url 'sedo:invoice_detail' i.pk %}">Prüfen</a>
+      {% else %}
+        <a class="btn small" href="{% url 'sedo:invoice_add_payment' i.pk %}">Zahlung</a>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="op-empty"><strong>Keine passenden Forderungen</strong><span>Für den gewählten Arbeitsfilter gibt es aktuell nichts zu bearbeiten.</span></div>
+  {% endfor %}
+</div>
+
+<div class="op-batchbar" id="batch-bar" aria-live="polite">
+  <div class="op-batch-info"><span id="selected-count">0</span> ausgewählt</div>
+  <div class="op-batch-actions">
+    <form method="post" action="{% url 'sedo:bulk_dunning' %}" id="batch-form">
+      {% csrf_token %}
+      <button name="kind" value="reminder" class="btn" type="submit">Erinnerung erstellen</button>
+      <button name="kind" value="dunning" class="btn danger" type="submit">Mahnung erstellen</button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  const checks=[...document.querySelectorAll('.row-check')];
+  const all=document.getElementById('check-all');
+  const bar=document.getElementById('batch-bar');
+  const count=document.getElementById('selected-count');
+  function sync(){
+    const n=checks.filter(c=>c.checked).length;
+    count.textContent=n;
+    bar.classList.toggle('visible',n>0);
+    if(all){ all.checked=n>0&&n===checks.length; all.indeterminate=n>0&&n<checks.length; }
+  }
+  checks.forEach(c=>c.addEventListener('change',sync));
+  if(all) all.addEventListener('change',()=>{checks.forEach(c=>c.checked=all.checked);sync();});
+  const batch=document.getElementById('batch-form');
+  if(batch) batch.addEventListener('submit',function(e){
+    const submitter=e.submitter;
+    const n=checks.filter(c=>c.checked).length;
+    if(!n){e.preventDefault();return;}
+    const action=submitter&&submitter.value==='dunning'?'Mahnungen':'Zahlungserinnerungen';
+    if(!window.confirm(action+' für '+n+' ausgewählte Rechnung'+(n===1?'':'en')+' erstellen?')) e.preventDefault();
+  });
+  const review=document.getElementById('auto-review-confirm');
+  const autoButton=document.getElementById('auto-dunning-submit');
+  if(review&&autoButton) review.addEventListener('change',()=>autoButton.disabled=!review.checked);
+})();
+</script>
+{% endblock %}

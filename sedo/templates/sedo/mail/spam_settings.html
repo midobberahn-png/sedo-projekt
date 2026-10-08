@@ -1,0 +1,17 @@
+{% extends 'sedo/mail/settings_base.html' %}
+{% block mail_settings_content %}
+<div class="mail-pad">
+  <section><div class="mail-eyebrow">{{ spam_account.email }}</div><h2>Spamfilter</h2>
+
+  <p><a href="{% url 'sedo:mail_account' spam_account.pk %}">Postfach und Spamordner zuordnen →</a></p>
+  <form method="post" class="mail-form spam-form" data-spam-mode>{% csrf_token %}<input type="hidden" name="operation" value="settings">{{ setting_form.revision }}{{ setting_form.non_field_errors }}<div class="mail-field">{{ setting_form.mode.label_tag }}{{ setting_form.mode }}{{ setting_form.mode.errors }}</div><div class="spam-confirm" data-spam-confirm>{{ setting_form.confirm_auto.errors }}<label>{{ setting_form.confirm_auto }}<span>{{ setting_form.confirm_auto.label }}</span></label></div><button class="btn primary">Filter speichern</button></form></section>
+  <section><h3>Absenderregeln</h3>
+  <div class="spam-rules">
+  {% for rule in rules %}<div class="spam-rule"><div><strong>{{ rule.value }}</strong><small>{{ rule.get_kind_display }} · {{ rule.get_action_display }}</small></div><form method="post">{% csrf_token %}<input type="hidden" name="revision" value="{{ spam_account.spam_revision }}"><input type="hidden" name="rule" value="{{ rule.pk }}"><button class="btn small" name="operation" value="delete" aria-label="Regel für {{ rule.value }} entfernen">Entfernen</button></form></div>
+  {% empty %}<p>Noch keine eigenen Regeln.</p>{% endfor %}
+  </div>
+  </section><section><h3>Neue Regel</h3>
+  <form method="post" class="mail-form spam-form" data-spam-rule>{% csrf_token %}<input type="hidden" name="operation" value="rule">{{ rule_form.revision }}{{ rule_form.non_field_errors }}{% for field in rule_form %}{% if field.name != 'revision' and field.name != 'confirm_domain' %}<div class="mail-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}<div class="spam-confirm" data-spam-confirm>{{ rule_form.confirm_domain.errors }}<label>{{ rule_form.confirm_domain }}<span>{{ rule_form.confirm_domain.label }}</span></label></div><button class="btn">Regel hinzufügen</button></form>
+
+</section></div>
+{% endblock %}

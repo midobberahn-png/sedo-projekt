@@ -1,0 +1,5 @@
+{% extends 'sedo/mail/base.html' %}
+{% block mail_content %}
+<div class="mail-pad"><h2>Auswahl bearbeitet</h2><p>{{ completed }} Nachricht(en) vollständig bearbeitet. {{ failures|length }} Nachricht(en) benötigen noch eine Prüfung.</p>
+<ul class="spam-review-list">{% for item,error in failures %}<li><a href="{% url 'sedo:mail_message' item.message_id %}">{{ item.message.subject|default:'Ohne Betreff' }}</a><span>{{ item.folder.account.email }}</span><span>{{ error }}</span></li>{% endfor %}</ul><a class="btn" href="{{ mailbox_url }}">Zur Nachrichtenliste</a></div>
+{% endblock %}

@@ -1,0 +1,95 @@
+/* Freigegebener Entwurf C: Licht & Blau.
+   Farben und Oberflächen; Zustandsfarben, Fokus und mobile Navigation bleiben erhalten. */
+:root {
+  --ds-bg:#f7f9fb;
+  --ds-surface:#fff;
+  --ds-surface-subtle:#f8fafc;
+  --ds-surface-muted:#edf2f7;
+  --ds-text:#253852;
+  --ds-text-strong:#253852;
+  --ds-text-muted:#596b80;
+  --ds-text-faint:#63768b;
+  --ds-border:#e1e7ee;
+  --ds-border-strong:#aab9c9;
+  --ds-primary:#356699;
+  --ds-primary-hover:#28527e;
+  --ds-primary-soft:#eaf2f9;
+  --ds-radius-sm:9px;
+  --ds-radius-md:12px;
+  --ds-radius-lg:19px;
+  --ds-shadow-xs:0 4px 20px rgba(41,73,100,.04);
+  --ds-shadow-sm:0 5px 22px rgba(41,73,100,.07);
+  --ds-shadow-md:0 10px 30px rgba(41,73,100,.10);
+  --ds-focus:0 0 0 3px rgba(53,102,153,.2);
+  /* Ältere Restmodule verwenden noch diese neutralen Farbtokens. */
+  --ink:var(--ds-text-strong);
+  --text:var(--ds-text);
+  --muted:var(--ds-text-muted);
+  --bg:var(--ds-bg);
+  --panel:var(--ds-surface);
+  --panel2:var(--ds-surface-subtle);
+  --line:var(--ds-border);
+  --blue:var(--ds-primary);
+  --blue2:var(--ds-primary-hover);
+  --sky:var(--ds-primary-soft);
+  --shell-sidebar-bg:#fff;
+  --shell-sidebar-text:#465b73;
+  --shell-sidebar-muted:#596b80;
+  --shell-sidebar-line:#e1e7ee;
+}
+/* Helle Navigation mit kontrastreichen Namen, Icons und Tastaturfokus. */
+.app-shell .sidebar { background:#fff; border-right:1px solid var(--ds-border); box-shadow:none; }
+.app-shell .brand { color:var(--ds-text-strong); }
+.app-shell .brand strong { color:var(--ds-primary); }
+.app-shell .brand small, .app-shell .drawer-title { color:var(--ds-text-muted); }
+.app-shell .nav a, .app-shell .nav-group > summary, .app-shell .nav-logout-btn { color:#465b73; border-radius:12px; }
+.app-shell .nav-ico, .app-shell .nav-caret { color:#526d8b; }
+.app-shell .nav a:hover, .app-shell .nav-group > summary:hover, .app-shell .nav-logout-btn:hover { color:var(--ds-primary-hover); background:#f0f5fa; }
+.app-shell .nav a.active, .app-shell .nav a[aria-current="page"] { color:var(--ds-primary-hover); background:#e8f0f8; box-shadow:none; }
+.app-shell .nav a.active .nav-ico, .app-shell .nav a[aria-current="page"] .nav-ico { color:var(--ds-primary); }
+.app-shell .sidebar :focus-visible { outline-color:var(--ds-primary); }
+.app-shell .nav { scrollbar-color:#aab9c9 transparent; }
+.app-shell .app-commandbar { background:rgba(255,255,255,.97); }
+.app-shell .command-user { background:#f9e6d1; color:#79512b; }
+.app-shell .command-action { color:var(--ds-text-muted); }
+.app-shell .command-search input { background:#f7f9fb; border-color:var(--ds-border-strong); }
+.app-shell .command-search input::placeholder { color:var(--ds-text-muted); }
+.app-shell .command-shortcut { color:var(--ds-text-muted); }
+/* Gemeinsame Bausteine für Listen, Kundenakte, Formulare und Restmodule. */
+.app-shell .h1 { font-weight:680; letter-spacing:-.035em; }
+.app-shell .card, .app-shell .form-card, .app-shell .soft-panel { border-radius:var(--ds-radius-lg); }
+.app-shell .form-card { background:#fcfdff; }
+.app-shell .btn.primary, .login-page .btn.primary { box-shadow:0 3px 9px rgba(53,102,153,.14); }
+.app-shell .btn.primary:hover, .login-page .btn.primary:hover { box-shadow:var(--ds-shadow-sm); }
+.app-shell .empty-state { background:linear-gradient(115deg,#eef4fa,#fff9f1); border-style:solid; }
+.app-shell .table th { background:#f8fafc; color:var(--ds-text-muted); }
+.app-shell .table tbody tr:hover td { background:#f2f7fc; }
+.app-shell .work-tabs a.active, .app-shell .ds-tab.active { color:var(--ds-primary-hover); }
+.app-shell .work-metrics .card { box-shadow:var(--ds-shadow-xs); }
+.app-shell .work-shortcuts a { padding:12px; border-radius:12px; background:var(--ds-surface-subtle); }
+/* Dashboard: das warme Begrüßungsband und die drei Aufgaben aus Entwurf C. */
+.app-shell .dashboard-page > .topbar {
+  padding:26px; border-radius:20px;
+  background:linear-gradient(110deg,#e6f0fa 0%,#f0f5f8 61%,#fbecda 100%);
+  align-items:center;
+}
+.app-shell .dashboard-page .welcome-heading { margin:6px 0 9px; }
+.app-shell .dashboard-page .work-task { padding:24px; box-shadow:var(--ds-shadow-sm); }
+.app-shell .dashboard-page .work-task:nth-child(2) { background:#fff8ed; }
+.app-shell .dashboard-page .work-task:nth-child(3) { background:#eef4fa; }
+.app-shell .dashboard-page .work-count { font-weight:600; }
+.app-shell .dashboard-page .task-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.app-shell .dashboard-page .task-icon { display:grid; place-items:center; width:38px; height:38px; flex:none; border-radius:50%; color:var(--ds-primary); background:#e0ebf6; }
+.app-shell .dashboard-page .work-task:nth-child(2) .task-icon { background:#f6e8d4; color:#895820; }
+/* Auch die Anmeldung gehört zur hellen Oberfläche. */
+body.login-light-blue { background:linear-gradient(120deg,#edf4fa 0%,#f7f9fb 65%,#fbefdf 100%); min-height:100vh; }
+.login-light-blue .login-page .card { padding:28px; box-shadow:var(--ds-shadow-md); }
+.login-light-blue .login-page h1 { color:var(--ds-text-strong); font-size:28px; }
+@media(max-width:760px) {
+  .app-shell .dashboard-page > .topbar { padding:20px 16px; }
+  .app-shell .dashboard-page .work-task { padding:20px; }
+  .app-shell .work-shortcuts a { padding:14px; }
+}
+@media print {
+  .app-shell .dashboard-page > .topbar, .app-shell .dashboard-page .work-task, .app-shell .empty-state { background:#fff; box-shadow:none; }
+}
