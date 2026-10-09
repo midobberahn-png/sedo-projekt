@@ -5,6 +5,28 @@ Bonsai und Whisper verarbeiten Assistentenanfragen beziehungsweise Diktate lokal
 Eingerichtete Mail-, Kalender-, Bank- und Wetterverbindungen kommunizieren mit
 den jeweiligen Anbietern. Beim erstmaligen Diktat wird ein Sprachmodell geladen.
 
+## Programm ausprobieren und prüfen
+
+Den vollständigen Quellcode über **Code → Download ZIP** herunterladen oder
+dieses Repository klonen. Für den Start aus dem Quellcode Python **3.13.15**
+installieren, das Archiv vollständig entpacken und den passenden Starter ausführen:
+`START_HIER.command` auf macOS oder `START_WINDOWS.bat` auf Windows.
+Abhängigkeiten werden beim ersten Start automatisch eingerichtet.
+
+Für Apple-Silicon-Macs ab macOS 14 gibt es außerdem ein signiertes und
+notarisiertes Testprogramm unter [Releases](https://github.com/midobberahn-png/sedo-projekt/releases/tag/v3.21.0-rc.1).
+Dafür ist keine Python-Installation nötig. Ein fertiger Windows-Installer
+ist dort noch nicht verfügbar; auf Windows den Quellcode-Starter verwenden.
+
+Nach der ersten Anmeldung die eigenen Firmendaten einrichten. Zum Ausprobieren
+zunächst erfundene Kunden und Rechnungen verwenden. Zugangsdaten für optionale
+Mail-, Bank- und Kalenderdienste richtet jeder Tester selbst ein.
+
+Entwickler finden die vollständigen Tests in `sedo/tests/`; die reproduzierbare
+Prüfung und Buildanleitung stehen in [LOCAL_CHECKS.md](LOCAL_CHECKS.md) und
+[TESTSTAND.md](TESTSTAND.md). Fehlerberichte sollten den Ablauf, die Plattform
+und den verwendeten Commit nennen und keine Passwörter oder Geschäftsdaten enthalten.
+
 ## Stand und Freigabe
 
 Dieser Branch ist ein gehärteter **Veröffentlichungskandidat**, keine bestätigte
