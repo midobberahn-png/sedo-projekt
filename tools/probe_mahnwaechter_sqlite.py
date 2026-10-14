@@ -31,14 +31,20 @@ def main():
         from django.db import close_old_connections, connection, connections
         from django.utils import timezone
         from sedo.models import AuditLog, Customer, DunningDocument, Invoice, InvoiceItem
+        from sedo.company_profile import save_profile
+        from sedo.tests.company_fixtures import SYNTHETIC_PROFILE
         from sedo.services.invoices import create_storno, finalisiere_entwurf
         from sedo.services import invoices, dunning
         from sedo.services.workflow_errors import WorkflowError
         assert Path(settings.DATABASES['default']['NAME']).is_relative_to(home)
         call_command('migrate', interactive=False, verbosity=0)
+        save_profile(SYNTHETIC_PROFILE)
         results = []
         try:
-            customer = Customer.objects.create(name='TEST Mahnwächter Datei-SQLite')
+            customer = Customer.objects.create(
+                name='TEST Mahnwächter Datei-SQLite', street='Testweg 1',
+                postcode='12345', city='Teststadt', country='DE',
+            )
             for mode in ('storno', 'korrektur', 'mahnung'):
                 inv = Invoice.objects.create(customer=customer, number='RE-FILE-'+mode,
                     status='ueberfaellig', gross_total=119,
@@ -84,7 +90,12 @@ def main():
                     finally:
                         connections.close_all()
                 def record(execute, sql, params, many, context):
-                    if sql.lstrip().upper().startswith(('UPDATE', 'SELECT', 'INSERT', 'DELETE')):
+                    # Profil-Lektüre darf den konkurrierenden Schreibversuch
+                    # nicht vorzeitig freigeben. Maßgeblich ist die erste
+                    # Berührung der betroffenen Rechnung.
+                    upper = sql.lstrip().upper()
+                    if (upper.startswith(('UPDATE', 'SELECT', 'INSERT', 'DELETE'))
+                            and 'SEDO_INVOICE' in upper):
                         statements.append(sql)
                         attempted.set()
                     return execute(sql, params, many, context)
