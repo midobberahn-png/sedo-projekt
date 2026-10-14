@@ -21,12 +21,13 @@ APP = Path(__file__).resolve().parents[1]
 TEST = 'sedo.tests.test_draft_workflow.DraftWorkflowTests.'
 INVOICES = 'sedo/services/invoices.py'
 VIEWS = 'sedo/views.py'
+CREATION = 'sedo/services/invoice_creation.py'
 # Name, Datei, eindeutiger Originaltext, Mutation, passender Test.
 MUTATIONEN = [
     ('entwurf_xml_riegel', INVOICES,
      "    is_draft = invoice.lifecycle == 'draft'\n", "    is_draft = False\n",
      'test_f13_entwurf_ruft_keinen_xml_generator_auf'),
-    ('en_statt_re_beim_anlegen', VIEWS,
+    ('en_statt_re_beim_anlegen', CREATION,
      "save_with_unique_number(inv, 'EN' if action == 'draft' else 'RE')",
      "save_with_unique_number(inv, 'RE')", 'test_f13_neuer_entwurf_bekommt_en_ohne_re_verbrauch'),
     ('en_wird_re_beim_finalisieren', INVOICES,
