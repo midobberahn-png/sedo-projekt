@@ -32,6 +32,7 @@ ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'deskto
               'sedo_setup_windows.iss', 'WINDOWS_ERSTINSTALLATION.txt',
               '.env.example', '.gitattributes', '.gitignore', 'README.md', 'DEPLOYMENT_SECURITY_NOTES.md',
               'LOCAL_CHECKS.md', 'BONSAI.md', 'E_MAIL.md', 'KALENDER.md',
+              'RECHNUNGSREGELN.md',
               'DASHBOARD.md', 'SPAMFILTER.md', 'EINGANGSRECHNUNGEN.md',
               'START_HIER.command', 'START_WINDOWS.bat', 'SEDO_BEENDEN.command',
               'SEDO_BEENDEN.bat', 'SEDO.vbs', 'DESKTOP_VERKNUEPFUNG_ERSTELLEN.bat', 'SEDO.app/Contents/Info.plist',
@@ -110,7 +111,11 @@ def install(target: Path, app: Path = APP) -> Path:
     entries = validate_lock(app)
     if target.exists():
         raise BuildError('Build-Umgebung existiert bereits; wird nicht überschrieben.')
-    venv.EnvBuilder(with_pip=True).create(target)
+    # Portable Python-Distributionen können beim Kopieren des Executables
+    # ihren Basis-Pfad verlieren (sys.base_prefix zeigt dann auf /install).
+    # Auf Unix auf den Original-Interpreter verweisen; Windows bleibt bei
+    # Kopien, da Symlinks dort nicht für jeden Benutzer verfügbar sind.
+    venv.EnvBuilder(with_pip=True, symlinks=os.name != 'nt').create(target)
     python = target / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     # Einige Desktop-Abhängigkeiten kommen als sdist. Auch ihr Backend ist
     # gesperrt: vorher aus Hash-Lock installieren, danach KEINE Build-Isolation.

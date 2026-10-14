@@ -2,7 +2,7 @@
 import gegenproben_entwurf as runner
 
 runner.TEST = 'sedo.tests.test_hardening_selection_due.'
-VIEWS = 'sedo/views.py'
+VIEWS = 'sedo/monthly_views.py'
 DUNNING = 'sedo/services/dunning.py'
 runner.MUTATIONEN = [
     ('leere_auswahl_wieder_alle', VIEWS,

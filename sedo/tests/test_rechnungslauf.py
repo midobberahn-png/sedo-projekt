@@ -5,8 +5,10 @@ Ausführen: python manage.py test sedo.tests
 """
 from decimal import Decimal
 from datetime import datetime
+from types import SimpleNamespace
 from .company_fixtures import SyntheticSellerTestCase as TestCase
 
+from django.test import TestCase as DjangoTestCase
 from lxml import etree
 
 from sedo.core.rechnungslauf_core import (
@@ -18,6 +20,8 @@ from sedo.core.rechnungslauf_core import (
     D,
     clean_code,
 )
+from sedo.forms import InvoiceForm, OfferForm, RecurringInvoiceTemplateForm
+from sedo.view_support import _preview_from_forms
 
 NSMAP = {
     "rsm": "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100",
@@ -82,9 +86,14 @@ class TestBetragsberechnungen(TestCase):
         row = _row()
         self.assertEqual(row.vat_amount, Decimal("19.00"))
 
+    def test_null_prozent_wird_vor_ungueltiger_erechnung_gestoppt(self):
+        with self.assertRaisesRegex(ValueError, 'Steuerkategorie'):
+            build_xml(_row(vat_rate=Decimal('0')), ISSUE, None, None, DUE)
+
     def test_gross(self):
         row = _row()
         self.assertEqual(row.gross, Decimal("119.00"))
+
 
     def test_mehrere_positionen(self):
         row = _row(positions=[
@@ -99,6 +108,21 @@ class TestBetragsberechnungen(TestCase):
             InvoicePosition("Test", Decimal("1"), "Stk.", Decimal("0.005")),
         ])
         self.assertEqual(row.net_total, Decimal("0.01"))
+
+
+class TestVatRateForms(DjangoTestCase):
+    def test_formulare_lehnen_nicht_unterstuetzte_steuersaetze_ab(self):
+        for form_class in (InvoiceForm, OfferForm, RecurringInvoiceTemplateForm):
+            with self.subTest(form=form_class.__name__):
+                form = form_class(data={'vat_rate': '0'})
+                self.assertFalse(form.is_valid())
+                self.assertIn('vat_rate', form.errors)
+
+    def test_vorschau_ersetzt_null_prozent_nicht_still_durch_neunzehn(self):
+        form = SimpleNamespace(cleaned_data={'vat_rate': Decimal('0')})
+        formset = SimpleNamespace(forms=[])
+        preview = _preview_from_forms(form, formset)
+        self.assertEqual(preview['vat_rate'], Decimal('0'))
 
 
 # ---------------------------------------------------------------------------

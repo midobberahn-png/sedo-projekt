@@ -153,6 +153,7 @@ class KatalogTests(TestCase):
         apply_and_learn_service_catalog(positionen)
         item = ServiceCatalogItem.objects.get(name='Winterdienst')
         self.assertEqual(item.long_text, 'Räum- und Streudienst.')
+        self.assertTrue(item.created_by_ai)
         self.assertEqual(ServiceCatalogItem.objects.count(), 1)
 
     def test_katalog_prompt_block(self):

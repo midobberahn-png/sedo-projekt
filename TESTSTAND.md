@@ -4,6 +4,23 @@ Diese Anleitung beschreibt reproduzierbare Softwareprüfungen und native
 Testpakete. Sie bescheinigt keine Produktivfreigabe, Signierung oder Abnahme auf
 einem Endnutzerrechner. Ergänzende lokale Prüfungen: [LOCAL_CHECKS.md](LOCAL_CHECKS.md).
 
+## Automatische Pull-Request-Prüfung
+
+`.github/workflows/pr-regression.yml` prüft jeden Pull Request gegen `main`
+und jeden Push auf `main` auf einem macOS-15-ARM64-Runner. Für Django 5.2.17 und
+6.0.9 laufen jeweils `tools/teststand.py validate`, `manage.py check`,
+`makemigrations --check --dry-run` und die vollständigen `sedo`-Tests.
+Die GitHub-Actions-Bausteine sind auf konkrete Commits festgelegt; der Job
+erhält keine Betriebszugänge oder Schreibrechte am Repository. Das optionale
+Diktatpaket `faster-whisper` wird wie bei der lokalen Entwicklungsprüfung
+für diese beiden Testumgebungen ausgelassen. Die übrigen Release-Kernpakete
+nutzen die festgelegten Versionsgrenzen aus
+`requirements-release-constraints.txt`.
+
+Der PR-Check ist eine schnelle Regression, **kein Ersatz** für den
+commitgebundenen lokalen Vollprüfstand `tools/local_checks.py`, dessen
+Gegenproben, den nativen Build oder die fachliche und betriebliche Abnahme.
+
 ## Was festgelegt wird
 
 - Build-Python: **3.13.15**; Releaseprofil: Django **5.2.17**. Die zusätzliche

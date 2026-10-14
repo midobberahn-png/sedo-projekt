@@ -3,11 +3,11 @@
   "python": "3.13.15",
   "resolver": "uv 0.12.5",
   "label": "h2.1",
-  "lock_sha256": "3d23b5f92dd5b176c5b0f3c640346c61f85c7a82b50add86006a604932840fdb",
+  "lock_sha256": "223d202d20d4b705c95b5ddd18d21f311f4c25de3637fd9ddee314bdef999c25",
   "inputs": {
     "requirements.txt": "3b5a6caa374fd1ec4ae5c4d3e500f8648eb3dcec1e8921a0a3f98df948c9ae73",
     "requirements_desktop.txt": "b926996b6cf6890382389efc03b32e919f588acb71663b7e98bd6242970aa184",
     "requirements-release.in": "bf04c7fe38e116fa3ca4ad31d724b59fac29cd9c8aa4a249696b84a624c5f22b",
-    "requirements-release-constraints.txt": "91fcefe9b3ded9ff44a5e1e4ea36f584c6f9c0985d5a051e0001fd0c6b5c91f0"
+    "requirements-release-constraints.txt": "db37aafb0735e9270d914782402c3f857a0a0337ba2c3768382dbad7c2163add"
   }
 }

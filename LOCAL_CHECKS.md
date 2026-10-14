@@ -70,10 +70,12 @@ Windows-VM kann das später ergänzen, ist hier nicht automatisch installiert.
 Die Berichte dokumentieren lokale Ausführung; sie sind keine signierte externe
 Zertifizierung und können von einem lokalen Bearbeiter verändert werden.
 
-## Optionale Prüfung auf GitHub
+## Ergänzende Prüfung auf GitHub
 
-Dieser Quellstand benötigt keine GitHub-Workflows. Soll eine separate
-Prüfumgebung eingerichtet werden, muss sie denselben exakten Commit mit
-synthetischen Daten prüfen. Betriebsdaten, Zugangsdaten und lokale Testprotokolle
-dürfen dabei nicht hochgeladen werden. Die lokale Prüfung verändert weder
-Workflow-Einstellungen noch Branch-Schutzregeln.
+Die automatische PR-Prüfung ist in
+[TESTSTAND.md](TESTSTAND.md#automatische-pull-request-prüfung) beschrieben.
+Sie prüft denselben Commit auf macOS ARM64 mit synthetischen Testdaten. Der
+lokale Vollprüfstand bleibt Voraussetzung für den Entwicklungs-Merge, weil die
+GitHub-Prüfung weder die Gegenproben noch den nativen Build abdeckt.
+Betriebsdaten, Zugangsdaten und lokale Testprotokolle werden nicht hochgeladen.
+Die lokale Prüfung verändert weder Workflow-Einstellungen noch Branch-Schutzregeln.

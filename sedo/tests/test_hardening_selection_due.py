@@ -65,7 +65,7 @@ class RecurringSelectionHardeningTests(IsolatedBusinessTest):
 
     def assert_rejected(self, ids=None, **extra):
         before = self.business_state()
-        with patch('sedo.views._generate_recurring_invoice_from_template',
+        with patch('sedo.monthly_views._generate_recurring_invoice_from_template',
                    side_effect=AssertionError('Generator darf bei abgewiesener Auswahl nicht starten')) as create:
             response = self.post(ids, **extra)
             create.assert_not_called()

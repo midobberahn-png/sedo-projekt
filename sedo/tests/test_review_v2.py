@@ -27,7 +27,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from sedo.backup_utils import backup_dir
-from sedo.services.mail import EmailAttachment
+from sedo.services.mail import EmailAttachment, SMTPDeliveryUncertain
 from sedo.models import (
     AareonMapping, AppSetting, AuditLog, CashbookEntry, Customer, DeleteProtectedError,
     DunningDocument, Invoice, Payment, ServiceCatalogItem,
@@ -71,9 +71,9 @@ class F17MappingImportOhneGueltigeZeilenTests(TestCase):
         AareonMapping.objects.create(billing_unit_sender='Quittenweg 4', service_id='Winterdienst')
 
     def _import(self, df):
-        from sedo import views
-        with patch('sedo.views.messages'), patch('sedo.views.write_audit'):
-            return views._perform_aareon_mapping_import(df, request=None)
+        from sedo.services import aareon_mapping
+        with patch('sedo.services.aareon_mapping.messages'), patch('sedo.services.aareon_mapping.write_audit'):
+            return aareon_mapping.perform_aareon_mapping_import(df, request=None)
 
     def test_richtige_kopfzeile_aber_null_gueltige_zeilen_bricht_ab(self):
         # Kopfzeile stimmt, alle Zellen leer – z. B. gefilterter Export oder
@@ -108,9 +108,9 @@ class F16MonatslaufPreisPruefungTests(TestCase):
     """F-16: Leere oder unlesbare Mengen/Preise dürfen keinen Lauf starten."""
 
     def _services(self, **post):
-        from sedo import views
+        from sedo import monthly_views
         request = RequestFactory().post('/monatsrechnung/aareon/', post)
-        return views._selected_monthly_services(request)
+        return monthly_views._selected_monthly_services(request)
 
     def test_gueltige_werte_werden_uebernommen(self):
         services, fehler = self._services(use_Reinigung='1', qty_Reinigung='2', price_Reinigung='58,00')
@@ -273,6 +273,36 @@ class F09SmtpZertifikatspruefungTests(TestCase):
         AppSetting.set('smtp_host', '')
         with self.assertRaisesRegex(ValueError, 'nicht konfiguriert'):
             send_email_smtp('kunde@example.de', 'Betreff', 'Text')
+
+    def test_quit_fehler_nach_annahme_ist_keine_fehlgeschlagene_zustellung(self):
+        with patch('sedo.services.mail.smtplib.SMTP') as smtp:
+            smtp.return_value.__exit__.side_effect = OSError('QUIT unterbrochen')
+            smtp.return_value.__enter__.return_value.send_message.return_value = {}
+            send_email_smtp('kunde@example.de', 'Betreff', 'Text')
+        smtp.return_value.__enter__.return_value.send_message.assert_called_once()
+
+    def test_verbindungsabbruch_waehrend_send_message_bleibt_unklar(self):
+        with patch('sedo.services.mail.smtplib.SMTP') as smtp:
+            smtp.return_value.__enter__.return_value.send_message.side_effect = \
+                smtplib.SMTPServerDisconnected('Verbindung weg')
+            with self.assertRaises(SMTPDeliveryUncertain):
+                send_email_smtp('kunde@example.de', 'Betreff', 'Text')
+
+    def test_explizit_abgewiesener_empfaenger_ist_nicht_unklar(self):
+        with patch('sedo.services.mail.smtplib.SMTP') as smtp:
+            smtp.return_value.__enter__.return_value.send_message.side_effect = \
+                smtplib.SMTPRecipientsRefused({'kunde@example.de': (550, b'abgewiesen')})
+            with self.assertRaises(smtplib.SMTPException) as caught:
+                send_email_smtp('kunde@example.de', 'Betreff', 'Text')
+        self.assertNotIsInstance(caught.exception, SMTPDeliveryUncertain)
+
+    def test_explizite_data_ablehnung_ist_nicht_unklar(self):
+        with patch('sedo.services.mail.smtplib.SMTP') as smtp:
+            smtp.return_value.__enter__.return_value.send_message.side_effect = \
+                smtplib.SMTPDataError(552, b'zu gross')
+            with self.assertRaises(smtplib.SMTPException) as caught:
+                send_email_smtp('kunde@example.de', 'Betreff', 'Text')
+        self.assertNotIsInstance(caught.exception, SMTPDeliveryUncertain)
 
 
 class F03F31F81BackupBereinigungTests(TestCase):
@@ -1007,14 +1037,14 @@ class Neu2DatumOhneStillenErsatzwertTests(TestCase):
     def test_gueltige_formate_werden_gelesen(self):
         from datetime import date as d
 
-        from sedo.views import parse_date_for_view
+        from sedo.services.date_input import parse_date_for_view
 
         self.assertEqual(parse_date_for_view('2026-09-08'), d(2026, 9, 8))
         self.assertEqual(parse_date_for_view('08.09.2026'), d(2026, 9, 8))
         self.assertEqual(parse_date_for_view('20260908'), d(2026, 9, 8))
 
     def test_unlesbares_datum_wirft_statt_heute_zu_liefern(self):
-        from sedo.views import DatumUnlesbar, parse_date_for_view
+        from sedo.services.date_input import DatumUnlesbar, parse_date_for_view
 
         for wert in ('irgendwas', '', '32.13.2026', None):
             with self.subTest(wert=wert):
@@ -1022,7 +1052,7 @@ class Neu2DatumOhneStillenErsatzwertTests(TestCase):
                     parse_date_for_view(wert)
 
     def test_optionale_variante_liefert_none(self):
-        from sedo.views import parse_date_optional
+        from sedo.services.date_input import parse_date_optional
 
         self.assertIsNone(parse_date_optional('kaputt'))
         self.assertIsNotNone(parse_date_optional('2026-09-08'))
@@ -1033,7 +1063,7 @@ class Neu2DatumOhneStillenErsatzwertTests(TestCase):
         from datetime import date as d
         from datetime import datetime as dt
 
-        from sedo.views import parse_date_optional
+        from sedo.services.date_input import parse_date_optional
 
         self.assertEqual(parse_date_optional(dt(2026, 9, 8, 14, 30)), d(2026, 9, 8))
 
@@ -1428,6 +1458,28 @@ class F07WaechterAmBelegGraphenTests(TestCase):
         self.assertTrue(versand_nachweis(rechnung),
                         'Ein Altbestands-Protokolleintrag muss als Nachweis zählen.')
 
+    def test_eml_export_ist_kein_versandnachweis_aber_ausblenden_bleibt_gesperrt(self):
+        from sedo.services.invoices import ausblenden_hindernis, versand_nachweis
+
+        rechnung = self._rechnung('RE2026070092', status='versendet')
+        AuditLog.objects.create(action='generate', object_type='Invoice',
+                                object_id=str(rechnung.pk), object_repr=rechnung.number,
+                                message='E-Mail-Entwurf (.eml) zur Rechnung erzeugt',
+                                metadata={'vorgang': 'versand', 'weg': 'eml'})
+        self.assertFalse(versand_nachweis(rechnung))
+        self.assertIn('Versand', ausblenden_hindernis(rechnung))
+
+    def test_unspezifischer_alttext_ist_kein_versandnachweis(self):
+        from sedo.services.invoices import ausblenden_hindernis, versand_lage
+
+        rechnung = self._rechnung('RE2026070093', status='erstellt')
+        AuditLog.objects.create(action='generate', object_type='Invoice',
+                                object_id=str(rechnung.pk), object_repr=rechnung.number,
+                                message='Rechnung noch nicht versendet',
+                                metadata={'vorgang': 'versand'})
+        self.assertEqual(versand_lage(rechnung), 'unklar')
+        self.assertIn('ungeklärt', ausblenden_hindernis(rechnung))
+
     # --- Ausblenden --------------------------------------------------------------
     def test_ausblenden_erlaubt_fuer_unversendete_rechnung(self):
         from sedo.services.invoices import ausblenden_hindernis
@@ -1452,7 +1504,13 @@ class F07WaechterAmBelegGraphenTests(TestCase):
         from sedo.services.invoices import ausblenden_hindernis
 
         rechnung = self._rechnung('RE2026070131', status='versendet')
-        self.assertIn('versendet', ausblenden_hindernis(rechnung))
+        self.assertIn('ungeklärt', ausblenden_hindernis(rechnung))
+
+    def test_altstatus_versendet_ohne_nachweis_bleibt_unklar(self):
+        from sedo.services.invoices import versand_nachweis
+
+        rechnung = self._rechnung('RE2026070132', status='versendet')
+        self.assertFalse(versand_nachweis(rechnung))
 
     def test_folgebeleg_wird_nie_ausgeblendet(self):
         from sedo.services.invoices import ausblenden_hindernis
@@ -1496,18 +1554,45 @@ class F07ViewsUndSichtbarkeitTests(TestCase):
         for i, (vorher, erwartet) in enumerate(faelle):
             with self.subTest(status=vorher):
                 rechnung = self._rechnung(f'RE202606{i:04d}', status=vorher)
-                with patch('sedo.views.smtp_is_configured', return_value=True), \
-                     patch('sedo.views.send_email_smtp'), \
-                     patch('sedo.views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'TEST Original')):
+                with patch('sedo.invoice_views.smtp_is_configured', return_value=True), \
+                     patch('sedo.invoice_views.send_email_smtp'), \
+                     patch('sedo.invoice_views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'TEST Original')):
                     self.client.post(reverse('sedo:invoice_email', args=[rechnung.pk]))
                 rechnung.refresh_from_db()
                 self.assertEqual(rechnung.status, erwartet)
 
+    def test_unklarer_smtp_status_zeigt_warnung_ohne_erneuten_versand(self):
+        rechnung = self._rechnung('RE2026060099')
+        with patch('sedo.invoice_views.smtp_is_configured', return_value=True), \
+             patch('sedo.invoice_views.send_email_smtp', side_effect=SMTPDeliveryUncertain('Versandstatus unklar')), \
+             patch('sedo.invoice_views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'Original')):
+            antwort = self.client.post(reverse('sedo:invoice_email', args=[rechnung.pk]))
+        rechnung.refresh_from_db()
+        self.assertEqual(rechnung.status, 'erstellt')
+        self.assertTrue(AuditLog.objects.filter(object_id=str(rechnung.pk),
+                                                metadata__vorgang='versand_ungeklaert').exists())
+        self.assertIn('unklar', ' '.join(str(m) for m in antwort.wsgi_request._messages))
+
+    def test_datenbankfehler_nach_smtp_annahme_wird_nicht_als_sendefehler_gemeldet(self):
+        rechnung = self._rechnung('RE2026060100')
+        with patch('sedo.invoice_views.smtp_is_configured', return_value=True), \
+             patch('sedo.invoice_views.send_email_smtp'), \
+             patch('sedo.invoice_views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'Original')), \
+             patch.object(Invoice, 'save', side_effect=RuntimeError('Testfehler')):
+            antwort = self.client.post(reverse('sedo:invoice_email', args=[rechnung.pk]))
+        rechnung.refresh_from_db()
+        self.assertEqual(rechnung.status, 'erstellt')
+        meldung = ' '.join(str(m) for m in antwort.wsgi_request._messages)
+        self.assertIn('per SMTP angenommen', meldung)
+        self.assertNotIn('E-Mail-Versand fehlgeschlagen', meldung)
+        self.assertTrue(AuditLog.objects.filter(object_id=str(rechnung.pk),
+                                                metadata__vorgang='versand').exists())
+
     def test_entwurf_wird_nicht_versendet(self):
         entwurf = self._rechnung('RE2026061001', status='entwurf')
-        with patch('sedo.views.smtp_is_configured', return_value=True), \
-             patch('sedo.views.send_email_smtp') as senden, \
-             patch('sedo.views.generate_invoice_files'):
+        with patch('sedo.invoice_views.smtp_is_configured', return_value=True), \
+             patch('sedo.invoice_views.send_email_smtp') as senden, \
+             patch('sedo.invoice_views.generate_invoice_files'):
             antwort = self.client.post(reverse('sedo:invoice_email', args=[entwurf.pk]), follow=True)
         senden.assert_not_called()
         self.assertContains(antwort, 'finalisieren')
@@ -1519,6 +1604,12 @@ class F07ViewsUndSichtbarkeitTests(TestCase):
         ziel = reverse('sedo:invoice_email', args=[entwurf.pk])
         self.assertNotIn(f'action="{ziel}"', inhalt,
                          'Weder der Knopf oben noch das KI-Formular darf für Entwürfe erscheinen.')
+
+    def test_ohne_smtp_verspricht_der_knopf_nur_einen_entwurf(self):
+        rechnung = self._rechnung('RE2026061021')
+        with patch('sedo.invoice_views.smtp_is_configured', return_value=False):
+            inhalt = self.client.get(reverse('sedo:invoice_detail', args=[rechnung.pk])).content.decode()
+        self.assertIn('E-Mail-Entwurf herunterladen', inhalt)
 
     # --- Die Filterreiter, die Falle dieser Etappe -------------------------------
     def test_reiter_liefern_die_richtigen_mengen(self):
@@ -1732,9 +1823,9 @@ class Etappe3NacharbeitTests(TestCase):
 
     def test_erneuter_versand_erzeugt_das_archiv_nicht_neu(self):
         rechnung = self._rechnung('RE2026050051', status='versendet')
-        with patch('sedo.views.smtp_is_configured', return_value=True), \
-             patch('sedo.views.send_email_smtp'), \
-             patch('sedo.views.generate_invoice_files') as erzeugen:
+        with patch('sedo.invoice_views.smtp_is_configured', return_value=True), \
+             patch('sedo.invoice_views.send_email_smtp'), \
+             patch('sedo.invoice_views.generate_invoice_files') as erzeugen:
             self.client.post(reverse('sedo:invoice_email', args=[rechnung.pk]))
         # F-18: Auch bei fehlender Originaldatei darf kein Ersatz aus aktuellen
         # Stammdaten erzeugt werden. Dieser Fall ist jetzt ausdrücklich gesperrt.

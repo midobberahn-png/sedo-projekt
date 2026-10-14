@@ -552,6 +552,15 @@ class MailSendTests(MailFixture):
         draft.refresh_from_db()
         self.assertEqual(draft.state, 'draft')
 
+    def test_close_failure_after_acceptance_does_not_offer_resend(self):
+        draft = self.draft()
+        with patch.object(self.smtp, 'close', side_effect=OSError('QUIT unterbrochen')):
+            sent = mail_send.send_draft(draft.pk, self.user, 0)
+        self.assertEqual(sent.state, 'sent')
+        self.assertEqual(len(self.smtp.deliveries), 1)
+        with self.assertRaises(MailError):
+            mail_send.send_draft(draft.pk, self.user, sent.revision)
+
     def test_sent_copy_failure_never_turns_accepted_message_back_to_draft(self):
         draft = self.draft()
         with patch('sedo.services.mail_send.append_sent', side_effect=MailError('offline')):

@@ -63,6 +63,7 @@ from .invoices import (
     ensure_versand_erlaubt,
     ensure_zahlung_erlaubt,
     versand_nachweis,
+    versand_lage,
     ensure_offer_invoicing_allowed,
     ensure_storno_allowed,
     generate_invoice_files,
@@ -72,6 +73,7 @@ from .invoices import (
     entwurf_sperren,
 )
 from .mail import (
+    SMTPDeliveryUncertain,
     create_email_draft,
     get_smtp_config,
     send_email_smtp,
@@ -109,7 +111,7 @@ __all__ = [
     # invoices
     'invoice_to_core_row', 'generate_invoice_files', 'create_storno', 'create_invoice_from_offer',
     'WorkflowError', 'ensure_storno_allowed', 'ensure_correction_allowed',
-    'ensure_zahlung_erlaubt', 'ensure_versand_erlaubt', 'versand_nachweis',
+    'ensure_zahlung_erlaubt', 'ensure_versand_erlaubt', 'versand_nachweis', 'versand_lage',
     'ausblenden_hindernis',
     'ensure_offer_invoicing_allowed', 'mark_invoice_corrected',
     'finalisiere_entwurf', 'entwurf_sperren',
@@ -126,6 +128,7 @@ __all__ = [
     'transcribe_audio', 'stt_status', 'TranscriptionUnavailable',
     # mail
     'create_email_draft', 'get_smtp_config', 'smtp_is_configured', 'send_email_smtp',
+    'SMTPDeliveryUncertain',
     # formatting
     'euro', '_euro',
     # ai

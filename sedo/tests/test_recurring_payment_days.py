@@ -17,7 +17,10 @@ from lxml import etree
 from sedo.forms import RecurringInvoiceTemplateForm
 from sedo.models import Customer, Invoice, InvoiceItem, NumberRange, RecurringInvoiceItem, RecurringInvoiceTemplate
 from sedo.services.invoice_archive import archivnachweis
-from sedo.views import _create_recurring_template_from_invoice, _recurring_payment_days
+from sedo.services.recurring_templates import (
+    create_recurring_template_from_invoice as _create_recurring_template_from_invoice,
+    recurring_payment_days as _recurring_payment_days,
+)
 from .file_fixtures import isolate_files
 
 
@@ -33,7 +36,7 @@ class RecurringPaymentFallbackTests(SimpleTestCase):
                 self.assertEqual(_recurring_payment_days(None, customer), customer)
 
     def test_beide_fehlend_nimmt_konfigurierte_konstante(self):
-        with patch('sedo.views.DEFAULT_PAYMENT_DAYS', 9):
+        with patch('sedo.services.recurring_templates.DEFAULT_PAYMENT_DAYS', 9):
             self.assertEqual(_recurring_payment_days(None, None), 9)
 
 
@@ -189,8 +192,8 @@ class RecurringPaymentDaysTests(TestCase):
         # ungespeichertes Testobjekt einspeisen; die echte View berechnet das Datum.
         tmpl = SimpleNamespace(pk=1, title='TEST None', payment_days=None,
                                customer=SimpleNamespace(payment_days=customer_days))
-        with patch('sedo.views.RecurringInvoiceTemplate.objects.filter') as query, \
-             patch('sedo.views._generate_recurring_invoice_from_template') as create:
+        with patch('sedo.monthly_views.RecurringInvoiceTemplate.objects.filter') as query, \
+             patch('sedo.monthly_views._generate_recurring_invoice_from_template') as create:
             query.return_value.select_related.return_value = [tmpl]
             create.return_value = SimpleNamespace(id=123)
             self.client.post(self.url, {'month': '2026-09', 'issue_date': self.issue.isoformat(), 'template_ids': ['1']})
@@ -204,5 +207,5 @@ class RecurringPaymentDaysTests(TestCase):
         self.fallback_from_view(21, 21)
 
     def test_monatslauf_beide_fehlend_verwendet_standard(self):
-        with patch('sedo.views.DEFAULT_PAYMENT_DAYS', 9):
+        with patch('sedo.services.recurring_templates.DEFAULT_PAYMENT_DAYS', 9):
             self.fallback_from_view(None, 9)

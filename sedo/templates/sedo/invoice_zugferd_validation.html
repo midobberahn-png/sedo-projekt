@@ -9,5 +9,5 @@
   {% if validation.warnings %}<h3>Grenzen dieser Prüfung</h3><ul class="clean-list">{% for warning in validation.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>{% endif %}
   {% if validation.checks %}<h3>Erfolgreich geprüft</h3><ul class="clean-list">{% for check in validation.checks %}<li>{{ check }}</li>{% endfor %}</ul>{% endif %}
 </div>
-{% if validation.ok %}<div class="toolbar"><form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}">{% csrf_token %}<button class="btn primary" type="submit">Geprüfte Rechnung per E-Mail senden</button></form></div>{% endif %}
+{% if validation.ok %}<div class="toolbar"><form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}">{% csrf_token %}<button class="btn primary" type="submit">{% if smtp_configured %}Geprüfte Rechnung per E-Mail senden{% else %}E-Mail-Entwurf der geprüften Rechnung herunterladen{% endif %}</button></form></div>{% endif %}
 {% endblock %}

@@ -24,8 +24,10 @@ Mail-, Bank- und Kalenderdienste richtet jeder Tester selbst ein.
 
 Entwickler finden die vollständigen Tests in `sedo/tests/`; die reproduzierbare
 Prüfung und Buildanleitung stehen in [LOCAL_CHECKS.md](LOCAL_CHECKS.md) und
-[TESTSTAND.md](TESTSTAND.md). Fehlerberichte sollten den Ablauf, die Plattform
-und den verwendeten Commit nennen und keine Passwörter oder Geschäftsdaten enthalten.
+[TESTSTAND.md](TESTSTAND.md). Der Weg von Eingabe über Belegerzeugung bis
+zum Archiv steht in [RECHNUNGSREGELN.md](RECHNUNGSREGELN.md). Fehlerberichte
+sollten den Ablauf, die Plattform und den verwendeten Commit nennen und keine
+Passwörter oder Geschäftsdaten enthalten.
 
 ## Stand und Freigabe
 
@@ -102,6 +104,7 @@ notarisiertes oder allgemein freigegebenes Installationspaket.
 Bedienung: [BEDIENHINWEISE.md](BEDIENHINWEISE.md),
 [E-Mail](E_MAIL.md), [Kalender](KALENDER.md),
 [Eingangsrechnungen](EINGANGSRECHNUNGEN.md), [Bonsai](BONSAI.md).
+Für Änderungen am Rechnungsablauf: [Rechnungsregeln](RECHNUNGSREGELN.md).
 
 Für öffentliche Verteilung müssen außerdem die Herausgeberlizenz und die
 Lizenzhinweise aller mitgelieferten Drittkomponenten geklärt sein. Dieser

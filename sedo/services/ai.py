@@ -291,9 +291,10 @@ def apply_and_learn_service_catalog(positionen: list[dict]) -> str:
                 wiederverwendet += 1
             elif pos.get('leistungstext'):
                 existing.long_text = pos['leistungstext']
+                existing.created_by_ai = True
                 if not existing.default_unit and pos.get('einheit'):
                     existing.default_unit = pos['einheit'][:40]
-                existing.save(update_fields=['long_text', 'default_unit', 'updated_at'])
+                existing.save(update_fields=['long_text', 'default_unit', 'created_by_ai', 'updated_at'])
         elif pos.get('leistungstext'):
             ServiceCatalogItem.objects.create(
                 name=name[:120],

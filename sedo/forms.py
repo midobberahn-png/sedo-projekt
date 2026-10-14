@@ -7,6 +7,18 @@ CUSTOMER_WIDGET_CLASS = {'class': 'form-control form-control-sm'}
 SELECT_WIDGET_CLASS = {'class': 'form-select form-select-sm'}
 
 
+class PositiveVatRateMixin:
+    """Die Rechnungserzeugung unterstützt derzeit nur positive Standard-USt."""
+
+    def clean_vat_rate(self):
+        rate = self.cleaned_data['vat_rate']
+        if rate is None or rate <= Decimal('0'):
+            raise forms.ValidationError(
+                '0 % oder negative Umsatzsteuer werden derzeit nicht unterstützt. '
+                'Für steuerfreie Rechnungen fehlt die passende Steuerkategorie im E-Rechnungsformat.')
+        return rate
+
+
 class CompanyProfileForm(forms.Form):
     """Only local administrator-entered identity; no built-in business values."""
     def __init__(self, *args, **kwargs):
@@ -59,7 +71,7 @@ class CustomerObjectForm(forms.ModelForm):
         widgets = {f: forms.TextInput(attrs=CUSTOMER_WIDGET_CLASS) for f in ['name','street','postcode','city','country']}
         widgets['customer'] = forms.Select(attrs=SELECT_WIDGET_CLASS)
 
-class InvoiceForm(forms.ModelForm):
+class InvoiceForm(PositiveVatRateMixin, forms.ModelForm):
     customer = forms.ModelChoiceField(
         label='Gespeicherten Kunden auswählen (optional)',
         queryset=Customer.objects.all(), required=False,
@@ -157,7 +169,7 @@ class InvoiceItemForm(forms.ModelForm):
 
 InvoiceItemFormSet = inlineformset_factory(Invoice, InvoiceItem, form=InvoiceItemForm, extra=0, can_delete=True, min_num=1, validate_min=True)
 
-class OfferForm(forms.ModelForm):
+class OfferForm(PositiveVatRateMixin, forms.ModelForm):
     customer = forms.ModelChoiceField(label='Gespeicherten Kunden auswählen (optional)', queryset=Customer.objects.all(), required=False, widget=forms.Select(attrs=SELECT_WIDGET_CLASS))
     obj = forms.ModelChoiceField(label='Gespeichertes Objekt auswählen (optional)', queryset=CustomerObject.objects.select_related('customer').all(), required=False, widget=forms.Select(attrs=SELECT_WIDGET_CLASS))
     valid_days = forms.IntegerField(label='Gültig in Tagen', initial=14, min_value=0, widget=forms.NumberInput(attrs=CUSTOMER_WIDGET_CLASS))
@@ -259,7 +271,7 @@ class CashbookEntryForm(forms.ModelForm):
         }
 
 
-class RecurringInvoiceTemplateForm(forms.ModelForm):
+class RecurringInvoiceTemplateForm(PositiveVatRateMixin, forms.ModelForm):
     class Meta:
         model = RecurringInvoiceTemplate
         fields = ['customer','obj','title','status','vat_rate','payment_days','note']

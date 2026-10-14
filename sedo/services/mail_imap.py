@@ -6,7 +6,6 @@ import ssl
 import threading
 import time
 import uuid
-import certifi
 from contextlib import contextmanager
 from datetime import timedelta
 
@@ -18,6 +17,7 @@ from sedo.models import MailAccount, MailFolder, MailLocation
 from .mail_mime import MAX_MESSAGE_BYTES, store_message
 from .mail_secrets import MailError, decrypt_password
 from .mail_storage import cache_exists
+from .smtp_transport import verified_tls_context
 
 TIMEOUT = 20
 SYNC_BATCH = 100
@@ -66,11 +66,7 @@ def foreground_lease(account_id, timeout=5):
 
 
 def tls_context():
-    context = ssl.create_default_context()
-    # A frozen Mac app cannot rely on the build machine's OpenSSL CA path.
-    # Add the bundled public CA store while preserving platform trust and validation.
-    context.load_verify_locations(cafile=certifi.where())
-    return context
+    return verified_tls_context()
 
 
 @contextmanager

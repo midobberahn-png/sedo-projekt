@@ -13,6 +13,7 @@ from sedo.models import MailAccount, MailDraft
 from .mail_imap import account_lease, append_sent, tls_context
 from .mail_mime import MAX_MESSAGE_BYTES, addresses, attachment_bytes, safe_name, store_message
 from .mail_secrets import MailError, decrypt_password
+from .smtp_transport import DeliveryOutcome, classify_failure
 
 MAX_ATTACHMENTS_BYTES = 25 * 1024 * 1024
 
@@ -170,15 +171,16 @@ def send_draft(draft_id, author, revision):
             sent_message = store_message(draft.account, raw)
             MailDraft.objects.filter(pk=draft.pk).update(state='sent', sent_at=timezone.now(), sent_message=sent_message, error='')
         except Exception as exc:
-            if accepted:
+            outcome = classify_failure(exc, data_may_have_started=data_started,
+                                       accepted=accepted)
+            if outcome is DeliveryOutcome.ACCEPTED:
                 # SMTP acceptance is final even if storing a local copy failed.
                 MailDraft.objects.filter(pk=draft.pk).update(state='sent', sent_at=timezone.now(), error='Versendet; die lokale Kopie muss erneut gespeichert werden.')
                 raise MailError('Die E-Mail wurde versendet. Bitte die Versandkopie erneut speichern; nicht erneut senden.') from exc
-            if isinstance(exc, smtplib.SMTPDataError):
-                data_started = False
-            state = 'unknown' if data_started else 'draft'
+            unknown = outcome is DeliveryOutcome.UNKNOWN
+            state = 'unknown' if unknown else 'draft'
             error = ('Die Verbindung brach während der Übertragung ab. Die Nachricht kann bereits versendet sein. '
-                     'Bitte im Webmail oder beim Empfänger prüfen; SEDO sendet nicht automatisch erneut.') if data_started else (
+                     'Bitte im Webmail oder beim Empfänger prüfen; SEDO sendet nicht automatisch erneut.') if unknown else (
                      str(exc) if isinstance(exc, MailError) else 'Der Versand konnte nicht gestartet werden. Bitte Verbindung und Zugangsdaten prüfen.')
             MailDraft.objects.filter(pk=draft.pk).update(state=state, error=error)
             raise MailError(error) from exc

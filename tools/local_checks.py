@@ -122,7 +122,9 @@ def regression(evidence: Evidence, source: Path, temp: Path, series: str, suppli
         python = supplied.absolute()
     else:
         target = temp / (prefix + '-venv')
-        venv.EnvBuilder(with_pip=True).create(target)
+        # Wie der native Teststand: portable Unix-Python-Builds brauchen
+        # einen Symlink zum Original-Interpreter statt einer isolierten Kopie.
+        venv.EnvBuilder(with_pip=True, symlinks=os.name != 'nt').create(target)
         python = target / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
         requirements = temp / 'regression-requirements.txt'
         requirements.write_text('\n'.join(line for line in (source / 'requirements.txt').read_text(
