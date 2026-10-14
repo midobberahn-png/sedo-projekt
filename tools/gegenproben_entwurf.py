@@ -20,7 +20,7 @@ import tempfile
 APP = Path(__file__).resolve().parents[1]
 TEST = 'sedo.tests.test_draft_workflow.DraftWorkflowTests.'
 INVOICES = 'sedo/services/invoices.py'
-VIEWS = 'sedo/views.py'
+VIEWS = 'sedo/invoice_views.py'
 CREATION = 'sedo/services/invoice_creation.py'
 # Name, Datei, eindeutiger Originaltext, Mutation, passender Test.
 MUTATIONEN = [

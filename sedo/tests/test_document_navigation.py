@@ -166,7 +166,7 @@ class GeneratedDocumentNavigationTests(TestCase):
             self.assertTrue(links)
             self.assertTrue(all(not link.get('target') for link in links))
             self.assertFalse(doc.xpath('//a[starts-with(@href,"/media/")][@target="_blank"]'))
-        with patch('sedo.views.validate_invoice_zugferd', return_value=ValidationResult()):
+        with patch('sedo.invoice_views.validate_invoice_zugferd', return_value=ValidationResult()):
             response = self.client.get(reverse('sedo:invoice_zugferd_validation', args=[invoice.pk]))
         self.assertEqual(response.status_code, 200)
         doc = html.fromstring(response.content)

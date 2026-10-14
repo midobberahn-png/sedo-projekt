@@ -111,9 +111,9 @@ class EmailBodyOverrideTests(_Base):
         def fake_send(recipient, subject, body, attachment=None):
             captured.update(recipient=recipient, subject=subject, body=body)
 
-        with patch('sedo.views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'TEST Original')), \
-             patch('sedo.views.smtp_is_configured', return_value=True), \
-             patch('sedo.views.send_email_smtp', side_effect=fake_send):
+        with patch('sedo.invoice_views.lese_archivdatei', return_value=EmailAttachment('TEST.pdf', b'TEST Original')), \
+             patch('sedo.invoice_views.smtp_is_configured', return_value=True), \
+             patch('sedo.invoice_views.send_email_smtp', side_effect=fake_send):
             resp = self.client.post(reverse('sedo:invoice_email', args=[invoice.pk]),
                                     {'body': 'Individueller KI-Begleittext.'})
         self.assertEqual(resp.status_code, 302)

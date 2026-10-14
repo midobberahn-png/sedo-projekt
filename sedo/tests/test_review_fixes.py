@@ -38,14 +38,14 @@ class AareonImportRollbackTests(TestCase):
         ])
 
     def test_fehler_mitten_im_import_laesst_alten_bestand_intakt(self):
-        from sedo import views
+        from sedo.services import aareon_mapping
 
         # Seit v2.1 läuft das Schreiben als EIN bulk_create (Audit-Empfehlung);
         # schlägt es fehl, muss die Transaktion das Löschen mit zurückrollen.
         with patch.object(AareonMapping.objects, 'bulk_create',
                           side_effect=RuntimeError('Simulierter DB-Fehler mitten im Import')):
             with self.assertRaises(RuntimeError):
-                views._perform_aareon_mapping_import(self._df(), request=None)
+                aareon_mapping.perform_aareon_mapping_import(self._df(), request=None)
 
         # Transaktion zurückgerollt: der ALTE Bestand ist vollständig da,
         # nichts Halbes vom neuen Import übrig.
@@ -53,17 +53,17 @@ class AareonImportRollbackTests(TestCase):
         self.assertEqual(remaining, {('Ahornweg 2', 'Reinigung'), ('Ahornweg 2', 'Winterdienst')})
 
     def test_erfolgreicher_import_ersetzt_bestand(self):
-        from sedo import views
-        with patch('sedo.views.messages'):  # Django-Messages brauchen einen echten Request
-            views._perform_aareon_mapping_import(self._df(), request=None)
+        from sedo.services import aareon_mapping
+        with patch('sedo.services.aareon_mapping.messages'):  # Django-Messages brauchen einen echten Request
+            aareon_mapping.perform_aareon_mapping_import(self._df(), request=None)
         remaining = set(AareonMapping.objects.values_list('billing_unit_sender', flat=True))
         self.assertEqual(remaining, {'Birkenweg 1', 'Birkenweg 2'})
 
     def test_fehlende_pflichtspalten_brechen_vor_dem_loeschen_ab(self):
-        from sedo import views
+        from sedo.services import aareon_mapping
         bad = pd.DataFrame([{'Falsche Spalte': 'x'}])
         with self.assertRaises(ValueError):
-            views._perform_aareon_mapping_import(bad, request=None)
+            aareon_mapping.perform_aareon_mapping_import(bad, request=None)
         self.assertEqual(AareonMapping.objects.count(), 2)  # unangetastet
 
 

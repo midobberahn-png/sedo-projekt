@@ -213,7 +213,7 @@ class DraftWorkflowTests(TestCase):
 
     def test_f13_finalisierung_verschickt_keine_mail(self):
         inv = self.draft()
-        with patch('sedo.views.send_email_smtp') as smtp, patch('sedo.views.create_email_draft') as eml:
+        with patch('sedo.invoice_views.send_email_smtp') as smtp, patch('sedo.invoice_views.create_email_draft') as eml:
             self.confirm(inv)
         smtp.assert_not_called()
         eml.assert_not_called()
@@ -471,7 +471,7 @@ class DraftWorkflowTests(TestCase):
             if isinstance(obj, Offer):
                 raise AuditWriteError('Angebotsprotokoll nicht verfügbar')
             return write_audit(request, action, obj, *args, **kwargs)
-        with patch('sedo.views.write_audit', side_effect=failing):
+        with patch('sedo.invoice_views.write_audit', side_effect=failing):
             response = self.client.post(reverse('sedo:invoice_delete', args=[inv.pk]))
         self.assertEqual(response.status_code, 302)
         offer.refresh_from_db()
@@ -543,7 +543,7 @@ class DraftWorkflowTests(TestCase):
         inv = self.draft()
         generate_invoice_files(inv)
         before = self.snapshot(inv), self.generated(), AuditLog.objects.count()
-        with patch('sedo.views.generate_invoice_files', side_effect=RuntimeError('PDF defekt')):
+        with patch('sedo.invoice_views.generate_invoice_files', side_effect=RuntimeError('PDF defekt')):
             self.client.post(reverse('sedo:invoice_edit', args=[inv.pk]), self.payload(inv))
         self.assertEqual((self.snapshot(inv), self.generated(), AuditLog.objects.count()), before)
         self.assertEqual(inv.items.get().quantity, Decimal('1'))

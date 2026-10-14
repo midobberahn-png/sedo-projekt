@@ -134,7 +134,7 @@ class InvoiceWizardV2Tests(TestCase):
         self.assertEqual(Customer.objects.count(), 2)
 
     def test_email_aktion_liefert_datei_und_keinen_direktversand(self):
-        with patch('sedo.views.send_email_smtp') as smtp:
+        with patch('sedo.invoice_views.send_email_smtp') as smtp:
             response = self.client.post(self.url, self.data(action='send', customer=self.customer.pk, obj=self.obj.pk))
         self.assertEqual(response.status_code, 200)
         self.assertIn('.eml', response['Content-Disposition'])

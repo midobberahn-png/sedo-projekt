@@ -24,8 +24,10 @@ Mail-, Bank- und Kalenderdienste richtet jeder Tester selbst ein.
 
 Entwickler finden die vollständigen Tests in `sedo/tests/`; die reproduzierbare
 Prüfung und Buildanleitung stehen in [LOCAL_CHECKS.md](LOCAL_CHECKS.md) und
-[TESTSTAND.md](TESTSTAND.md). Fehlerberichte sollten den Ablauf, die Plattform
-und den verwendeten Commit nennen und keine Passwörter oder Geschäftsdaten enthalten.
+[TESTSTAND.md](TESTSTAND.md). Der Weg von Eingabe über Belegerzeugung bis
+zum Archiv steht in [RECHNUNGSREGELN.md](RECHNUNGSREGELN.md). Fehlerberichte
+sollten den Ablauf, die Plattform und den verwendeten Commit nennen und keine
+Passwörter oder Geschäftsdaten enthalten.
 
 ## Stand und Freigabe
 

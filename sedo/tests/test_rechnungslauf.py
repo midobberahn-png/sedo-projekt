@@ -21,7 +21,7 @@ from sedo.core.rechnungslauf_core import (
     clean_code,
 )
 from sedo.forms import InvoiceForm, OfferForm, RecurringInvoiceTemplateForm
-from sedo.views import _preview_from_forms
+from sedo.view_support import _preview_from_forms
 
 NSMAP = {
     "rsm": "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100",

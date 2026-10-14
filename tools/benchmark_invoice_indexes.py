@@ -50,7 +50,7 @@ def main():
         from unittest.mock import patch
         from sedo.models import Customer, Invoice
         from sedo.services.dunning import get_dunning_candidates
-        from sedo.views import invoice_list
+        from sedo.invoice_views import invoice_list
 
         assert Path(settings.DATABASES['default']['NAME']).is_relative_to(home)
         try:
@@ -68,7 +68,7 @@ def main():
                 get_dunning_candidates(14)
             dunning_sql = captured[0]['sql']
             request = RequestFactory().get('/rechnungen/', {'status': 'entwurf'})
-            with patch('sedo.views.render', side_effect=lambda r, t, c: c):
+            with patch('sedo.invoice_views.render', side_effect=lambda r, t, c: c):
                 context = invoice_list.__wrapped__(request)
             # UX-06 paginiert die Anzeige. Weiterhin den gesamten echten
             # Filter vergleichen, nicht die erste (hier noch leere) Seite.
