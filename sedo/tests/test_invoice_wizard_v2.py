@@ -140,7 +140,9 @@ class InvoiceWizardV2Tests(TestCase):
         self.assertIn('.eml', response['Content-Disposition'])
         self.assertIn(b'test@example.invalid', b''.join(response.streaming_content))
         smtp.assert_not_called()
-        self.assertEqual(Invoice.objects.get().lifecycle, 'issued')
+        invoice = Invoice.objects.get()
+        self.assertEqual(invoice.lifecycle, 'issued')
+        self.assertEqual(invoice.status, 'erstellt')
 
     def test_abschluss_hat_eine_hauptaktion_und_korrekte_email_beschriftung(self):
         response = self.client.get(self.url)

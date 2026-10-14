@@ -85,6 +85,9 @@ def import_bank_json(data) -> dict:
     imported = matched = unclear = ignored = 0
     unassigned = []
     date_errors = []
+    ambiguous = []
+    seen_without_id = {}
+    existing_without_id = {}
     if isinstance(data, dict):
         data = data.get('transactions') or data.get('umsatz') or data.get('data') or []
     for nummer, t in enumerate(data, 1):
@@ -118,18 +121,42 @@ def import_bank_json(data) -> dict:
         external_id = str(t.get('transaktions_id') or t.get('transaction_id')
                           or t.get('transactionId') or t.get('bank_reference')
                           or t.get('reference_id') or t.get('id') or '').strip()[:120]
-        # Doublettenprüfung: bevorzugt über die stabile Bank-Transaktions-ID
-        # (zwei echte Zahlungen mit gleichem Datum/Betrag/Text bleiben dann
-        # unterscheidbar). Nur ohne ID greift die alte Text-Heuristik.
         # all_objects: auch soft-gelöschte Zahlungen zählen als bereits importiert.
         if external_id:
-            if Payment.all_objects.filter(external_id=external_id).exists():
-                ignored += 1
+            existing = Payment.all_objects.filter(external_id=external_id).first()
+            if existing is not None:
+                if (existing.booking_date == booking_date and existing.amount == amount
+                        and existing.payer_name == name and existing.purpose == purpose):
+                    ignored += 1
+                else:
+                    # Eine Referenz ist nur dann ein Dublettenschlüssel, wenn
+                    # auch die Buchungsdaten übereinstimmen. Manche Quellen
+                    # vergeben dieselbe Referenz für verschiedene Buchungen.
+                    ambiguous.append({
+                        'zeile': nummer, 'datum': booking_date.isoformat(),
+                        'betrag': str(amount), 'name': name,
+                        'verwendungszweck': purpose[:200],
+                        'grund': f'Bankreferenz {external_id} bereits mit anderen Buchungsdaten vorhanden',
+                    })
                 continue
-        elif Payment.all_objects.filter(booking_date=booking_date, amount=amount,
-                                        payer_name=name, purpose=purpose).exists():
-            ignored += 1
-            continue
+        else:
+            # Ohne bankseitige Buchungs-ID können zwei identische Feldsätze
+            # zwei echte Zahlungen sein. Die Anzahl im Abruf erlaubt neue
+            # Vorkommen zu buchen. Bereits vorhandene Vorkommen bleiben
+            # mehrdeutig und werden zur manuellen Klärung angezeigt.
+            key = (booking_date, amount, name, purpose)
+            if key not in existing_without_id:
+                existing_without_id[key] = Payment.all_objects.filter(
+                    booking_date=booking_date, amount=amount,
+                    payer_name=name, purpose=purpose).count()
+            seen_without_id[key] = seen_without_id.get(key, 0) + 1
+            if seen_without_id[key] <= existing_without_id[key]:
+                ambiguous.append({
+                    'zeile': nummer, 'datum': booking_date.isoformat(),
+                    'betrag': str(amount), 'name': name,
+                    'verwendungszweck': purpose[:200],
+                })
+                continue
         invoice = _match_invoice(purpose)
         payment = Payment.objects.create(
             invoice=invoice, booking_date=booking_date, amount=amount,
@@ -144,4 +171,5 @@ def import_bank_json(data) -> dict:
             unclear += 1
             unassigned.append(payment)
     return {'imported': imported, 'matched': matched, 'unclear': unclear,
-            'ignored': ignored, 'unassigned': unassigned, 'date_errors': date_errors}
+            'ignored': ignored, 'unassigned': unassigned,
+            'date_errors': date_errors, 'ambiguous': ambiguous}

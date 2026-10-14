@@ -102,6 +102,7 @@ notarisiertes oder allgemein freigegebenes Installationspaket.
 Bedienung: [BEDIENHINWEISE.md](BEDIENHINWEISE.md),
 [E-Mail](E_MAIL.md), [Kalender](KALENDER.md),
 [Eingangsrechnungen](EINGANGSRECHNUNGEN.md), [Bonsai](BONSAI.md).
+Für Änderungen am Rechnungsablauf: [Rechnungsregeln](RECHNUNGSREGELN.md).
 
 Für öffentliche Verteilung müssen außerdem die Herausgeberlizenz und die
 Lizenzhinweise aller mitgelieferten Drittkomponenten geklärt sein. Dieser

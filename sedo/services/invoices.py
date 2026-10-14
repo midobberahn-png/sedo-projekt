@@ -135,32 +135,48 @@ def ensure_versand_erlaubt(invoice: Invoice) -> None:
             'Bitte zuerst finalisieren.')
 
 
-def versand_nachweis(invoice: Invoice) -> bool:
-    """Gibt es einen Beleg dafür, dass die Rechnung das Haus verlassen hat?
+def versand_lage(invoice: Invoice) -> str:
+    """Unterscheidet bestätigten Versand, unklaren Export und fehlende Spur.
 
-    Bewusst NICHT nur über den Statuswert: ``refresh_invoice_payment_status``
-    überschreibt 'versendet' mit 'ueberfaellig', sobald die Fälligkeit
-    verstrichen ist. Im Bestand steht 'versendet' deshalb fast nirgends mehr –
-    wer den Status als Beweis nimmt, hält versendete Rechnungen für
-    unversendet und lässt sie ausblenden.
+    Ein heruntergeladener .eml-Entwurf kann extern versendet worden sein,
+    beweist aber nicht, dass dies tatsächlich geschah. Ältere Versionen
+    setzten in diesem Fall trotzdem den Status auf ``versendet``.
     """
     from django.conf import settings
     from django.db.models import Q
 
     from ..models import AuditLog
 
-    if invoice.status == 'versendet':
-        return True
-    # .eml-Entwurf – wird beim Versandweg ohne SMTP geschrieben.
+    eintraege = AuditLog.objects.filter(object_type='Invoice').filter(
+        Q(object_id=str(invoice.pk)) | Q(object_repr=invoice.number))
+    if (eintraege.filter(metadata__vorgang='versand').filter(
+            Q(metadata__weg='smtp') | Q(metadata__weg='extern_bestaetigt')).exists()
+            or eintraege.filter(message__icontains='direkt per SMTP versendet').exists()):
+        return 'versendet'
     eml_ordner = Path(settings.MEDIA_ROOT) / 'emails' / invoice.number
-    if eml_ordner.exists() and any(eml_ordner.glob('*.eml')):
-        return True
-    # Protokolleinträge: strukturiert (neu) oder über den Text (Altbestand).
-    eintraege = AuditLog.objects.filter(object_repr__icontains=invoice.number)
-    if eintraege.filter(metadata__vorgang='versand').exists():
-        return True
-    return eintraege.filter(
-        Q(message__icontains='versendet') | Q(message__icontains='E-Mail-Entwurf')).exists()
+    if (eintraege.filter(Q(metadata__vorgang='eml_entwurf') |
+                        Q(metadata__vorgang='versand_ungeklaert')).exists()
+            or eintraege.filter(metadata__weg='eml').exists()
+            or eintraege.filter(message__icontains='E-Mail-Entwurf').exists()
+            or (eml_ordner.exists() and any(eml_ordner.glob('*.eml')))):
+        return 'unklar'
+    if (eintraege.filter(metadata__vorgang='versand').exists()
+            or eintraege.filter(message__icontains='versendet').exists()):
+        # Alte, unspezifische Einträge können auch einen bloßen EML-Export
+        # meinen. Nur ein ausdrücklich belegter SMTP-/externer Versand oben
+        # zählt als Bestätigung; den Rest muss ein Mensch klären.
+        return 'unklar'
+    if invoice.status == 'versendet':
+        # Der Altstatus konnte auch durch bloßes Erzeugen einer .eml-Datei
+        # entstehen. Ohne unabhängige Spur bleibt der tatsächliche Versand
+        # offen; Ausblenden bleibt bis zur Klärung gesperrt.
+        return 'unklar'
+    return 'keine_spur'
+
+
+def versand_nachweis(invoice: Invoice) -> bool:
+    """Nur ein belegter Versand gilt als Nachweis; .eml-Export bleibt unklar."""
+    return versand_lage(invoice) == 'versendet'
 
 
 def ausblenden_hindernis(invoice: Invoice) -> str:
@@ -195,7 +211,13 @@ def ausblenden_hindernis(invoice: Invoice) -> str:
     if invoice.dunning_documents.exists():
         return (f'Zu Rechnung {invoice.number} wurde bereits gemahnt. '
                 'Vorgesehen ist eine Stornorechnung.')
-    if versand_nachweis(invoice):
+    lage = versand_lage(invoice)
+    if lage == 'unklar':
+        return (f'Für Rechnung {invoice.number} ist der Versandstatus ungeklärt '
+                '(E-Mail-Entwurf, SMTP-Versuch oder Altstatus ohne Nachweis). '
+                'Bitte den tatsächlichen Versand klären; '
+                'bis dahin kann die Rechnung nicht ausgeblendet werden.')
+    if lage == 'versendet':
         return (f'Rechnung {invoice.number} wurde bereits versendet und kann nicht ausgeblendet '
                 'werden. Vorgesehen ist eine Stornorechnung.')
     return ''

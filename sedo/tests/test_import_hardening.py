@@ -42,11 +42,26 @@ class PaymentImportDedupTests(TestCase):
         self.assertEqual(result['imported'], 2)
         self.assertEqual(Payment.all_objects.count(), 2)
 
-    def test_ohne_id_greift_die_alte_heuristik(self):
+    def test_ohne_id_wird_wiederholung_zur_klaerung_angezeigt(self):
         import_bank_json([self._tx()])
         result = import_bank_json([self._tx()])
-        self.assertEqual(result['ignored'], 1)
+        self.assertEqual(result['ignored'], 0)
+        self.assertEqual(len(result['ambiguous']), 1)
         self.assertEqual(Payment.all_objects.count(), 1)
+
+    def test_ohne_id_werden_zwei_vorkommen_im_selben_import_gebucht(self):
+        result = import_bank_json([self._tx(), self._tx()])
+        self.assertEqual(result['imported'], 2)
+        self.assertEqual(len(result['ambiguous']), 0)
+        self.assertEqual(Payment.all_objects.count(), 2)
+
+    def test_gleiche_referenz_mit_anderen_daten_wird_zur_klaerung_gemeldet(self):
+        import_bank_json([self._tx(transaktions_id='TX-42')])
+        result = import_bank_json([self._tx(transaktions_id='TX-42', betrag='50.00')])
+        self.assertEqual(result['imported'], 0)
+        self.assertEqual(result['ignored'], 0)
+        self.assertEqual(len(result['ambiguous']), 1)
+        self.assertIn('TX-42', result['ambiguous'][0]['grund'])
 
     def test_soft_geloeschte_zahlung_blockiert_reimport(self):
         import_bank_json([self._tx(transaktions_id='TX-9')])

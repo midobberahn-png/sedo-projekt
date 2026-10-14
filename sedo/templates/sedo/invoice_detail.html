@@ -38,6 +38,18 @@
 </div>
 {% endif %}
 
+{% if external_send_unconfirmed and invoice.lifecycle != 'draft' %}
+<div class="card warning-card">
+  <h2>Rechnungsversand prüfen</h2>
+  <p>Für diese Rechnung ist der Versandstatus ungeklärt: Es wurde ein E-Mail-Entwurf erzeugt, ein SMTP-Versuch unterbrochen oder ein alter Status ohne Nachweis übernommen. Bitte im Postfach oder beim Empfänger prüfen, ob die Rechnung tatsächlich versendet wurde.</p>
+  <form method="post" action="{% url 'sedo:invoice_confirm_external_send' invoice.pk %}">
+    {% csrf_token %}
+    <label><input type="checkbox" name="confirmed" value="1" required> Ich habe den tatsächlichen Versand dieser Rechnung geprüft.</label>
+    <button type="submit" class="btn">Versand bestätigen</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="detail-hero invoice-hero">
   <div class="hero-main">
     {% include 'sedo/_invoice_state_stack.html' with invoice=invoice %}
@@ -114,7 +126,7 @@ eines Entwurfs über diesen Weg offen.
     <label for="ai-cover-body">Begleittext (prüfen und bei Bedarf anpassen)</label>
     <textarea id="ai-cover-body" name="body" rows="7" placeholder="Hier erscheint der KI-Begleittext – alternativ eigenen Text schreiben. Leer lassen = Standardtext."></textarea>
     <div class="toolbar" style="margin-top:10px">
-      <button type="submit" class="btn success"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg> E-Mail mit diesem Text senden</button>
+      <button type="submit" class="btn success"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg> {% if smtp_configured %}E-Mail mit diesem Text senden{% else %}E-Mail-Entwurf herunterladen{% endif %}</button>
     </div>
   </form>
 </div>

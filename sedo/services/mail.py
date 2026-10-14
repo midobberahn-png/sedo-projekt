@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import smtplib
 import ssl
+import logging
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -14,10 +15,16 @@ from pathlib import Path
 from ..models import AppSetting
 from ..company_profile import SELLER, SellerProfileError, seller_document
 from .credentials import configuration, secret_for
+from .smtp_transport import DeliveryOutcome, classify_failure, verified_tls_context
 
 DEFAULT_SMTP_PORT = 587
 DEFAULT_FROM_ADDR = ''
 SMTP_TIMEOUT_SECONDS = 20
+logger = logging.getLogger('sedo')
+
+
+class SMTPDeliveryUncertain(smtplib.SMTPException):
+    """Nach Beginn von SMTP DATA ist eine Zustellung nicht sicher feststellbar."""
 
 
 @dataclass(frozen=True)
@@ -87,7 +94,7 @@ def _tls_context() -> ssl.SSLContext:
     umgeleiteter Mailserver bekäme dann Benutzer und Passwort im Klartext
     (Review-Fund F-09).
     """
-    return ssl.create_default_context()
+    return verified_tls_context()
 
 
 def get_smtp_config() -> dict:
@@ -120,10 +127,9 @@ def send_email_smtp(recipient: str, subject: str, body: str,
     das Zertifikat des Mailservers. Ein Server, dessen Identität nicht belegt
     ist, bekommt Benutzer und Passwort nicht zu sehen.
 
-    Wirft ``ValueError`` wenn SMTP nicht konfiguriert ist und
-    ``smtplib.SMTPException`` bei Authentifizierungs- und Zertifikatsfehlern.
-    Reine Verbindungsfehler (Host unbekannt, Port zu, Zeitüberschreitung)
-    reicht ``smtplib`` unverändert als ``OSError`` durch.
+    Wirft ``ValueError`` bei fehlender Konfiguration, ``SMTPException`` bei
+    eindeutiger Ablehnung und ``SMTPDeliveryUncertain``, wenn während DATA
+    die Verbindung abbricht und der Annahmestatus unbekannt bleibt.
     """
     cfg = get_smtp_config()
     if not cfg['host'] or not cfg['user']:
@@ -146,13 +152,18 @@ def send_email_smtp(recipient: str, subject: str, body: str,
     # Ein gemeinsamer, prüfender Kontext für beide Wege – kein Zweig darf
     # ungeprüft senden (F-09).
     context = _tls_context()
+    sending = accepted = False
     try:
         if cfg['tls']:
             with smtplib.SMTP(cfg['host'], cfg['port'], timeout=SMTP_TIMEOUT_SECONDS) as server:
                 server.ehlo()
                 server.starttls(context=context)
                 server.login(cfg['user'], cfg['password'])
-                server.send_message(msg)
+                sending = True
+                refused = server.send_message(msg)
+                if isinstance(refused, dict) and refused:
+                    raise smtplib.SMTPRecipientsRefused(refused)
+                accepted = True
         else:
             # Implizites TLS (Port 465): context ist hier Pflicht. Ohne ihn
             # akzeptiert smtplib jedes beliebige Zertifikat – und server.login()
@@ -160,8 +171,16 @@ def send_email_smtp(recipient: str, subject: str, body: str,
             with smtplib.SMTP_SSL(cfg['host'], cfg['port'], timeout=SMTP_TIMEOUT_SECONDS,
                                   context=context) as server:
                 server.login(cfg['user'], cfg['password'])
-                server.send_message(msg)
+                sending = True
+                refused = server.send_message(msg)
+                if isinstance(refused, dict) and refused:
+                    raise smtplib.SMTPRecipientsRefused(refused)
+                accepted = True
     except ssl.SSLCertVerificationError as exc:
+        if accepted:
+            logger.warning('SMTP-Mail angenommen, aber Verbindungsende schlug fehl (%s).',
+                           type(exc).__name__)
+            return
         # Klartext statt OpenSSL-Meldung: Dieser Text landet 1:1 in der
         # Oberfläche (Rechnungsversand und SMTP-Test in views.py).
         #
@@ -179,6 +198,20 @@ def send_email_smtp(recipient: str, subject: str, body: str,
             'SEDO sendet Benutzer und Passwort nicht an einen Server, dessen Identität '
             'nicht belegt ist. Bitte Host, Port und die STARTTLS-Einstellung prüfen.'
         ) from exc
-    except smtplib.SMTPException:
+    except (smtplib.SMTPException, OSError) as exc:
+        outcome = classify_failure(exc, data_may_have_started=sending, accepted=accepted)
+        if outcome is DeliveryOutcome.ACCEPTED:
+            # send_message hat die Annahme bereits bestätigt. Ein QUIT-Fehler
+            # darf nicht als fehlgeschlagener Versand gemeldet werden.
+            logger.warning('SMTP-Mail angenommen, aber QUIT/Verbindungsende schlug fehl (%s).',
+                           type(exc).__name__)
+            return
+        if outcome is DeliveryOutcome.UNKNOWN:
+            raise SMTPDeliveryUncertain(
+                'Der SMTP-Versandstatus ist unklar. Bitte vor einem erneuten Versand '
+                'das Postfach oder den Server prüfen.') from exc
         # A remote SMTP server can echo supplied credentials in its error text.
-        raise smtplib.SMTPException('Der SMTP-Versand ist fehlgeschlagen. Bitte Zugang und Empfänger prüfen.') from None
+        if isinstance(exc, smtplib.SMTPException):
+            raise smtplib.SMTPException(
+                'Der SMTP-Versand ist fehlgeschlagen. Bitte Zugang und Empfänger prüfen.') from None
+        raise

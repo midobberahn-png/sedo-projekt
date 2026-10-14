@@ -19,12 +19,16 @@ from django.urls import reverse
 from django.utils import timezone
 
 from sedo.audit import AuditWriteError
+from sedo.company_profile import save_profile
+from sedo.tests.company_fixtures import SYNTHETIC_PROFILE
 from sedo.models import AuditLog, Customer, CustomerObject, Invoice, InvoiceItem, Offer, OfferItem
 from sedo.services import (WorkflowError, generate_invoice_files, finalisiere_entwurf,
                            create_storno, create_invoice_from_offer)
 from sedo.services.invoice_archive import (ARCHIV_FELDER, ARCHIV_VORGANG, archivnachweis,
     lese_archivdatei, stelle_archiv_wieder_her, zielpfade, BelegArchivFehler)
 from sedo.services.mail import create_email_draft, send_email_smtp
+from sedo.services.invoices import versand_nachweis, ausblenden_hindernis
+from sedo.services.zugferd_validation import ValidationResult
 from sedo.views import _create_invoice_email_file, _monthly_zip_email
 
 
@@ -34,6 +38,7 @@ class InvoiceArchiveTests(TestCase):
         cls.user = get_user_model().objects.create_user('f18', password='test-only')
 
     def setUp(self):
+        save_profile(SYNTHETIC_PROFILE)
         tmp = tempfile.TemporaryDirectory(prefix='sedo_f18_')
         self.addCleanup(tmp.cleanup)
         self.home = Path(tmp.name)
@@ -358,8 +363,95 @@ class InvoiceArchiveTests(TestCase):
         self.mutate_customer_items(a)
         path = _monthly_zip_email([a,b], self.customer, '2026-09')
         msg = BytesParser(policy=policy.default).parsebytes(path.read_bytes())
+        self.assertIn(SYNTHETIC_PROFILE['email'], msg['From'])
+        self.assertIn(SYNTHETIC_PROFILE['name'], msg['Subject'])
         with ZipFile(BytesIO(next(msg.iter_attachments()).get_payload(decode=True))) as z:
             self.assertEqual({n:z.read(n) for n in z.namelist()}, originals)
+        for invoice in (a, b):
+            self.assertTrue(AuditLog.objects.filter(object_id=str(invoice.pk),
+                                                    metadata__vorgang='eml_entwurf').exists())
+            self.assertFalse(versand_nachweis(invoice))
+            self.assertIn('Versand', ausblenden_hindernis(invoice))
+
+    def test_sammelmail_zweier_kunden_im_selben_monat_ueberschreibt_nichts(self):
+        first = self.issued()
+        first_path = _monthly_zip_email([first], self.customer, '2026-09')
+        first_bytes = first_path.read_bytes()
+        other = Customer.objects.create(name='Anderer Testkunde', email='other@example.invalid',
+                                        street='Anderer Weg 2', postcode='12345', city='Teststadt')
+        other_obj = CustomerObject.objects.create(customer=other, name='Anderes Testobjekt')
+        second = self.issued(customer=other, obj=other_obj)
+        second_path = _monthly_zip_email([second], other, '2026-09')
+        self.assertNotEqual(first_path, second_path)
+        self.assertEqual(first_path.read_bytes(), first_bytes)
+        self.assertNotEqual(first_bytes, second_path.read_bytes())
+        first_mail = BytesParser(policy=policy.default).parsebytes(first_bytes)
+        second_mail = BytesParser(policy=policy.default).parsebytes(second_path.read_bytes())
+        self.assertEqual(first_mail['To'], self.customer.email)
+        self.assertEqual(second_mail['To'], other.email)
+
+    def test_sammelmail_helper_verbietet_gemischte_kunden(self):
+        first = self.issued()
+        other = Customer.objects.create(name='Anderer Testkunde', email='other@example.invalid',
+                                        street='Anderer Weg 2', postcode='12345', city='Teststadt')
+        other_obj = CustomerObject.objects.create(customer=other, name='Anderes Testobjekt')
+        second = self.issued(customer=other, obj=other_obj)
+        with self.assertRaisesRegex(WorkflowError, 'selben Kunden'):
+            _monthly_zip_email([first, second], self.customer, '2026-09')
+        self.assertFalse((self.media / 'monthly_emails').exists())
+
+    def test_sammelmail_stoppt_bei_ungueltiger_erechnung_vor_dateianlage(self):
+        invoice = self.issued()
+        with patch('sedo.views.validate_invoice_zugferd',
+                   return_value=ValidationResult(errors=['Testfehler'])):
+            with self.assertRaisesRegex(WorkflowError, 'ZUGFeRD'):
+                _monthly_zip_email([invoice], self.customer, '2026-09')
+        self.assertFalse((self.media / 'monthly_emails').exists())
+
+    def test_sammelmail_lehnt_ungueltigen_monat_vor_dateianlage_ab(self):
+        invoice = self.issued()
+        with self.assertRaisesRegex(ValueError, 'gültigen Monat'):
+            _monthly_zip_email([invoice], self.customer, '..\\fremd')
+        self.assertFalse((self.media / 'monthly_emails').exists())
+
+    def test_einzelentwurf_stoppt_bei_ungueltiger_erechnung_vor_dateianlage(self):
+        invoice = self.issued()
+        with patch('sedo.views.validate_invoice_zugferd',
+                   return_value=ValidationResult(errors=['Testfehler'])):
+            with self.assertRaisesRegex(WorkflowError, 'ZUGFeRD'):
+                _create_invoice_email_file(invoice)
+        self.assertFalse((self.media / 'emails').exists())
+
+    def test_angelegter_rechnungs_eml_entwurf_aendert_keinen_versandstatus(self):
+        invoice = self.issued()
+        with patch('sedo.views.smtp_is_configured', return_value=False):
+            response = self.client.post(reverse('sedo:invoice_email', args=[invoice.pk]))
+        self.assertEqual(response.status_code, 200)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, 'erstellt')
+        self.assertTrue(AuditLog.objects.filter(
+            object_id=str(invoice.pk), metadata__vorgang='eml_entwurf').exists())
+        self.assertFalse(versand_nachweis(invoice))
+        self.assertIn('Versand', ausblenden_hindernis(invoice))
+        response.close()
+
+    def test_externer_versand_wird_erst_nach_bestaetigung_als_versendet_markiert(self):
+        invoice = self.issued()
+        with patch('sedo.views.smtp_is_configured', return_value=False):
+            response = self.client.post(reverse('sedo:invoice_email', args=[invoice.pk]))
+        response.close()
+        refused = self.client.post(reverse('sedo:invoice_confirm_external_send', args=[invoice.pk]))
+        self.assertEqual(refused.status_code, 302)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, 'erstellt')
+        confirmed = self.client.post(reverse('sedo:invoice_confirm_external_send', args=[invoice.pk]),
+                                     {'confirmed': '1'})
+        self.assertEqual(confirmed.status_code, 302)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, 'versendet')
+        self.assertTrue(versand_nachweis(invoice))
+        self.assertTrue(AuditLog.objects.filter(object_id=str(invoice.pk),
+                                                metadata__weg='extern_bestaetigt').exists())
 
     def test_sammelmail_darf_fehlenden_beleg_nicht_still_auslassen(self):
         a, b = self.issued(), self.invoice()
@@ -482,7 +574,8 @@ class InvoiceArchiveTests(TestCase):
         inv = self.issued()
         before = self.state(inv), self.files(), AuditLog.objects.count()
         from sedo.services import WorkflowError
-        with patch('sedo.views.mark_invoice_corrected', side_effect=WorkflowError('TEST nach Veröffentlichung')):
+        with patch('sedo.services.invoice_creation.mark_invoice_corrected',
+                   side_effect=WorkflowError('TEST nach Veröffentlichung')):
             response = self.client.post(reverse('sedo:invoice_create'), self.payload(correction_of=str(inv.pk)))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Invoice.objects.count(), 1)

@@ -77,14 +77,27 @@ class Mt940NormalizeTests(TestCase):
         ])
         self.assertEqual(rows[0]['transaktions_id'], 'E2E-42')
         self.assertEqual(rows[0]['betrag'], '119.00')
-        self.assertTrue(rows[1]['transaktions_id'].startswith('FINTS-'))
-        # Stabil: gleiche Daten → gleiche synthetische ID (Doubletten-Schutz)
+        self.assertEqual(rows[1]['transaktions_id'], '')
+        # Fehlt eine Bankkennung, darf aus identischen Textdaten keine
+        # scheinbar eindeutige ID erzeugt werden.
         again = _normalize_mt940([
             _FakeTransaction(date=date(2026, 8, 2), amount=_FakeAmount('50.00'),
                              applicant_name='Ohne Referenz',
                              purpose='Danke', end_to_end_reference='NONREF'),
         ])
         self.assertEqual(rows[1]['transaktions_id'], again[0]['transaktions_id'])
+
+    def test_bankreferenz_hat_vorrang_vor_end_to_end_referenz(self):
+        rows = _normalize_mt940([_FakeTransaction(
+            date=date(2026, 8, 1), amount=_FakeAmount('50.00'),
+            bank_reference='BANK-42', end_to_end_reference='E2E-42')])
+        self.assertEqual(rows[0]['transaktions_id'], 'BANK-42')
+
+    def test_fehlende_bankreferenz_nutzt_gueltige_end_to_end_referenz(self):
+        rows = _normalize_mt940([_FakeTransaction(
+            date=date(2026, 8, 1), amount=_FakeAmount('50.00'),
+            bank_reference='NOTPROVIDED', end_to_end_reference='E2E-42')])
+        self.assertEqual(rows[0]['transaktions_id'], 'E2E-42')
 
 
 class FetchAndImportTests(TestCase):
@@ -122,6 +135,21 @@ class FetchAndImportTests(TestCase):
         self.assertEqual(result['imported'], 0)
         self.assertEqual(result['ignored'], 1)
         self.assertEqual(Payment.all_objects.count(), 1)
+
+    def test_umsatz_ohne_referenz_wird_bei_wiederholung_als_mehrdeutig_gemeldet(self):
+        transactions = [
+            _FakeTransaction(date=date(2026, 8, 1), amount=_FakeAmount('50.00'),
+                             applicant_name='Ohne Referenz', purpose='Danke',
+                             end_to_end_reference='NOTPROVIDED') for _ in range(2)
+        ]
+        client = _fake_client_returning(transactions)
+        with patch('fints.client.FinTS3PinTanClient', return_value=client):
+            first = fetch_bank_transactions(days=30, pin='1234')
+            second = fetch_bank_transactions(days=30, pin='1234')
+        self.assertEqual(first['imported'], 2)
+        self.assertEqual(second['imported'], 0)
+        self.assertEqual(len(second['ambiguous']), 2)
+        self.assertEqual(Payment.all_objects.count(), 2)
 
     def test_iban_filter_findet_konto(self):
         AppSetting.set('fints_iban', 'DE89 3704 0044 0532 0130 00')

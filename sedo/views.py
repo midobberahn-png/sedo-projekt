@@ -3,10 +3,13 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
+from io import BytesIO
 import csv
 import json
+import uuid
 import zipfile
 from email.message import EmailMessage
+from email.utils import formataddr
 import pandas as pd
 import logging
 
@@ -33,13 +36,14 @@ from .services import (
     generate_invoice_files, next_number, save_with_unique_number, create_numbered_invoice,
     recalc_invoice, recalc_offer, create_storno,
     WorkflowError, ensure_correction_allowed, ensure_offer_invoicing_allowed,
-    mark_invoice_corrected, finalisiere_entwurf, entwurf_sperren,
-    ensure_zahlung_erlaubt, ensure_versand_erlaubt, ausblenden_hindernis,
+    finalisiere_entwurf, entwurf_sperren,
+    ensure_zahlung_erlaubt, ensure_versand_erlaubt, ausblenden_hindernis, versand_lage,
     offene_rechnungen,
     generate_offer_pdf, create_invoice_from_offer, create_email_draft, import_bank_json,
     refresh_invoice_payment_status, generate_dunning_document, next_cashbook_no,
     generate_cashbook_pdf, get_smtp_config, smtp_is_configured, send_email_smtp,
     get_dunning_candidates, send_bulk_dunning, ensure_dunning_allowed, mahn_hindernis,
+    SMTPDeliveryUncertain,
     fetch_bank_transactions, get_banking_config, banking_is_configured, BankingError,
     get_ai_config, ai_is_configured, generate_offer_from_text, AIError,
     transcribe_audio, stt_status, TranscriptionUnavailable,
@@ -47,6 +51,9 @@ from .services import (
     ai_review_positions, check_positions_local,
 )
 from .services.invoice_files import datei_rueckweg
+from .services.invoice_creation import save_new_invoice
+from .services.item_positions import normalize_item_positions as _normalize_item_positions
+from .services.monthly_invoices import generate_gwg_monthly
 from .services.invoice_archive import lese_archivdatei, pruefe_archiv
 from .services.workflow_errors import BelegArchivFehler
 from .services.mail import invoice_email_subject_body
@@ -294,7 +301,9 @@ def _preview_from_forms(form, formset, title='Entwurfsansicht'):
             'line_total': line_total,
             'article_no': item_form.cleaned_data.get('article_no') or '',
         })
-    vat_rate = form.cleaned_data.get('vat_rate') or Decimal('19.00')
+    vat_rate = form.cleaned_data.get('vat_rate')
+    if vat_rate is None:
+        vat_rate = Decimal('19.00')
     vat = (net * vat_rate / Decimal('100')).quantize(Decimal('0.01'))
     return {
         'title': title,
@@ -314,8 +323,18 @@ def _preview_from_forms(form, formset, title='Entwurfsansicht'):
     }
 
 
+def _ensure_invoice_zugferd_for_email(invoice: Invoice):
+    """Prüft archivierte E-Rechnungen vor jedem Einzel- und Sammelversandweg."""
+    if invoice.xml_file and invoice.zugferd_file:
+        validation = validate_invoice_zugferd(invoice)
+        if not validation.ok:
+            raise WorkflowError(f'Rechnung {invoice.number}: ZUGFeRD-Prüfung fehlgeschlagen. '
+                                'Bitte den Prüfbericht öffnen.')
+
+
 def _create_invoice_email_file(invoice: Invoice):
     """Erzeugt eine .eml-Datei zur Rechnung und gibt den Pfad zurück."""
+    _ensure_invoice_zugferd_for_email(invoice)
     attachment = lese_archivdatei(invoice)
     recipient = invoice.customer.email or ''
     if not recipient:
@@ -323,14 +342,6 @@ def _create_invoice_email_file(invoice: Invoice):
     subject, body = invoice_email_subject_body(invoice)
     out_dir = Path(settings.MEDIA_ROOT) / 'emails' / invoice.number
     return create_email_draft(recipient, subject, body, attachment, out_dir, f'{invoice.number}_email')
-
-
-def _normalize_item_positions(items) -> None:
-    """Setzt fortlaufende Positionsnummern (1..n) und speichert nur Änderungen."""
-    for idx, item in enumerate(items, start=1):
-        if item.position != idx:
-            item.position = idx
-            item.save(update_fields=['position', 'updated_at'])
 
 
 def _recurring_payment_days(payment_days: int | None, customer_payment_days: int | None) -> int:
@@ -1138,34 +1149,8 @@ def invoice_create(request):
                 # WorkflowError/Unique-Constraint decken dabei auch den Fall
                 # ab, dass zwei parallele Requests die ensure-Guards passieren.
                 try:
-                    with datei_rueckweg() as merken, transaction.atomic():
-                        # Kollisionssichere Rechnungsnummer vergeben und speichern
-                        save_with_unique_number(inv, 'EN' if action == 'draft' else 'RE')
-                        formset.instance = inv
-                        formset.save()
-                        _normalize_item_positions(inv.items.all())
-                        recalc_invoice(inv)
-                        inv.save()
-                        merken(inv)
-                        generate_invoice_files(inv, erstmalig=action != 'draft', request=request)
-                        if src_offer:
-                            # Guarded UPDATE: nur wenn das Angebot noch nicht
-                            # verrechnet ist – sonst rollt alles zurück.
-                            updated = Offer.objects.filter(
-                                pk=src_offer.pk, linked_invoice__isnull=True,
-                            ).exclude(status='in_rechnung').update(
-                                status='in_rechnung', linked_invoice=inv,
-                                updated_at=timezone.now(),
-                            )
-                            if not updated:
-                                raise WorkflowError(
-                                    f'Aus Angebot {src_offer.number} wurde soeben bereits '
-                                    f'eine Rechnung erzeugt (paralleler Vorgang).')
-                        if src_invoice and action != 'draft':
-                            # Ursprungsrechnung als korrigiert markieren – blockiert
-                            # damit weitere Korrekturen und Stornos des Originals.
-                            # Entwürfe ersetzen das Original noch nicht.
-                            mark_invoice_corrected(src_invoice, request=request)
+                    save_new_invoice(inv, formset, action=action, source_offer=src_offer,
+                                     correction_source=src_invoice, request=request)
                 except WorkflowError as e:
                     messages.error(request, str(e))
                     target = ('sedo:offer_detail', src_offer.pk) if src_offer \
@@ -1194,23 +1179,19 @@ def invoice_create(request):
                     if not inv.customer.email:
                         messages.warning(request, f'Rechnung {inv.number} wurde erzeugt, aber es ist keine E-Mail-Adresse beim Kunden hinterlegt.')
                         return redirect('sedo:invoice_detail', inv.pk)
-                    # Erst die Datei, dann der Status (F-115): vorher stand die
-                    # Rechnung auf 'versendet', bevor überhaupt feststand, ob
-                    # der Entwurf erzeugt werden konnte.
                     try:
                         eml_path = _create_invoice_email_file(inv)
                     except (WorkflowError, OSError) as exc:
                         messages.error(request, f'Rechnung erstellt, E-Mail-Entwurf abgebrochen: {exc}')
                         return redirect('sedo:invoice_detail', inv.pk)
-                    if eml_path and Path(eml_path).exists() and inv.status == 'erstellt':
-                        inv.status = 'versendet'
-                        inv.save(update_fields=['status', 'updated_at'])
+                    if not eml_path or not Path(eml_path).is_file():
+                        messages.error(request, 'Rechnung erstellt, E-Mail-Entwurf konnte nicht erzeugt werden.')
+                        return redirect('sedo:invoice_detail', inv.pk)
                     write_audit(request, 'create', inv, f'Rechnung {inv.number} erzeugt und E-Mail-Entwurf erstellt',
-                                metadata={'vorgang': 'versand', 'weg': 'eml'})
-                    messages.success(request, f'Rechnung {inv.number} wurde erzeugt und ein E-Mail-Entwurf wurde erstellt.')
-                    if eml_path and Path(eml_path).exists():
-                        return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=Path(eml_path).name)
-                    return redirect('sedo:invoice_detail', inv.pk)
+                                metadata={'vorgang': 'eml_entwurf', 'weg': 'eml'})
+                    messages.success(request, f'Rechnung {inv.number} wurde erzeugt und ein E-Mail-Entwurf wurde erstellt. '
+                                              'Der tatsächliche Versand muss außerhalb von SEDO erfolgen.')
+                    return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=Path(eml_path).name)
                 if action == 'draft':
                     write_audit(request, 'create', inv, f'Rechnungsentwurf {inv.number} gespeichert')
                     messages.success(request, f'Entwurf {inv.number} gespeichert.')
@@ -1361,6 +1342,8 @@ def invoice_detail(request, pk):
         # den deaktivierten Knopf (F-14).
         'ausblenden_hindernis': ausblenden_hindernis(invoice),
         'mahn_hindernis': mahn_hindernis(invoice),
+        'external_send_unconfirmed': versand_lage(invoice) == 'unklar',
+        'smtp_configured': smtp_is_configured(),
     })
 
 
@@ -1373,6 +1356,7 @@ def invoice_zugferd_validation(request, pk):
     result = validate_invoice_zugferd(invoice)
     return render(request, 'sedo/invoice_zugferd_validation.html', {
         'invoice': invoice, 'validation': result,
+        'smtp_configured': smtp_is_configured(),
     })
 
 
@@ -1399,6 +1383,38 @@ def invoice_generate(request, pk):
 
 @login_required
 @require_POST
+def invoice_confirm_external_send(request, pk):
+    """Explizite Bestätigung nach geprüftem externem Versand oder SMTP-Abbruch."""
+    invoice = get_object_or_404(Invoice.objects.select_related('customer'), pk=pk)
+    if request.POST.get('confirmed') != '1':
+        messages.error(request, 'Bitte den tatsächlichen Versand zuerst prüfen und bestätigen.')
+        return redirect('sedo:invoice_detail', pk)
+    try:
+        with transaction.atomic():
+            invoice = Invoice.objects.select_for_update().get(pk=pk)
+            ensure_versand_erlaubt(invoice)
+            if versand_lage(invoice) != 'unklar':
+                raise WorkflowError('Für diese Rechnung liegt kein ungeklärter E-Mail-Versand vor.')
+            write_audit(request, 'generate', invoice,
+                        f'Externer Versand von Rechnung {invoice.number} durch Nutzer bestätigt',
+                        metadata={'vorgang': 'versand', 'weg': 'extern_bestaetigt'},
+                        pflicht=True)
+            if invoice.status == 'erstellt':
+                invoice.status = 'versendet'
+                invoice.save(update_fields=['status', 'updated_at'])
+    except (WorkflowError, AuditWriteError) as exc:
+        messages.error(request, str(exc))
+        return redirect('sedo:invoice_detail', pk)
+    except Exception:
+        logger.exception('Bestätigung des externen Rechnungsversands fehlgeschlagen')
+        messages.error(request, 'Der Versand konnte nicht bestätigt werden. Bitte erneut prüfen.')
+        return redirect('sedo:invoice_detail', pk)
+    messages.success(request, f'Der Versand von Rechnung {invoice.number} wurde bestätigt und protokolliert.')
+    return redirect('sedo:invoice_detail', pk)
+
+
+@login_required
+@require_POST
 def invoice_email(request, pk):
     invoice = get_object_or_404(Invoice.objects.select_related('customer'), pk=pk)
     if not invoice.customer.email:
@@ -1417,11 +1433,11 @@ def invoice_email(request, pk):
     # Dateiverweis laufen anschließend wie bisher in die harte Archivprüfung,
     # die den Versand ebenfalls stoppt. Diese Trennung hält Import-/Altbelege
     # verständlich und erlaubt keine Umgehung bei echten ZUGFeRD-Dateien.
-    if invoice.xml_file and invoice.zugferd_file:
-        validation = validate_invoice_zugferd(invoice)
-        if not validation.ok:
-            messages.error(request, 'Versand gestoppt: Die ZUGFeRD-Prüfung hat Fehler gefunden. Bitte den Prüfbericht öffnen.')
-            return redirect('sedo:invoice_zugferd_validation', pk=pk)
+    try:
+        _ensure_invoice_zugferd_for_email(invoice)
+    except WorkflowError as exc:
+        messages.error(request, f'Versand gestoppt: {exc}')
+        return redirect('sedo:invoice_zugferd_validation', pk=pk)
 
     # Nur gespeicherte Originalbytes; fehlendes Archiv ist kein Generierungsauftrag.
     try:
@@ -1440,23 +1456,38 @@ def invoice_email(request, pk):
     if smtp_is_configured():
         try:
             send_email_smtp(recipient, subject, body, attachment)
-            # Nur 'erstellt' wird zu 'versendet'. Vorher hob jeder erneute
-            # Versand den Zustand auf: eine bezahlte Rechnung galt danach wieder
-            # als offen, eine korrigierte verlor ihren Belegzustand (F-07 c).
-            if invoice.status == 'erstellt':
-                invoice.status = 'versendet'
-                invoice.save(update_fields=['status', 'updated_at'])
-            # metadata statt neuem AuditLog-Action-Wert: JSONField braucht keine
-            # Migration. Der Eintrag ist der Versandnachweis für das Ausblenden.
+        except SMTPDeliveryUncertain as exc:
+            logger.warning('SMTP-Status für Rechnung %s unklar (%s)',
+                           invoice.number, type(exc.__cause__ or exc).__name__)
             write_audit(request, 'generate', invoice,
-                        f'Rechnung {invoice.number} direkt per SMTP versendet an {recipient}',
-                        metadata={'vorgang': 'versand', 'weg': 'smtp'})
-            messages.success(request, f'Rechnung {invoice.number} wurde direkt an {recipient} versendet.')
+                        f'SMTP-Versandstatus für Rechnung {invoice.number} unklar',
+                        metadata={'vorgang': 'versand_ungeklaert', 'weg': 'smtp'})
+            messages.warning(request, str(exc))
             return redirect('sedo:invoice_detail', pk)
         except Exception as e:
             logger.exception('SMTP-Rechnungsversand fehlgeschlagen')
             messages.error(request, f'E-Mail-Versand fehlgeschlagen: {e}')
             return redirect('sedo:invoice_detail', pk)
+        # Die Mail ist bereits angenommen. Ein lokaler Datenbankfehler darf
+        # jetzt nicht als fehlgeschlagene Zustellung erscheinen.
+        status_error = False
+        if invoice.status == 'erstellt':
+            try:
+                invoice.status = 'versendet'
+                invoice.save(update_fields=['status', 'updated_at'])
+            except Exception:
+                logger.exception('SMTP-Mail angenommen, Rechnungsstatus konnte nicht gespeichert werden')
+                status_error = True
+        write_audit(request, 'generate', invoice,
+                    f'Rechnung {invoice.number} direkt per SMTP versendet an {recipient}',
+                    metadata={'vorgang': 'versand', 'weg': 'smtp'})
+        if status_error:
+            messages.warning(request, f'Rechnung {invoice.number} wurde per SMTP angenommen, '
+                                      'aber der lokale Rechnungsstatus konnte nicht gespeichert werden. '
+                                      'Bitte den Status prüfen; nicht blind erneut senden.')
+        else:
+            messages.success(request, f'Rechnung {invoice.number} wurde direkt an {recipient} versendet.')
+        return redirect('sedo:invoice_detail', pk)
     else:
         # Fallback: .eml-Datei zum Download
         out_dir = Path(settings.MEDIA_ROOT) / 'emails' / invoice.number
@@ -1465,16 +1496,13 @@ def invoice_email(request, pk):
         except OSError as exc:
             messages.error(request, f'E-Mail-Entwurf konnte nicht gespeichert werden: {exc}')
             return redirect('sedo:invoice_detail', pk)
-        if not eml_path or not Path(eml_path).exists():
+        if not eml_path or not Path(eml_path).is_file():
             # Erst prüfen, dann Status setzen: vorher stand die Rechnung schon
             # auf 'versendet', obwohl die Datei gar nicht entstanden war (F-115).
             messages.error(request, 'E-Mail-Entwurf konnte nicht erzeugt werden.')
             return redirect('sedo:invoice_detail', pk)
-        if invoice.status == 'erstellt':
-            invoice.status = 'versendet'
-            invoice.save(update_fields=['status', 'updated_at'])
         write_audit(request, 'generate', invoice, 'E-Mail-Entwurf (.eml) zur Rechnung erzeugt',
-                    metadata={'vorgang': 'versand', 'weg': 'eml'})
+                    metadata={'vorgang': 'eml_entwurf', 'weg': 'eml'})
         return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=Path(eml_path).name)
 
 @login_required
@@ -1929,6 +1957,26 @@ def _melde_abgewiesene_buchungsdaten(request, import_result):
                 metadata={'date_errors': str(fehler)[:500]})
 
 
+def _melde_mehrdeutige_buchungen(request, import_result):
+    """Nicht sicher unterscheidbare Bankbuchungen zur manuellen Klärung melden."""
+    rows = (import_result or {}).get('ambiguous') or []
+    if not rows:
+        return
+    examples = '; '.join(
+        f"Zeile {row['zeile']}: {row['datum']}, {row['betrag']} € von {row['name'] or 'unbekannt'}"
+        for row in rows[:5]
+    )
+    rest = f' … und {len(rows) - 5} weitere' if len(rows) > 5 else ''
+    messages.warning(request, f'{len(rows)} Bankbuchung(en) wurden nicht automatisch übernommen, '
+                              f'weil sie sich nicht sicher von vorhandenen Buchungen unterscheiden '
+                              f'lassen oder eine Bankreferenz mit anderen Buchungsdaten erneut vorkommt. '
+                              f'Bitte mit dem Kontoauszug vergleichen und fehlende Zahlungen '
+                              f'manuell erfassen: {examples}{rest}')
+    write_audit(request, 'import', object_type='Bankimport', object_repr='Mehrdeutige Buchungen',
+                message=f'{len(rows)} mehrdeutige Bankbuchungen zur Klärung',
+                metadata={'anzahl': len(rows), 'beispiele': rows[:5]})
+
+
 @login_required
 def payment_list(request):
     import_result = None
@@ -1951,6 +1999,7 @@ def payment_list(request):
                                       f"{import_result['matched']} zugeordnet, "
                                       f"{import_result['unclear']} unklar.")
             _melde_abgewiesene_buchungsdaten(request, import_result)
+            _melde_mehrdeutige_buchungen(request, import_result)
         except BankingError as e:
             messages.error(request, str(e))
         except Exception as e:
@@ -1969,6 +2018,7 @@ def payment_list(request):
                         metadata={k: v for k, v in import_result.items() if k != 'unassigned'})
             messages.success(request, f"Bankimport abgeschlossen: {import_result['imported']} importiert, {import_result['matched']} zugeordnet, {import_result['unclear']} unklar, {import_result['ignored']} ignoriert.")
             _melde_abgewiesene_buchungsdaten(request, import_result)
+            _melde_mehrdeutige_buchungen(request, import_result)
         except Exception as e:
             logger.exception('Bank-JSON-Import fehlgeschlagen')
             messages.error(request, f'Bank-JSON konnte nicht importiert werden: {e}')
@@ -2204,31 +2254,45 @@ def _clean_excel_value(value):
 
 
 
-def _monthly_zip_email(invoices, customer, month):
+def _monthly_zip_email(invoices, customer, month, request=None):
     """Erzeugt einen E-Mail-Entwurf nur mit vollständiger Auswahl gespeicherter Originale."""
+    if not invoices or any(invoice.customer_id != customer.pk for invoice in invoices):
+        raise WorkflowError('Für einen Monats-E-Mail-Entwurf müssen alle Rechnungen '
+                            'zum selben Kunden gehören.')
+    year, month_number = parse_month(month or timezone.localdate().strftime('%Y-%m'))
+    safe_month = f'{year:04d}-{month_number:02d}'
+    for invoice in invoices:
+        _ensure_invoice_zugferd_for_email(invoice)
     attachments = [lese_archivdatei(inv) for inv in invoices]
-    out_dir = Path(settings.MEDIA_ROOT) / 'monthly_emails'
-    out_dir.mkdir(parents=True, exist_ok=True)
-    safe_month = str(month or timezone.localdate().strftime('%Y-%m')).replace('/', '-').replace(' ', '_')
-    zip_path = out_dir / f'Monatsrechnungen_{safe_month}.zip'
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    profile = load_profile()
+    zip_bytes = BytesIO()
+    with zipfile.ZipFile(zip_bytes, 'w', zipfile.ZIP_DEFLATED) as zf:
         for attachment in attachments:
             zf.writestr(attachment.name, attachment.data)
     msg = EmailMessage()
     msg['To'] = customer.email or ''
-    msg['From'] = ''
-    msg['Subject'] = f'Monatsrechnungen {safe_month} - SEDO Objektdienstleistungen'
+    msg['From'] = formataddr((profile['name'], profile['email']))
+    msg['Subject'] = f'Monatsrechnungen {safe_month} - {profile["name"]}'
     body = (
         f'Sehr geehrte Damen und Herren,\n\n'
         f'anbei übersenden wir Ihnen die Monatsrechnungen für {safe_month} als ZIP-Datei.\n'
         f'Enthaltene Rechnungen: {len(invoices)}\n\n'
-        f'Mit freundlichen Grüßen\nSEDO\n'
+        f'Mit freundlichen Grüßen\n{profile["name"]}\n'
     )
     msg.set_content(body)
-    if zip_path.exists():
-        msg.add_attachment(zip_path.read_bytes(), maintype='application', subtype='zip', filename=zip_path.name)
-    eml_path = out_dir / f'Monatsrechnungen_{safe_month}.eml'
-    eml_path.write_bytes(msg.as_bytes())
+    msg.add_attachment(zip_bytes.getvalue(), maintype='application', subtype='zip',
+                       filename=f'Monatsrechnungen_{safe_month}.zip')
+    out_dir = Path(settings.MEDIA_ROOT) / 'monthly_emails'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    eml_path = out_dir / f'Monatsrechnungen_{safe_month}_{uuid.uuid4().hex}.eml'
+    with eml_path.open('xb') as output:
+        output.write(msg.as_bytes())
+    with transaction.atomic():
+        for invoice in invoices:
+            write_audit(request, 'generate', invoice,
+                        f'Monats-E-Mail-Entwurf für Rechnung {invoice.number} erzeugt',
+                        metadata={'vorgang': 'eml_entwurf', 'weg': 'eml',
+                                  'monat': safe_month}, pflicht=True)
     return eml_path
 
 def _read_aareon_mapping_dataframe(file):
@@ -2272,7 +2336,7 @@ def _read_aareon_mapping_dataframe(file):
 
 
 def _month_bounds(month_str):
-    year, month = [int(x) for x in month_str.split('-')]
+    year, month = parse_month(month_str)
     start = date(year, month, 1)
     if month == 12:
         end = date(year, 12, 31)
@@ -2437,7 +2501,7 @@ def aareon_import(request):
             else:
                 customer = invoices[0].customer
                 try:
-                    eml_path = _monthly_zip_email(invoices, customer, month)
+                    eml_path = _monthly_zip_email(invoices, customer, month, request=request)
                     return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=eml_path.name, content_type='message/rfc822')
                 except Exception as e:
                     messages.error(request, f'E-Mail-Entwurf konnte nicht erzeugt werden: {e}')
@@ -2455,6 +2519,11 @@ def aareon_import(request):
             # ebenso viele Stornos zu korrigieren (F-16, NEU-2).
             lauf_fehler = []
             issue_date = None
+            ps = pe = None
+            try:
+                ps, pe = _month_bounds(month)
+            except ValueError as fehler:
+                lauf_fehler.append(str(fehler))
             try:
                 issue_date = parse_date_for_view(request.POST.get('issue_date'), 'Rechnungsdatum')
             except DatumUnlesbar as fehler:
@@ -2490,88 +2559,19 @@ def aareon_import(request):
                 messages.error(request, 'Bitte zuerst die Mapping-Datei importieren.')
             else:
                 customer = get_object_or_404(Customer, pk=customer_id)
-                ps, pe = _month_bounds(month)
                 due = issue_date + timedelta(days=payment_days)
-                created = skipped = missing = 0
-                errors = []
-                created_ids = []
-                units = list(AareonMapping.objects.values_list('billing_unit_sender', flat=True).distinct().order_by('billing_unit_sender'))
-                if limit:
-                    units = units[:limit]
-                # Mapping einmalig indexieren statt pro Einheit × Leistung neu abzufragen (kein N+1).
-                mapping_index = {
-                    (m.billing_unit_sender, m.service_id): m
-                    for m in AareonMapping.objects.all()
-                }
-                for unit_name in units:
-                    if skip_existing and Invoice.objects.filter(customer=customer, obj__name=unit_name, source='GWG Monatsrechnung', period_start=ps, period_end=pe).exclude(lifecycle='cancelled').exists():
-                        skipped += 1
-                        continue
-                    # Erst prüfen, welche Leistungen gemappt sind – erst dann eine Nummer
-                    # vergeben, damit keine Rechnungsnummern „verbrannt“ werden.
-                    matched = []
-                    for svc in services:
-                        mapping = mapping_index.get((unit_name, svc['id']))
-                        if mapping:
-                            matched.append((svc, mapping))
-                        else:
-                            missing += 1
-                    if not matched:
-                        continue
-                    # Jede Einheit läuft in EINER Transaktion: schlägt irgendetwas
-                    # (auch die PDF-/XML-Erzeugung) fehl, wird die komplette
-                    # Rechnung zurückgerollt – keine Teilrechnungen in der DB.
-                    try:
-                        with datei_rueckweg() as merken, transaction.atomic():
-                            obj, _ = CustomerObject.objects.get_or_create(
-                                customer=customer,
-                                name=unit_name,
-                                defaults={'street': unit_name, 'postcode': customer.postcode, 'city': customer.city, 'country': customer.country or 'DE'}
-                            )
-                            inv = create_numbered_invoice(
-                                invoice_type='380',
-                                customer=customer,
-                                obj=obj,
-                                issue_date=issue_date,
-                                due_date=due,
-                                period_start=ps,
-                                period_end=pe,
-                                vat_rate=Decimal('19.00'),
-                                status='erstellt',
-                                source='GWG Monatsrechnung',
-                                note=f'Monatsrechnung {month} auf Basis GWG-Mapping.',
-                            )
-                            for pos_no, (svc, mapping) in enumerate(matched, start=1):
-                                InvoiceItem.objects.create(
-                                    invoice=inv,
-                                    position=pos_no,
-                                    description=svc['description'],
-                                    quantity=svc['quantity'],
-                                    unit=svc['unit'],
-                                    unit_price=svc['unit_price'],
-                                    article_no=mapping.nksl_internal,
-                                    leistungsart_id=mapping.service_id,
-                                    leistungsart_text=mapping.service_id,
-                                )
-                            recalc_invoice(inv)
-                            inv.save()
-                            merken(inv)
-                            generate_invoice_files(inv, erstmalig=True, request=request)
-                        created += 1
-                        created_ids.append(inv.id)
-                    except IntegrityError:
-                        # Idempotenz-Schutz (Unique-Constraint) hat gegriffen:
-                        # dieselbe Monatsrechnung existiert bereits – z. B. bei
-                        # doppelt/parallel gestartetem Lauf. Kein Fehler.
-                        logger.info('GWG-Monatslauf: Einheit %s existiert bereits (übersprungen)', unit_name)
-                        skipped += 1
-                    except Exception as e:
-                        logger.exception('GWG-Monatslauf: Einheit %s fehlgeschlagen', unit_name)
-                        errors.append(f'{unit_name}: {e}')
-                request.session['last_monthly_invoice_ids'] = created_ids
-                generated_invoice_ids = created_ids
-                generated_invoices = Invoice.objects.filter(id__in=created_ids).select_related('customer','obj').order_by('number') if created_ids else []
-                run_result = {'created': created, 'skipped': skipped, 'missing': missing, 'errors': errors[:20], 'month': month, 'invoice_ids': created_ids}
+                run_result = generate_gwg_monthly(
+                    customer=customer, month=month, issue_date=issue_date,
+                    due_date=due, period_start=ps, period_end=pe,
+                    services=services, skip_existing=skip_existing,
+                    limit=limit, request=request,
+                )
+                generated_invoice_ids = run_result['invoice_ids']
+                request.session['last_monthly_invoice_ids'] = generated_invoice_ids
+                generated_invoices = Invoice.objects.filter(
+                    id__in=generated_invoice_ids,
+                ).select_related('customer', 'obj').order_by('number') if generated_invoice_ids else []
+                created, skipped, missing = (run_result[key] for key in ('created', 'skipped', 'missing'))
                 if created:
                     messages.success(request, f'{created} Monatsrechnungen erzeugt. {skipped} übersprungen. Fehlende Leistungszuordnungen: {missing}.')
                 else:
@@ -2957,6 +2957,8 @@ def settings_page(request):
                     write_audit(request, 'generate', object_type='SMTP', object_repr='Test',
                                 message=f'Test-E-Mail an {test_to} versendet')
                     messages.success(request, f'Test-E-Mail erfolgreich an {test_to} versendet.')
+                except SMTPDeliveryUncertain as e:
+                    messages.warning(request, str(e))
                 except Exception as e:
                     messages.error(request, f'SMTP-Test fehlgeschlagen: {e}')
             return redirect('sedo:settings')

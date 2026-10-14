@@ -587,6 +587,10 @@ def build_xml(inv: InvoiceRow, issue_date: datetime, period_start: datetime | No
     """
     if not clean_text(inv.invoice_no):
         raise ValueError("Rechnungsnummer fehlt (BT-1 ist Pflichtfeld).")
+    if inv.vat_rate is None or D(inv.vat_rate) <= Decimal('0'):
+        raise ValueError(
+            '0 % oder negative Umsatzsteuer werden nicht unterstützt: Für die '
+            'E-Rechnung fehlt eine passende Steuerkategorie; Kategorie S verlangt einen positiven Satz.')
     _validate_recipient(inv)
     root = etree.Element(qn("rsm", "CrossIndustryInvoice"), nsmap=NSMAP)
 

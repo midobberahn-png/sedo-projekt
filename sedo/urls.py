@@ -63,6 +63,8 @@ urlpatterns = [
     path('rechnungen/<int:pk>/finalisieren/', views.invoice_finalize, name='invoice_finalize'),
     path('rechnungen/<int:pk>/erzeugen/', views.invoice_generate, name='invoice_generate'),
     path('rechnungen/<int:pk>/email/', views.invoice_email, name='invoice_email'),
+    path('rechnungen/<int:pk>/versand-bestaetigen/', views.invoice_confirm_external_send,
+         name='invoice_confirm_external_send'),
     path('rechnungen/<int:pk>/zugferd-pruefung/', views.invoice_zugferd_validation, name='invoice_zugferd_validation'),
     path('rechnungen/<int:pk>/korrektur/', views.invoice_correction, name='invoice_correction'),
     path('rechnungen/<int:pk>/storno/', views.invoice_storno, name='invoice_storno'),

@@ -121,12 +121,6 @@ def banking_is_configured() -> bool:
     return bool(cfg['blz'] and cfg['endpoint'] and cfg['login'])
 
 
-def _stable_external_id(entry: dict) -> str:
-    """Stabile Kennung, falls die Bank keine Referenz liefert."""
-    raw = '|'.join(str(entry.get(k, '')) for k in ('datum', 'betrag', 'name', 'verwendungszweck'))
-    return 'FINTS-' + hashlib.sha1(raw.encode('utf-8')).hexdigest()[:16]
-
-
 def _normalize_mt940(transactions) -> list[dict]:
     """mt940-Umsätze → Eingabeformat der bestehenden Import-Pipeline."""
     rows = []
@@ -145,10 +139,16 @@ def _normalize_mt940(transactions) -> list[dict]:
             'name': (data.get('applicant_name') or '').strip(),
             'verwendungszweck': (data.get('purpose') or '').strip(),
         }
-        ext = (data.get('end_to_end_reference') or data.get('bank_reference') or '').strip()
-        if ext.upper() in ('', 'NOTPROVIDED', 'NONREF'):
-            ext = _stable_external_id(entry)
-        entry['transaktions_id'] = ext
+        # Gleiche Buchungsdaten beweisen keine identische Bankbuchung. Eine
+        # daraus berechnete ID würde eine zweite echte Zahlung still verwerfen.
+        # Ohne Bankkennung entscheidet der Import anhand der Anzahl und meldet
+        # nicht unterscheidbare Wiederholungen ausdrücklich zur Klärung.
+        references = (data.get('bank_reference'), data.get('end_to_end_reference'))
+        entry['transaktions_id'] = next(
+            (str(ref).strip() for ref in references
+             if ref and str(ref).strip().upper() not in ('NOTPROVIDED', 'NONREF')),
+            '',
+        )
         rows.append(entry)
     return rows
 

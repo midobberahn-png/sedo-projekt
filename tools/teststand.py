@@ -32,6 +32,7 @@ ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'deskto
               'sedo_setup_windows.iss', 'WINDOWS_ERSTINSTALLATION.txt',
               '.env.example', '.gitattributes', '.gitignore', 'README.md', 'DEPLOYMENT_SECURITY_NOTES.md',
               'LOCAL_CHECKS.md', 'BONSAI.md', 'E_MAIL.md', 'KALENDER.md',
+              'RECHNUNGSREGELN.md',
               'DASHBOARD.md', 'SPAMFILTER.md', 'EINGANGSRECHNUNGEN.md',
               'START_HIER.command', 'START_WINDOWS.bat', 'SEDO_BEENDEN.command',
               'SEDO_BEENDEN.bat', 'SEDO.vbs', 'DESKTOP_VERKNUEPFUNG_ERSTELLEN.bat', 'SEDO.app/Contents/Info.plist',
