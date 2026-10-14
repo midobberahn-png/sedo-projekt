@@ -78,12 +78,11 @@ Windows-Freigabe, kein erfolgreich bestandener Isolationsnachweis.
 Die native Druckvorschau verwendet außerdem Betriebssystemkomponenten. Ein
 Unterprozess oder Virenscanner macht Dokumente nicht garantiert ungefährlich.
 
-Im Paketprofil ist lxml 6.0.4 durch die FinTS-Abhängigkeit gebunden. Dazu besteht
-die Warnung CVE-2026-41066. SEDO nutzt explizit deaktivierte externe Entitäten;
-die betroffenen unsicheren Parser-Voreinstellungen dürfen nicht verwendet werden.
-Die Mitigation entspricht dem Hersteller-Workaround; die Warnung wird im
-Abhängigkeitsscan nicht ausgeblendet. Eine kompatible Aktualisierung bleibt eine
-Wartungsaufgabe, auch wenn die geprüften eigenen Parserpfade sie bereits abfangen.
+Das Paketprofil verwendet FinTS 5.0.1 und lxml 6.1.3. Die bisherige Bindung
+an lxml 6.0.4 wurde damit aufgehoben; der Hersteller nennt lxml 6.1.0 als
+Korrektur für CVE-2026-41066. Die eigenen XML-Parser bleiben zusätzlich mit
+`resolve_entities=False` und `no_network=True` konfiguriert. Neue Parserpfade
+müssen diese Einstellung und die Dokument-Isolation beibehalten.
 [Herstellerhinweis](https://github.com/lxml/lxml/security/advisories/GHSA-vfmq-68hx-4jfw).
 
 ## Netzwerkbetrieb: separate Abnahme erforderlich
