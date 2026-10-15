@@ -160,7 +160,7 @@ class DesktopPrintBoundaryTests(SimpleTestCase):
         self.url = 'http://127.0.0.1:8765/eingangsrechnungen/'
         self.payload = base64.b64encode(pdf()).decode()
 
-    @patch('sedo.desktop_print.sys.platform', 'darwin')
+    @patch('sedo.desktop_print.sys', SimpleNamespace(platform='darwin'))
     @patch('sedo.desktop_print._mac_print', return_value={'native': True, 'ok': True})
     def test_only_local_invoice_pages_can_open_native_print(self, native):
         for path in ['/eingangsrechnungen/', '/eingangsrechnungen/beleg/1/', '/eingangsrechnungen/beleg/1/ansehen/']:
@@ -173,7 +173,7 @@ class DesktopPrintBoundaryTests(SimpleTestCase):
             self.assertFalse(self.api.print_incoming_pdf(self.payload)['ok'])
         self.assertEqual(native.call_count, 3)
 
-    @patch('sedo.desktop_print.sys.platform', 'darwin')
+    @patch('sedo.desktop_print.sys', SimpleNamespace(platform='darwin'))
     @patch('sedo.desktop_print._mac_print')
     def test_invalid_data_and_parallel_dialogs_are_blocked(self, native):
         for payload in [None, {}, 'not base64', base64.b64encode(b'<html>').decode()]:
@@ -184,7 +184,7 @@ class DesktopPrintBoundaryTests(SimpleTestCase):
             self.assertFalse(self.api.print_incoming_pdf(self.payload)['ok'])
         native.assert_not_called()
 
-    @patch('sedo.desktop_print.sys.platform', 'win32')
+    @patch('sedo.desktop_print.sys', SimpleNamespace(platform='win32'))
     @patch('sedo.desktop_print._mac_print')
     def test_windows_uses_the_browser_pdf_print_dialog(self, native):
         self.assertEqual(self.api.print_incoming_pdf(self.payload), {'native': False})

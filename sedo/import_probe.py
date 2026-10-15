@@ -66,7 +66,11 @@ def _check_xlsx(data):
             raise ValueError('Spreadsheet archive exceeds limits')
         for member in files:
             path = PurePosixPath(member.filename)
-            if (path.is_absolute() or '..' in path.parts or '\\' in member.filename
+            # zipfile normalizes backslashes to slashes on Windows. Inspect the
+            # original ZIP entry too, before that normalization hides them.
+            raw_name = getattr(member, 'orig_filename', member.filename)
+            if (path.is_absolute() or '..' in path.parts or '\\' in raw_name
+                    or '\x00' in raw_name
                     or member.flag_bits & 1
                     or member.file_size > 200 * max(member.compress_size, 1)):
                 raise ValueError('Unsafe spreadsheet archive')
