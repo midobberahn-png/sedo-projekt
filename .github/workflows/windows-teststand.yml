@@ -53,37 +53,13 @@ jobs:
           $innoArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $innoDir + '"'
           $innoProcess = Start-Process -FilePath $inno -ArgumentList $innoArgs -Wait -PassThru
           if ($innoProcess.ExitCode -ne 0) { throw "Inno Setup konnte nicht installiert werden: $($innoProcess.ExitCode)" }
-          $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-          $roots = @($innoDir, (Join-Path $env:ProgramFiles 'Inno Setup 6'),
-                     (Join-Path $pf86 'Inno Setup 6'), (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6'))
-          $candidates = @(Get-ChildItem -Path $roots -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue |
-                          Select-Object -ExpandProperty FullName -Unique)
-          $iscc = $null
-          foreach ($candidate in $candidates) {
-            $version = (Get-Item -LiteralPath $candidate).VersionInfo
-            Write-Host "Inno-Compiler: $candidate | Datei: $($version.FileVersion) | Produkt: $($version.ProductVersion)"
-            if ($version.FileVersion -match '(?<!\d)6\.7\.3(?:\D|$)' -or
-                $version.ProductVersion -match '(?<!\d)6\.7\.3(?:\D|$)') {
-              $iscc = $candidate
-              break
-            }
+          # ISCC.exe has no useful Windows version resource (0.0.0.0). The
+          # signed installer and its official hash establish version 6.7.3.
+          $iscc = Join-Path $innoDir 'ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) {
+            throw 'Der Compiler aus dem geprüften Inno-Setup-Paket fehlt.'
           }
-          if (-not $iscc) { throw 'Inno Setup 6.7.3 ist nach der Installation nicht auffindbar.' }
           "SEDO_ISCC=$iscc" >> $env:GITHUB_ENV
-      - name: Vollständige Windows-Prüfung
-        shell: pwsh
-        run: |
-          $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
-          python tools/local_checks.py --output $checks
-          if ($LASTEXITCODE -ne 0) {
-            $report = Get-Content (Join-Path $checks 'report.json') -Raw | ConvertFrom-Json
-            $failed = $report.steps | Where-Object status -eq 'failed' | Select-Object -Last 1
-            if ($failed) {
-              Write-Host "Fehlgeschlagene Prüfung: $($failed.name)"
-              Get-Content (Join-Path $checks $failed.log) -Tail 180
-            }
-            throw 'Die Windows-Prüfung ist fehlgeschlagen.'
-          }
       - name: Offizielle Bauwerkzeuge und Microsoft-Laufzeiten prüfen
         shell: pwsh
         run: |
@@ -108,6 +84,20 @@ jobs:
           "SEDO_WEBVIEW=$webview" >> $env:GITHUB_ENV
           "SEDO_VC=$vc" >> $env:GITHUB_ENV
           "SEDO_VC_URL=$vcUrl" >> $env:GITHUB_ENV
+      - name: Vollständige Windows-Prüfung
+        shell: pwsh
+        run: |
+          $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
+          python tools/local_checks.py --output $checks
+          if ($LASTEXITCODE -ne 0) {
+            $report = Get-Content (Join-Path $checks 'report.json') -Raw | ConvertFrom-Json
+            $failed = $report.steps | Where-Object status -eq 'failed' | Select-Object -Last 1
+            if ($failed) {
+              Write-Host "Fehlgeschlagene Prüfung: $($failed.name)"
+              Get-Content (Join-Path $checks $failed.log) -Tail 180
+            }
+            throw 'Die Windows-Prüfung ist fehlgeschlagen.'
+          }
       - name: Windows-Testinstaller aus geprüften Dateien bauen
         shell: pwsh
         run: |
