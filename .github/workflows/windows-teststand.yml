@@ -84,6 +84,11 @@ jobs:
           "SEDO_WEBVIEW=$webview" >> $env:GITHUB_ENV
           "SEDO_VC=$vc" >> $env:GITHUB_ENV
           "SEDO_VC_URL=$vcUrl" >> $env:GITHUB_ENV
+      - name: Microsoft-Signaturen auch im Python-Paketbauer vorprüfen
+        shell: pwsh
+        run: |
+          python -c "import os; from pathlib import Path; from tools.windows_installer import microsoft_signature, checked_runtime_url; print('WebView2', microsoft_signature(Path(os.environ['SEDO_WEBVIEW']))); print('VC++', microsoft_signature(Path(os.environ['SEDO_VC']))); checked_runtime_url(os.environ['SEDO_VC_URL'])"
+          if ($LASTEXITCODE -ne 0) { throw 'Die Signaturprüfung des Paketbauers ist fehlgeschlagen.' }
       - name: Inno-Rezept vor der langen Prüfung kompilieren
         shell: pwsh
         run: |
