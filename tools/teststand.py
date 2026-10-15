@@ -30,6 +30,7 @@ ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'deskto
               'manage.py', 'sedo_desktop.spec', 'build_mac.command', 'BUILD_WINDOWS.bat',
               'TESTSTAND.md', 'BEDIENHINWEISE.md', 'UX_ARBEITSOBERFLAECHE.md',
               'sedo_setup_windows.iss', 'WINDOWS_ERSTINSTALLATION.txt',
+              'START_WINDOWS_TEST.bat',
               '.env.example', '.gitattributes', '.gitignore', 'README.md', 'DEPLOYMENT_SECURITY_NOTES.md',
               'LOCAL_CHECKS.md', 'BONSAI.md', 'E_MAIL.md', 'KALENDER.md',
               'RECHNUNGSREGELN.md',
@@ -214,8 +215,10 @@ def frozen(output: Path, app: Path = APP) -> Path:
                      'DJANGO_SECRET_KEY': 'isolierter-buildtest-kein-betriebsschluessel'}
         (Path(tmp) / 'home/data').mkdir(parents=True)
         # Auch plattformspezifische Dateitausch-/Sperrfehler vor dem Paketbau prüfen.
+        # A freshly staged Windows environment can exceed ten minutes for the
+        # complete suite on a shared runner. Keep a finite but realistic limit.
         run([str(envpython), 'manage.py', 'test', 'sedo', '--noinput'],
-            cwd=staged, env=build_env, timeout=600)
+            cwd=staged, env=build_env, timeout=1200)
         run([str(envpython), '-c', 'from faster_whisper import WhisperModel; import webview, waitress'], env=build_env)
         native_dist = Path(tmp) / 'desktop' if sys.platform == 'darwin' else output / 'desktop'
         run([str(envpython), '-m', 'PyInstaller', str(staged / 'sedo_desktop.spec'),

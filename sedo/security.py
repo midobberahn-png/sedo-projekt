@@ -13,12 +13,14 @@ import math
 import os
 from pathlib import Path
 import sqlite3
+import threading
 import time
 import unicodedata
 
 from django.conf import settings
 
 READ_ONLY_GROUP = 'SEDO Mitarbeiter Lesen'
+_THROTTLE_SCHEMA_LOCK = threading.Lock()
 SAFE_METHODS = frozenset({'GET', 'HEAD', 'OPTIONS'})
 ADMIN_VIEWS = frozenset({
     'sedo:settings', 'sedo:backup', 'sedo:readiness_toggle',
@@ -108,10 +110,18 @@ class LoginThrottle:
         fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
         os.close(fd)
         os.chmod(path, 0o600)
-        connection = sqlite3.connect(path, timeout=2, isolation_level=None)
+        connection = sqlite3.connect(path, timeout=5, isolation_level=None)
         try:
-            connection.execute('CREATE TABLE IF NOT EXISTS attempts (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires REAL NOT NULL)')
-            connection.execute('CREATE INDEX IF NOT EXISTS attempts_expiry ON attempts(expires)')
+            # DDL on every login competes with active reservations on SQLite,
+            # especially under concurrent first use on Windows. Serialize
+            # initialization in this process and avoid DDL once it exists.
+            with _THROTTLE_SCHEMA_LOCK:
+                existing = {row[0] for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE name IN ('attempts', 'attempts_expiry')")}
+                if 'attempts' not in existing:
+                    connection.execute('CREATE TABLE IF NOT EXISTS attempts (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires REAL NOT NULL)')
+                if 'attempts_expiry' not in existing:
+                    connection.execute('CREATE INDEX IF NOT EXISTS attempts_expiry ON attempts(expires)')
         except Exception:
             connection.close()
             raise

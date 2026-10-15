@@ -39,7 +39,10 @@ class DocumentProbeTests(SimpleTestCase):
             self.assertIn(resources.resolve(), readable)
             self.assertNotIn(contents.resolve(), readable)
             self.assertNotIn(root.resolve(), readable)
-            self.assertIn((runtime / 'base_library.zip').resolve().parent, readable)
+            # Windows may resolve the same temporary directory once through
+            # its short 8.3 alias. Compare the actual directory identity.
+            linked_parent = (runtime / 'base_library.zip').resolve().parent
+            self.assertTrue(linked_parent.samefile(resources))
 
     def test_non_bundle_or_mismatched_executable_never_grants_sibling_resources(self):
         with tempfile.TemporaryDirectory() as name:
@@ -90,6 +93,9 @@ class DocumentProbeTests(SimpleTestCase):
             def poll(self):
                 return 0
 
+            def wait(self, timeout=None):
+                return 0
+
         def start(command, **kwargs):
             seen.update(kwargs['env'])
             directory = Path(command[-1])
@@ -121,6 +127,9 @@ class DocumentProbeTests(SimpleTestCase):
             args = ['worker']
 
             def poll(self):
+                return 0
+
+            def wait(self, timeout=None):
                 return 0
 
         for output in (b'garbage', b'[]', b'{"ok":true,"kind":"invoice","reason":17}',

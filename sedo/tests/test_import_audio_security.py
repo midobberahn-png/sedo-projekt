@@ -156,7 +156,12 @@ class TableWorkerTests(SimpleTestCase):
     def test_xlsx_archive_rejects_traversal_duplicates_and_expansion(self):
         for name in ('../outside', '/absolute', 'dir\\file.xml'):
             with self.subTest(name=name), self.assertRaises(ValueError):
-                import_probe._check_xlsx(archive([(name, b'test')]))
+                content = archive([('dir/file.xml' if '\\' in name else name, b'test')])
+                if '\\' in name:
+                    # zipfile normalizes names while writing on Windows; keep
+                    # the malicious raw entry name in both ZIP headers.
+                    content = content.replace(b'dir/file.xml', b'dir\\file.xml')
+                import_probe._check_xlsx(content)
         with self.assertWarns(UserWarning):
             duplicate = archive([('same.xml', b'a'), ('same.xml', b'b')])
         with self.assertRaises(ValueError):

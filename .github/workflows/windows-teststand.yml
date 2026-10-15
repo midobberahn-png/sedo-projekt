@@ -1,0 +1,221 @@
+name: SEDO Windows test installer
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-teststand-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64 full gate and installer
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - name: Windows x64 prüfen
+        shell: pwsh
+        run: |
+          if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64') {
+            throw 'Der Windows-Build benötigt einen x64-Runner.'
+          }
+      - name: Quellstand auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python 3.13.15 einrichten
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.15'
+          architecture: x64
+      - name: Inno Setup 6.7.3 vor der langen Prüfung bereitstellen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = Join-Path $env:RUNNER_TEMP 'sedo-downloads'
+          New-Item -ItemType Directory -Path $download | Out-Null
+          $inno = Join-Path $download 'innosetup-6.7.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $inno
+          $innoHash = (Get-FileHash $inno -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($innoHash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw 'Inno Setup weicht vom offiziellen GitHub-Release ab.'
+          }
+          $innoSignature = Get-AuthenticodeSignature $inno
+          if ($innoSignature.Status -ne 'Valid' -or $innoSignature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw 'Inno Setup hat keine gültige Herausgebersignatur.'
+          }
+          $innoDir = Join-Path $download 'Inno'
+          $innoArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $innoDir + '"'
+          $innoProcess = Start-Process -FilePath $inno -ArgumentList $innoArgs -Wait -PassThru
+          if ($innoProcess.ExitCode -ne 0) { throw "Inno Setup konnte nicht installiert werden: $($innoProcess.ExitCode)" }
+          # ISCC.exe has no useful Windows version resource (0.0.0.0). The
+          # signed installer and its official hash establish version 6.7.3.
+          $iscc = Join-Path $innoDir 'ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) {
+            throw 'Der Compiler aus dem geprüften Inno-Setup-Paket fehlt.'
+          }
+          "SEDO_ISCC=$iscc" >> $env:GITHUB_ENV
+      - name: Offizielle Bauwerkzeuge und Microsoft-Laufzeiten prüfen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = Join-Path $env:RUNNER_TEMP 'sedo-downloads'
+          $webview = Join-Path $download 'MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $webview
+          $webviewSignature = Get-AuthenticodeSignature $webview
+          if ($webviewSignature.Status -ne 'Valid' -or $webviewSignature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation,') {
+            throw 'Der WebView2-Bootstrapper ist nicht gültig von Microsoft signiert.'
+          }
+
+          $vc = Join-Path $download 'VC_redist.x64.exe'
+          $vcUrl = (& curl.exe --location --fail --silent --show-error --output $vc --write-out '%{url_effective}' 'https://aka.ms/vc14/vc_redist.x64.exe').Trim()
+          if ($LASTEXITCODE -ne 0 -or $vcUrl -notmatch '^https://download\.visualstudio\.microsoft\.com/download/pr/[A-Za-z0-9/._-]+/VC_redist\.x64\.exe$') {
+            throw 'Die feste Microsoft-Adresse der Visual-C++-Laufzeit konnte nicht ermittelt werden.'
+          }
+          $vcSignature = Get-AuthenticodeSignature $vc
+          if ($vcSignature.Status -ne 'Valid' -or $vcSignature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation,') {
+            throw 'Die Visual-C++-Laufzeit ist nicht gültig von Microsoft signiert.'
+          }
+          "SEDO_WEBVIEW=$webview" >> $env:GITHUB_ENV
+          "SEDO_VC=$vc" >> $env:GITHUB_ENV
+          "SEDO_VC_URL=$vcUrl" >> $env:GITHUB_ENV
+      - name: Microsoft-Signaturen auch im Python-Paketbauer vorprüfen
+        shell: pwsh
+        run: |
+          python -c "import os; from pathlib import Path; from tools.windows_installer import microsoft_signature, checked_runtime_url; print('WebView2', microsoft_signature(Path(os.environ['SEDO_WEBVIEW']))); print('VC++', microsoft_signature(Path(os.environ['SEDO_VC']))); checked_runtime_url(os.environ['SEDO_VC_URL'])"
+          if ($LASTEXITCODE -ne 0) { throw 'Die Signaturprüfung des Paketbauers ist fehlgeschlagen.' }
+      - name: Inno-Rezept vor der langen Prüfung kompilieren
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'sedo-inno-preflight'
+          $bundle = Join-Path $root 'bundle'
+          $output = Join-Path $root 'output'
+          New-Item -ItemType Directory -Path $bundle, $output -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $bundle 'nur-compilerprobe.txt') -Value 'Kein SEDO-Programm.' -Encoding ascii
+          $vcVersion = (Get-Item -LiteralPath $env:SEDO_VC).VersionInfo.FileVersion
+          if ($vcVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw 'Die Microsoft-Laufzeit hat keine verwendbare Versionsangabe.'
+          }
+          $vcHash = (Get-FileHash -LiteralPath $env:SEDO_VC -Algorithm SHA256).Hash.ToLowerInvariant()
+          $defines = @('/Qp', "/DBundleDir=$bundle", "/DInstallerOutputDir=$output",
+                       '/DAppVersion=3.21.0.2', "/DWebViewInstaller=$env:SEDO_WEBVIEW",
+                       "/DVCRuntimeURL=$env:SEDO_VC_URL", "/DVCRuntimeHash=$vcHash",
+                       "/DVCRuntimeVersion=$vcVersion", 'sedo_setup_windows.iss')
+          & $env:SEDO_ISCC @defines
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $output 'SEDO_Rechnungstool_Setup_3.21.0.2.exe'))) {
+            throw 'Das Inno-Setup-Rezept konnte nicht kompiliert werden.'
+          }
+      - name: Vollständige Windows-Prüfung
+        shell: pwsh
+        run: |
+          $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
+          python tools/local_checks.py --output $checks
+          if ($LASTEXITCODE -ne 0) {
+            $report = Get-Content (Join-Path $checks 'report.json') -Raw | ConvertFrom-Json
+            $failed = $report.steps | Where-Object status -eq 'failed' | Select-Object -Last 1
+            if ($failed) {
+              Write-Host "Fehlgeschlagene Prüfung: $($failed.name)"
+              Get-Content (Join-Path $checks $failed.log) -Tail 180
+            }
+            throw 'Die Windows-Prüfung ist fehlgeschlagen.'
+          }
+      - name: Windows-Testinstaller aus geprüften Dateien bauen
+        shell: pwsh
+        run: |
+          $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
+          $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
+          python tools/windows_installer.py --checks $checks --iscc $env:SEDO_ISCC --webview-bootstrapper $env:SEDO_WEBVIEW --vc-runtime $env:SEDO_VC --vc-runtime-url $env:SEDO_VC_URL --output $package --version 3.21.0.2
+          if ($LASTEXITCODE -ne 0) { throw 'Der Windows-Testinstaller konnte nicht gebaut werden.' }
+      - name: Installation, gebündeltes Programm und Deinstallation prüfen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
+          $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
+          $setup = Join-Path $package 'SEDO_Rechnungstool_Setup_3.21.0.2.exe'
+          $smoke = Join-Path $env:RUNNER_TEMP 'sedo-installationstest'
+          $app = Join-Path $smoke 'Programm'
+          $env:SEDO_HOME = Join-Path $smoke 'Daten'
+          $env:SEDO_CHECK_REPORT = Join-Path $smoke 'selbsttest.json'
+          $env:DJANGO_SECRET_KEY = 'nur-isolierter-windows-installationstest'
+          New-Item -ItemType Directory -Path $env:SEDO_HOME -Force | Out-Null
+          $setupLog = Join-Path $smoke 'setup.log'
+          $setupArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $app + '" /LOG="' + $setupLog + '"'
+          $install = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Die Testinstallation ist fehlgeschlagen: $($install.ExitCode)" }
+          $exe = Join-Path $app 'SEDO Rechnungstool.exe'
+          if (-not (Test-Path $exe)) { throw 'Das installierte Programm fehlt.' }
+          $nativeExe = Join-Path $checks 'native\desktop\SEDO Rechnungstool\SEDO Rechnungstool.exe'
+          if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne (Get-FileHash $nativeExe -Algorithm SHA256).Hash) {
+            throw 'Die installierte EXE weicht vom geprüften nativen Build ab.'
+          }
+          $stdout = Join-Path $smoke 'selbsttest-stdout.log'
+          $stderr = Join-Path $smoke 'selbsttest-stderr.log'
+          $check = Start-Process -FilePath $exe -ArgumentList '--check-strict' -Wait -PassThru -WorkingDirectory $app -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (Test-Path $env:SEDO_CHECK_REPORT) {
+            Write-Host 'Installierter Selbsttest-Bericht:'
+            Get-Content $env:SEDO_CHECK_REPORT -Raw
+          } else {
+            Write-Host 'Installierter Selbsttest hat keinen JSON-Bericht geschrieben.'
+          }
+          if ($check.ExitCode -ne 0) {
+            Write-Host "Installierter Selbsttest: Exitcode $($check.ExitCode)"
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 80 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 80 }
+            $nativeBundle = Split-Path $nativeExe -Parent
+            $missing = @(Get-ChildItem -LiteralPath $nativeBundle -Recurse -File | Where-Object {
+              $relative = $_.FullName.Substring($nativeBundle.Length + 1)
+              -not (Test-Path -LiteralPath (Join-Path $app $relative) -PathType Leaf)
+            })
+            Write-Host "Fehlende Dateien aus dem geprüften Bundle: $($missing.Count)"
+            $missing | Select-Object -First 30 -ExpandProperty FullName
+            throw 'Der Selbsttest der installierten Anwendung ist fehlgeschlagen.'
+          }
+          $selfCheck = Get-Content $env:SEDO_CHECK_REPORT -Raw | ConvertFrom-Json
+          if (-not $selfCheck.ok -or -not $selfCheck.frozen -or -not $selfCheck.whisper_available) {
+            throw 'Der Selbsttest der installierten Anwendung ist unvollständig.'
+          }
+          $uninstaller = Join-Path $app 'unins000.exe'
+          if (-not (Test-Path $uninstaller)) { throw 'Die Deinstallation fehlt.' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0 -or (Test-Path $exe)) { throw 'Die Deinstallation ist fehlgeschlagen.' }
+          $result = [ordered]@{
+            installed_program_self_check = $true
+            uninstall_successful = $true
+            installer_sha256 = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+            github_commit = $env:GITHUB_SHA
+            target_pc_tested = $false
+          }
+          $result | ConvertTo-Json | Set-Content -Path (Join-Path $package 'INSTALLATIONSTEST.json') -Encoding utf8
+      - name: Geprüftes Testpaket bereitstellen
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: SEDO-Windows-x64-Testinstaller
+          path: |
+            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.2.zip
+            ${{ runner.temp }}/sedo-installer/SHA256.txt
+            ${{ runner.temp }}/sedo-installer/INSTALLATIONSTEST.json
+            ${{ runner.temp }}/sedo-checks/report.json
+            ${{ runner.temp }}/sedo-checks/native/BUILD_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Diagnose bei fehlgeschlagener Prüfung sichern
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: SEDO-Windows-Fehlerdiagnose
+          path: |
+            ${{ runner.temp }}/sedo-checks/report.json
+            ${{ runner.temp }}/sedo-checks/*.log
+            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.2.zip
+            ${{ runner.temp }}/sedo-installer/SHA256.txt
+            ${{ runner.temp }}/sedo-installationstest/*.json
+            ${{ runner.temp }}/sedo-installationstest/*.log
+          if-no-files-found: warn
+          retention-days: 7
