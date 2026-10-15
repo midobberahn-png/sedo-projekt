@@ -84,6 +84,28 @@ jobs:
           "SEDO_WEBVIEW=$webview" >> $env:GITHUB_ENV
           "SEDO_VC=$vc" >> $env:GITHUB_ENV
           "SEDO_VC_URL=$vcUrl" >> $env:GITHUB_ENV
+      - name: Inno-Rezept vor der langen Prüfung kompilieren
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'sedo-inno-preflight'
+          $bundle = Join-Path $root 'bundle'
+          $output = Join-Path $root 'output'
+          New-Item -ItemType Directory -Path $bundle, $output -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $bundle 'nur-compilerprobe.txt') -Value 'Kein SEDO-Programm.' -Encoding ascii
+          $vcVersion = (Get-Item -LiteralPath $env:SEDO_VC).VersionInfo.FileVersion
+          if ($vcVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw 'Die Microsoft-Laufzeit hat keine verwendbare Versionsangabe.'
+          }
+          $vcHash = (Get-FileHash -LiteralPath $env:SEDO_VC -Algorithm SHA256).Hash.ToLowerInvariant()
+          $defines = @('/Qp', "/DBundleDir=$bundle", "/DInstallerOutputDir=$output",
+                       '/DAppVersion=3.21.0.2', "/DWebViewInstaller=$env:SEDO_WEBVIEW",
+                       "/DVCRuntimeURL=$env:SEDO_VC_URL", "/DVCRuntimeHash=$vcHash",
+                       "/DVCRuntimeVersion=$vcVersion", 'sedo_setup_windows.iss')
+          & $env:SEDO_ISCC @defines
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $output 'SEDO_Rechnungstool_Setup_3.21.0.2.exe'))) {
+            throw 'Das Inno-Setup-Rezept konnte nicht kompiliert werden.'
+          }
       - name: Vollständige Windows-Prüfung
         shell: pwsh
         run: |
