@@ -48,9 +48,6 @@ Source: "{#WebViewInstaller}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags
 Name: "{group}\{#AppName}"; Filename: "{app}\SEDO Rechnungstool.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\SEDO Rechnungstool.exe"
 
-[Run]
-Filename: "{app}\SEDO Rechnungstool.exe"; Description: "SEDO jetzt starten"; Flags: nowait postinstall skipifsilent
-
 [Code]
 function HasVCRuntime: Boolean;
 var Version: String; Installed: Cardinal; Current, Minimum: Int64;

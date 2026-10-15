@@ -148,7 +148,12 @@ Primärquellen zum Werkzeugverhalten:
 ## Windows-Installer für die Erstinstallation
 
 Der Installer wird auf Windows mit Python 3.13.15 **x64** gebaut (auch in
-Windows 11 ARM über x64-Emulation). Es werden keine GitHub Actions benötigt.
+Windows 11 ARM über x64-Emulation). Der manuelle Bau benötigt keine GitHub
+Actions. Zusätzlich prüft `.github/workflows/windows-teststand.yml` jeden PR
+auf einem Windows-x64-Runner: vollständiger Prüfstand, Installerbau,
+Testinstallation, strenger Selbsttest und Deinstallation. Der erfolgreiche
+Actions-Lauf liefert ein kurzlebiges Testpaket, das nach unabhängiger
+Prüfsummenkontrolle als privates GitHub-Vorabrelease verteilt werden kann.
 
 1. Sauberen Commit mit `python tools/local_checks.py --output C:\SEDO-Build\checks`
    vollständig prüfen. Das enthält beide Django-Reihen, Gegenproben und nativen Build.
@@ -168,7 +173,10 @@ vollständig geprüften Stand sein. Reine Änderungen am Installer-Rezept, seine
 Anleitung und seinen Tests erhalten einen getrennten Commit-/Dateinachweis in
 BUILD_INFO.json; dazu kommen Paketierer-Tests und der Windows-Installationstest.
 Das unveränderte App-Paket wird dafür nicht neu zertifiziert. Die ZIP enthält Setup,
-`START_HIER.txt` und `BUILD_INFO.json`. Die ZIP-Prüfsumme liegt daneben.
+`START_HIER.txt`, `START_WINDOWS_TEST.bat` und `BUILD_INFO.json`.
+Der Teststarter verwendet einen eigenen Datenordner
+`%APPDATA%\SEDO-Test-3.21.0.2` statt des regulären Datenordners.
+Die ZIP-Prüfsumme liegt daneben.
 Betriebsdaten und Zugangsdaten sind nicht enthalten. Die Ziel-PC-Abnahme
 und eine Herausgebersignatur werden nicht als bereits erledigt ausgegeben.
 

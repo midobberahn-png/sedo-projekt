@@ -2,7 +2,8 @@ SEDO Rechnungstool – Erstinstallation unter Windows
 
 1. Die ZIP-Datei vollständig entpacken (Rechtsklick, „Alle extrahieren“).
 2. Die Datei SEDO_Rechnungstool_Setup_<Version>.exe doppelklicken und installieren.
-3. „SEDO Rechnungstool“ über das neue Desktop-Symbol öffnen.
+3. Für den privaten Test START_WINDOWS_TEST.bat aus derselben ZIP doppelklicken.
+   Das normale Desktop-Symbol erst für den späteren regulären Datenbestand nutzen.
 4. Beim ersten Start das angezeigte Passwort für den Benutzer admin notieren.
 
 Python muss nicht installiert werden. Windows 10/11 mit 64 Bit wird benötigt;
@@ -16,6 +17,10 @@ vom Mac sind nicht enthalten. Unter Einstellungen werden Firma, Postfächer,
 Bank und weitere Verbindungen eingerichtet. E-Mail-Kennwörter bitte dort
 direkt eingeben. Die Postfach-Einstellungen stehen im normalen Menü
 Einstellungen → E-Mail-Postfächer.
+
+Der Teststarter benutzt ausschließlich %APPDATA%\SEDO-Test-3.21.0.2.
+Der normale Desktop-Start benutzt %APPDATA%\SEDO. Testrechnungen bleiben
+so vom späteren Echtbestand getrennt. Beide Ordner werden nicht synchronisiert.
 
 Die lokale Bonsai-KI wird getrennt auf dem Windows-Rechner eingerichtet.
 Das Sprachmodell für Diktate wird bei der ersten Verwendung heruntergeladen.

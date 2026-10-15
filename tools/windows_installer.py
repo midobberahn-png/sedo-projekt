@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 
 APP = Path(__file__).resolve().parents[1]
 PACKAGING_FILES = {'sedo_setup_windows.iss', 'WINDOWS_ERSTINSTALLATION.txt',
+                   'START_WINDOWS_TEST.bat',
                    'tools/windows_installer.py', 'sedo/tests/test_windows_installer.py', 'TESTSTAND.md'}
 
 
@@ -149,6 +150,7 @@ def main():
                         str(APP / 'sedo_setup_windows.iss')], check=True)
     setup = output / f'SEDO_Rechnungstool_Setup_{args.version}.exe'
     shutil.copyfile(APP / 'WINDOWS_ERSTINSTALLATION.txt', output / 'START_HIER.txt')
+    shutil.copyfile(APP / 'START_WINDOWS_TEST.bat', output / 'START_WINDOWS_TEST.bat')
     evidence = {'version': args.version, 'commit': native['commit'], 'tree': native['tree'],
                 'installer_recipe': recipe,
                 'setup_sha256': digest(setup), 'native_archive_sha256': native['archive_sha256'],
@@ -159,7 +161,8 @@ def main():
     (output / 'BUILD_INFO.json').write_text(json.dumps(evidence, indent=2) + '\n', encoding='utf-8')
     package = output / f'SEDO_Windows_Installer_{args.version}.zip'
     with zipfile.ZipFile(package, 'x', compression=zipfile.ZIP_STORED) as z:
-        for path in (setup, output / 'START_HIER.txt', output / 'BUILD_INFO.json'):
+        for path in (setup, output / 'START_HIER.txt', output / 'START_WINDOWS_TEST.bat',
+                     output / 'BUILD_INFO.json'):
             z.write(path, path.name)
     (output / 'SHA256.txt').write_text(digest(package) + '  ' + package.name + '\n', encoding='ascii')
     print(package)
