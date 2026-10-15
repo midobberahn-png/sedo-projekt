@@ -38,7 +38,15 @@ jobs:
         run: |
           $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
           python tools/local_checks.py --output $checks
-          if ($LASTEXITCODE -ne 0) { throw 'Die Windows-Prüfung ist fehlgeschlagen.' }
+          if ($LASTEXITCODE -ne 0) {
+            $report = Get-Content (Join-Path $checks 'report.json') -Raw | ConvertFrom-Json
+            $failed = $report.steps | Where-Object status -eq 'failed' | Select-Object -Last 1
+            if ($failed) {
+              Write-Host "Fehlgeschlagene Prüfung: $($failed.name)"
+              Get-Content (Join-Path $checks $failed.log) -Tail 180
+            }
+            throw 'Die Windows-Prüfung ist fehlgeschlagen.'
+          }
       - name: Offizielle Bauwerkzeuge und Microsoft-Laufzeiten prüfen
         shell: pwsh
         run: |
@@ -139,3 +147,13 @@ jobs:
             ${{ runner.temp }}/sedo-checks/native/BUILD_MANIFEST.json
           if-no-files-found: error
           retention-days: 14
+      - name: Diagnose bei fehlgeschlagener Prüfung sichern
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: SEDO-Windows-Fehlerdiagnose
+          path: |
+            ${{ runner.temp }}/sedo-checks/report.json
+            ${{ runner.temp }}/sedo-checks/*.log
+          if-no-files-found: warn
+          retention-days: 7
