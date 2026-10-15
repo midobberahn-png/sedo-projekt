@@ -33,6 +33,43 @@ jobs:
         with:
           python-version: '3.13.15'
           architecture: x64
+      - name: Inno Setup 6.7.3 vor der langen Prüfung bereitstellen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = Join-Path $env:RUNNER_TEMP 'sedo-downloads'
+          New-Item -ItemType Directory -Path $download | Out-Null
+          $inno = Join-Path $download 'innosetup-6.7.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $inno
+          $innoHash = (Get-FileHash $inno -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($innoHash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw 'Inno Setup weicht vom offiziellen GitHub-Release ab.'
+          }
+          $innoSignature = Get-AuthenticodeSignature $inno
+          if ($innoSignature.Status -ne 'Valid' -or $innoSignature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw 'Inno Setup hat keine gültige Herausgebersignatur.'
+          }
+          $innoDir = Join-Path $download 'Inno'
+          $innoArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $innoDir + '"'
+          $innoProcess = Start-Process -FilePath $inno -ArgumentList $innoArgs -Wait -PassThru
+          if ($innoProcess.ExitCode -ne 0) { throw "Inno Setup konnte nicht installiert werden: $($innoProcess.ExitCode)" }
+          $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $roots = @($innoDir, (Join-Path $env:ProgramFiles 'Inno Setup 6'),
+                     (Join-Path $pf86 'Inno Setup 6'), (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6'))
+          $candidates = @(Get-ChildItem -Path $roots -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue |
+                          Select-Object -ExpandProperty FullName -Unique)
+          $iscc = $null
+          foreach ($candidate in $candidates) {
+            $version = (Get-Item -LiteralPath $candidate).VersionInfo
+            Write-Host "Inno-Compiler: $candidate | Datei: $($version.FileVersion) | Produkt: $($version.ProductVersion)"
+            if ($version.FileVersion -match '(?<!\d)6\.7\.3(?:\D|$)' -or
+                $version.ProductVersion -match '(?<!\d)6\.7\.3(?:\D|$)') {
+              $iscc = $candidate
+              break
+            }
+          }
+          if (-not $iscc) { throw 'Inno Setup 6.7.3 ist nach der Installation nicht auffindbar.' }
+          "SEDO_ISCC=$iscc" >> $env:GITHUB_ENV
       - name: Vollständige Windows-Prüfung
         shell: pwsh
         run: |
@@ -52,27 +89,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $download = Join-Path $env:RUNNER_TEMP 'sedo-downloads'
-          New-Item -ItemType Directory -Path $download | Out-Null
-
-          $inno = Join-Path $download 'innosetup-6.7.3.exe'
-          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $inno
-          $innoHash = (Get-FileHash $inno -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($innoHash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
-            throw 'Inno Setup weicht vom offiziellen GitHub-Release ab.'
-          }
-          $innoSignature = Get-AuthenticodeSignature $inno
-          if ($innoSignature.Status -ne 'Valid' -or $innoSignature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
-            throw 'Inno Setup hat keine gültige Herausgebersignatur.'
-          }
-          $innoDir = Join-Path $download 'Inno'
-          $innoArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $innoDir + '"'
-          $innoProcess = Start-Process -FilePath $inno -ArgumentList $innoArgs -Wait -PassThru
-          if ($innoProcess.ExitCode -ne 0) { throw "Inno Setup konnte nicht installiert werden: $($innoProcess.ExitCode)" }
-          $iscc = Join-Path $innoDir 'ISCC.exe'
-          if (-not (Test-Path $iscc) -or (Get-Item $iscc).VersionInfo.FileVersion -notmatch '^6\.7\.3(?:\.|$)') {
-            throw 'Inno Setup 6.7.3 ist nicht verfügbar.'
-          }
-
           $webview = Join-Path $download 'MicrosoftEdgeWebview2Setup.exe'
           Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $webview
           $webviewSignature = Get-AuthenticodeSignature $webview
@@ -89,7 +105,6 @@ jobs:
           if ($vcSignature.Status -ne 'Valid' -or $vcSignature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation,') {
             throw 'Die Visual-C++-Laufzeit ist nicht gültig von Microsoft signiert.'
           }
-          "SEDO_ISCC=$iscc" >> $env:GITHUB_ENV
           "SEDO_WEBVIEW=$webview" >> $env:GITHUB_ENV
           "SEDO_VC=$vc" >> $env:GITHUB_ENV
           "SEDO_VC_URL=$vcUrl" >> $env:GITHUB_ENV
