@@ -136,6 +136,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
           $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
           $setup = Join-Path $package 'SEDO_Rechnungstool_Setup_3.21.0.2.exe'
           $smoke = Join-Path $env:RUNNER_TEMP 'sedo-installationstest'
@@ -144,13 +145,38 @@ jobs:
           $env:SEDO_CHECK_REPORT = Join-Path $smoke 'selbsttest.json'
           $env:DJANGO_SECRET_KEY = 'nur-isolierter-windows-installationstest'
           New-Item -ItemType Directory -Path $env:SEDO_HOME -Force | Out-Null
-          $setupArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $app + '"'
+          $setupLog = Join-Path $smoke 'setup.log'
+          $setupArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="' + $app + '" /LOG="' + $setupLog + '"'
           $install = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Die Testinstallation ist fehlgeschlagen: $($install.ExitCode)" }
           $exe = Join-Path $app 'SEDO Rechnungstool.exe'
           if (-not (Test-Path $exe)) { throw 'Das installierte Programm fehlt.' }
-          & $exe --check-strict
-          if ($LASTEXITCODE -ne 0) { throw 'Der Selbsttest der installierten Anwendung ist fehlgeschlagen.' }
+          $nativeExe = Join-Path $checks 'native\desktop\SEDO Rechnungstool\SEDO Rechnungstool.exe'
+          if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne (Get-FileHash $nativeExe -Algorithm SHA256).Hash) {
+            throw 'Die installierte EXE weicht vom geprüften nativen Build ab.'
+          }
+          $stdout = Join-Path $smoke 'selbsttest-stdout.log'
+          $stderr = Join-Path $smoke 'selbsttest-stderr.log'
+          $check = Start-Process -FilePath $exe -ArgumentList '--check-strict' -Wait -PassThru -WorkingDirectory $app -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (Test-Path $env:SEDO_CHECK_REPORT) {
+            Write-Host 'Installierter Selbsttest-Bericht:'
+            Get-Content $env:SEDO_CHECK_REPORT -Raw
+          } else {
+            Write-Host 'Installierter Selbsttest hat keinen JSON-Bericht geschrieben.'
+          }
+          if ($check.ExitCode -ne 0) {
+            Write-Host "Installierter Selbsttest: Exitcode $($check.ExitCode)"
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 80 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 80 }
+            $nativeBundle = Split-Path $nativeExe -Parent
+            $missing = @(Get-ChildItem -LiteralPath $nativeBundle -Recurse -File | Where-Object {
+              $relative = $_.FullName.Substring($nativeBundle.Length + 1)
+              -not (Test-Path -LiteralPath (Join-Path $app $relative) -PathType Leaf)
+            })
+            Write-Host "Fehlende Dateien aus dem geprüften Bundle: $($missing.Count)"
+            $missing | Select-Object -First 30 -ExpandProperty FullName
+            throw 'Der Selbsttest der installierten Anwendung ist fehlgeschlagen.'
+          }
           $selfCheck = Get-Content $env:SEDO_CHECK_REPORT -Raw | ConvertFrom-Json
           if (-not $selfCheck.ok -or -not $selfCheck.frozen -or -not $selfCheck.whisper_available) {
             throw 'Der Selbsttest der installierten Anwendung ist unvollständig.'
@@ -187,5 +213,9 @@ jobs:
           path: |
             ${{ runner.temp }}/sedo-checks/report.json
             ${{ runner.temp }}/sedo-checks/*.log
+            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.2.zip
+            ${{ runner.temp }}/sedo-installer/SHA256.txt
+            ${{ runner.temp }}/sedo-installationstest/*.json
+            ${{ runner.temp }}/sedo-installationstest/*.log
           if-no-files-found: warn
           retention-days: 7
