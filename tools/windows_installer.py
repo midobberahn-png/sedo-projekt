@@ -111,7 +111,9 @@ def microsoft_signature(path: Path):
     command = ("$s=Get-AuthenticodeSignature $env:SEDO_WEBVIEW_BOOTSTRAPPER; "
                "if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation,') {exit 1}; "
                "(Get-Item -LiteralPath $env:SEDO_WEBVIEW_BOOTSTRAPPER).VersionInfo.FileVersion")
-    version = subprocess.check_output(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', command],
+    # The workflow runs under PowerShell 7. Its PSModulePath can prevent the
+    # older Windows PowerShell from loading Microsoft.PowerShell.Security.
+    version = subprocess.check_output(['pwsh.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command],
                                      env=env, timeout=120).decode('utf-8').strip()
     if not re.fullmatch(r'\d+\.\d+\.\d+\.\d+', version):
         raise ValueError('Ungültige Microsoft-Laufzeitversion.')
