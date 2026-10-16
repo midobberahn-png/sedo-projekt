@@ -1,3 +1,4 @@
+import base64
 import sqlite3
 import tempfile
 import uuid
@@ -10,6 +11,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from lxml import html
 
 from sedo.backup_utils import _sanitized_db_copy
 from sedo.models import CalendarCollection, CalendarConnection, CalendarEvent, DashboardPreference
@@ -403,6 +405,87 @@ class CalendarTests(TestCase):
         self.assertFalse(CalendarCollection.objects.get().selected)
         self.worker.stop()
 
+    def test_discovery_error_remains_visible_until_success(self):
+        url = reverse('sedo:calendar_settings')
+        with patch('sedo.calendar_views.discover', side_effect=CalendarError('TEST iCloud nicht erreichbar')):
+            response = self.client.post(url, {'action': 'discover', 'revision': self.connection.revision})
+        self.assertEqual(response.status_code, 200)
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.last_error, 'TEST iCloud nicht erreichbar')
+        self.assertContains(self.client.get(reverse('sedo:calendar_index')), 'TEST iCloud nicht erreichbar')
+        with patch('sedo.calendar_views.discover', return_value=1):
+            response = self.client.post(url, {'action': 'discover', 'revision': self.connection.revision})
+        self.assertEqual(response.status_code, 302)
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.last_error, '')
+
+    def test_kalender_laden_speichert_eingetipptes_passwort_vor_anmeldung(self):
+        page = html.fromstring(self.client.get(reverse('sedo:calendar_settings')).content)
+        self.assertTrue(page.xpath('//button[@name="action" and @value="save_discover"]/ancestor::form[1]//input[@name="password"]'))
+        self.connection.password_encrypted = sync.encrypt(self.connection, 'altes-passwort')
+        self.connection.save()
+        submitted = 'neues-app-passwort'
+        sent = []
+
+        def verify_credentials(client):
+            sent.append(base64.b64decode(client.authorization.removeprefix('Basic ')).decode())
+            return [dict(name='Arbeit', remote_url=URL, writable=True)]
+
+        with patch.object(dav.ICloudDAV, 'discover', verify_credentials):
+            response = self.client.post(reverse('sedo:calendar_settings'), {
+                'action': 'save_discover', 'revision': self.connection.revision, 'password': submitted,
+            })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(sent, [f'owner@example.test:{submitted}'])
+        self.connection.refresh_from_db()
+        self.assertEqual(base64.b64decode(sync.client_for(self.connection).authorization.removeprefix('Basic ')).decode(),
+                         f'owner@example.test:{submitted}')
+
+    def test_kalender_laden_ohne_neues_passwort_unterbricht_abgleich_nicht(self):
+        self.connection.password_encrypted = sync.encrypt(self.connection, 'gespeichertes-passwort')
+        self.connection.save()
+        revision_before = self.connection.revision
+        with patch.object(dav.ICloudDAV, 'discover', return_value=[
+                dict(name='Arbeit', remote_url=URL, writable=True)]):
+            response = self.client.post(reverse('sedo:calendar_settings'), {
+                'action': 'save_discover', 'revision': revision_before,
+            })
+        self.assertEqual(response.status_code, 302)
+        self.connection.refresh_from_db()
+        self.assertTrue(self.connection.enabled)
+        self.assertEqual(self.connection.revision, revision_before)
+
+    def test_apple_account_vor_erster_kalenderauswahl_korrigierbar(self):
+        self.client.force_login(self.other)
+        connection = CalendarConnection.objects.create(user=self.other, username='falsch@example.test')
+        connection.password_encrypted = sync.encrypt(connection, 'altes-passwort')
+        connection.save()
+        with patch.object(dav.ICloudDAV, 'discover', return_value=[]):
+            response = self.client.post(reverse('sedo:calendar_settings'), {
+                'action': 'save_discover', 'revision': connection.revision,
+                'username': 'richtig@example.test', 'password': 'neues-passwort',
+            })
+        self.assertEqual(response.status_code, 302)
+        connection.refresh_from_db()
+        self.assertEqual(connection.username, 'richtig@example.test')
+        self.assertEqual(base64.b64decode(sync.client_for(connection).authorization.removeprefix('Basic ')).decode(),
+                         'richtig@example.test:neues-passwort')
+
+    def test_kalender_laden_bei_erster_einrichtung_speichert_fehlermeldung(self):
+        self.client.force_login(self.other)
+        url = reverse('sedo:calendar_settings')
+        with patch.object(dav.ICloudDAV, 'discover', side_effect=CalendarError('TEST Anmeldung abgelehnt')):
+            response = self.client.post(url, {
+                'action': 'save_discover', 'revision': 0, 'username': 'neu@example.test',
+                'password': 'synthetic-app-password',
+            })
+        self.assertEqual(response.status_code, 200)
+        connection = CalendarConnection.objects.get(user=self.other)
+        self.assertEqual(connection.last_error, 'TEST Anmeldung abgelehnt')
+        self.assertGreater(connection.revision, 0)
+        self.assertContains(response, 'TEST Anmeldung abgelehnt')
+        self.assertContains(response, f'value="{connection.revision}"')
+
     def test_selection_requires_confirmation_and_own_calendars(self):
         self.connection.enabled = False
         self.connection.password_encrypted = sync.encrypt(self.connection, 'synthetic-password')
@@ -499,6 +582,17 @@ class CalendarTests(TestCase):
                 dav.ICloudDAV('test@example.test', 'synthetic').request('PROPFIND', dav.ROOT)
         self.assertEqual(factory.call_count, 1)
         self.assertEqual(factory.call_args.args[0], 'caldav.icloud.com')
+
+    def test_caldav_authentication_and_permission_errors_are_distinct(self):
+        for status, expected in ((401, 'Anmeldung abgelehnt'), (403, 'Kalenderzugriff')):
+            response = MagicMock(status=status)
+            response.read.return_value = b''
+            response.getheaders.return_value = []
+            connection = MagicMock()
+            connection.getresponse.return_value = response
+            with patch('sedo.services.calendar_caldav.http.client.HTTPSConnection', return_value=connection):
+                with self.assertRaisesMessage(CalendarError, expected):
+                    dav.ICloudDAV('test@example.test', 'synthetic').request('PROPFIND', dav.ROOT)
 
     def test_malformed_ical_is_held(self):
         for raw in ('not a calendar', raw_event(extra='RRULE:FREQ=SECONDLY\r\n')):

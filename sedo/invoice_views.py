@@ -14,7 +14,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.db.models.functions import ExtractYear
-from django.http import FileResponse
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -181,6 +181,72 @@ def _invoice_wizard_initial(form):
         'bound': form.is_bound,
     }
 
+
+def _render_invoice_create_form(request, form, formset, offer, correction_source):
+    return render(request, 'sedo/invoice_form.html', {
+        'form': form,
+        'formset': formset,
+        'title': 'Korrekturrechnung erstellen' if correction_source else 'Neue Rechnung',
+        'source_offer': offer,
+        'correction_source': correction_source,
+        'smtp_configured': smtp_is_configured(),
+        'wizard_initial': _invoice_wizard_initial(form),
+    })
+
+
+def _invoice_create_error(request, message, offer, correction_source):
+    # Der Speicherweg kann Formularinstanzen bereits mit zurückgerollten PKs
+    # versehen haben. Neu binden erhält die POST-Werte ohne diese Phantom-IDs.
+    invoice = Invoice(issue_date=timezone.localdate(), vat_rate=Decimal('19.00'))
+    form = InvoiceForm(request.POST, instance=invoice)
+    formset = InvoiceItemFormSet(request.POST, instance=invoice)
+    form.is_valid()
+    formset.is_valid()
+    form.add_error(None, message)
+    return _render_invoice_create_form(request, form, formset, offer, correction_source)
+
+
+def _save_invoice_create(form, formset, action, request):
+    """Auch manuell erfasste Kunden/Objekte mit dem Beleg zurückrollen."""
+    src_offer = src_invoice = None
+    if request.POST.get('source_offer'):
+        src_offer = get_object_or_404(Offer, pk=request.POST['source_offer'])
+        ensure_offer_invoicing_allowed(src_offer)
+    if request.POST.get('correction_of'):
+        src_invoice = get_object_or_404(Invoice, pk=request.POST['correction_of'])
+        ensure_correction_allowed(src_invoice)
+    inv = form.save(commit=False)
+    inv.invoice_type = '384' if src_invoice else '380'
+    inv.status = 'entwurf' if action == 'draft' else 'erstellt'
+    inv.lifecycle = 'draft' if action == 'draft' else 'issued'
+    if src_offer:
+        inv.source = 'Angebot'
+        inv.note = inv.note or f'Diese Rechnung beruht auf Angebot {src_offer.number}.'
+    if src_invoice:
+        inv.source = 'Korrektur'
+        inv.reference_invoice = src_invoice
+        inv.note = inv.note or f'Korrekturrechnung zu {src_invoice.number}.'
+
+    def prepare_invoice():
+        customer = _customer_from_invoice_form(form)
+        obj = _object_from_invoice_form(form, customer)
+        inv.customer = customer
+        inv.obj = obj
+        # 0 Tage bedeutet ausdrücklich „zahlbar sofort“.
+        payment_days = form.cleaned_data.get('payment_days')
+        inv.due_date = inv.issue_date + timedelta(days=customer.payment_days if payment_days is None else payment_days)
+
+    try:
+        save_new_invoice(inv, formset, action=action, prepare_invoice=prepare_invoice,
+                         source_offer=src_offer, correction_source=src_invoice, request=request)
+    except IntegrityError as exc:
+        if src_invoice and ('reference_invoice_id' in str(exc)
+                            or 'invoice_unique_active_correction' in str(exc)):
+            raise WorkflowError(f'Zu Rechnung {src_invoice.number} wurde soeben bereits '
+                                'eine Korrekturrechnung erzeugt (paralleler Vorgang).') from exc
+        raise
+    return inv
+
 @login_required
 @seller_post
 def invoice_create(request):
@@ -244,79 +310,26 @@ def invoice_create(request):
         form = InvoiceForm(request.POST, instance=invoice)
         formset = InvoiceItemFormSet(request.POST, instance=invoice)
         action = request.POST.get('action')
-        if form.is_valid() and formset.is_valid():
+        form_valid = form.is_valid()
+        formset_valid = formset.is_valid()
+        if form_valid and formset_valid:
             if action == 'preview':
                 preview = _preview_from_forms(form, formset, title='Entwurfsansicht Rechnung')
                 return render(request, 'sedo/invoice_preview.html', {'preview': preview, 'back_post': request.POST, 'seller': load_profile()})
-            customer = _customer_from_invoice_form(form)
-            if not customer:
+            if not form.cleaned_data.get('customer') and not (form.cleaned_data.get('name') or '').strip():
                 form.add_error('name', 'Bitte einen gespeicherten Kunden auswählen oder die Kopfdaten mit Name/Firma ausfüllen.')
             else:
-                obj = _object_from_invoice_form(form, customer)
-                inv = form.save(commit=False)
-                inv.customer = customer
-                inv.obj = obj
-                # F-63: `or` machte aus einem Zahlungsziel von 0 Tagen still den
-                # Kundenwert – dabei erlaubt das Formular 0 ausdrücklich
-                # (min_value=0). „Zahlbar sofort" wurde so zu 14 Tagen.
-                _zahlungsziel = form.cleaned_data.get('payment_days')
-                if _zahlungsziel is None:
-                    _zahlungsziel = customer.payment_days
-                inv.due_date = inv.issue_date + timedelta(days=_zahlungsziel)
-                inv.invoice_type = '380'
-                inv.status = 'entwurf' if action == 'draft' else 'erstellt'
-                inv.lifecycle = 'draft' if action == 'draft' else 'issued'
-                src_offer = None
-                src_invoice = None
-                if request.POST.get('source_offer'):
-                    src_offer = get_object_or_404(Offer, pk=request.POST.get('source_offer'))
-                    # Serverseitige Sperre gegen doppelte Rechnungsstellung aus
-                    # demselben Angebot (die UI versteckt nur den Button).
-                    try:
-                        ensure_offer_invoicing_allowed(src_offer)
-                    except WorkflowError as e:
-                        messages.error(request, str(e))
-                        return redirect('sedo:offer_detail', src_offer.pk)
-                    inv.source = 'Angebot'
-                    inv.note = inv.note or f'Diese Rechnung beruht auf Angebot {src_offer.number}.'
-                if request.POST.get('correction_of'):
-                    src_invoice = get_object_or_404(Invoice, pk=request.POST.get('correction_of'))
-                    try:
-                        ensure_correction_allowed(src_invoice)
-                    except WorkflowError as e:
-                        messages.error(request, str(e))
-                        return redirect('sedo:invoice_detail', src_invoice.pk)
-                    inv.invoice_type = '384'
-                    inv.source = 'Korrektur'
-                    inv.reference_invoice = src_invoice
-                    inv.note = inv.note or f'Korrekturrechnung zu {src_invoice.number}.'
-                # Atomar: Rechnung, Positionen, Dateien und Verknüpfungen
-                # entstehen ganz oder gar nicht (keine halben Rechnungen).
-                # WorkflowError/Unique-Constraint decken dabei auch den Fall
-                # ab, dass zwei parallele Requests die ensure-Guards passieren.
                 try:
-                    save_new_invoice(inv, formset, action=action, source_offer=src_offer,
-                                     correction_source=src_invoice, request=request)
+                    inv = _save_invoice_create(form, formset, action, request)
                 except WorkflowError as e:
-                    messages.error(request, str(e))
-                    target = ('sedo:offer_detail', src_offer.pk) if src_offer \
-                        else ('sedo:invoice_detail', src_invoice.pk) if src_invoice \
-                        else ('sedo:invoice_list', None)
-                    return redirect(target[0], target[1]) if target[1] else redirect(target[0])
-                except IntegrityError as e:
-                    # SQLite meldet die Spalte (reference_invoice_id) statt des
-                    # Constraint-Namens; im Korrektur-Kontext ist das eindeutig.
-                    if src_invoice and ('reference_invoice_id' in str(e)
-                                        or 'invoice_unique_active_correction' in str(e)):
-                        messages.error(request, f'Zu Rechnung {src_invoice.number} wurde soeben '
-                                                f'bereits eine Korrekturrechnung erzeugt (paralleler Vorgang).')
-                        return redirect('sedo:invoice_detail', src_invoice.pk)
+                    return _invoice_create_error(request, str(e), offer, correction_source)
+                except Http404:
                     raise
                 except Exception:
                     logger.exception('Rechnungserstellung einschließlich Archiv zurückgerollt')
-                    messages.error(request, 'Rechnung nicht erstellt: Dateien oder Pflichtprotokoll '
-                                            'konnten nicht gespeichert werden.')
-                    return redirect('sedo:invoice_list')
+                    return _invoice_create_error(request, 'Rechnung nicht erstellt: Dateien oder Pflichtprotokoll '
+                                                 'konnten nicht gespeichert werden. Bitte Eingaben prüfen oder erneut versuchen.',
+                                                 offer, correction_source)
                 if request.POST.get('save_as_recurring'):
                     tmpl_title = request.POST.get('recurring_title') or ''
                     tmpl = _create_recurring_template_from_invoice(inv, tmpl_title.strip() or None)
@@ -356,15 +369,7 @@ def invoice_create(request):
             _fill_customer_initial(form, correction_source.customer)
             _fill_object_initial(form, correction_source.obj)
         formset = DynamicInvoiceItemFormSet(instance=invoice, queryset=InvoiceItem.objects.none(), initial=item_initial or None)
-    return render(request, 'sedo/invoice_form.html', {
-        'form': form,
-        'formset': formset,
-        'title': 'Korrekturrechnung erstellen' if correction_source else 'Neue Rechnung',
-        'source_offer': offer,
-        'correction_source': correction_source,
-        'smtp_configured': smtp_is_configured(),
-        'wizard_initial': _invoice_wizard_initial(form),
-    })
+    return _render_invoice_create_form(request, form, formset, offer, correction_source)
 
 @login_required
 @seller_post

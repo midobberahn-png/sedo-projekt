@@ -18,7 +18,8 @@ Bank und weitere Verbindungen eingerichtet. E-Mail-Kennwörter bitte dort
 direkt eingeben. Die Postfach-Einstellungen stehen im normalen Menü
 Einstellungen → E-Mail-Postfächer.
 
-Der Teststarter benutzt ausschließlich %APPDATA%\SEDO-Test-3.21.0.2.
+Der Teststarter benutzt weiterhin ausschließlich %APPDATA%\SEDO-Test-3.21.0.2.
+Auch mit dem neueren Programm bleiben damit Ihre bisherigen Testeingaben erhalten.
 Der normale Desktop-Start benutzt %APPDATA%\SEDO. Testrechnungen bleiben
 so vom späteren Echtbestand getrennt. Beide Ordner werden nicht synchronisiert.
 

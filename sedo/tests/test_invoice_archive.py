@@ -576,7 +576,8 @@ class InvoiceArchiveTests(TestCase):
         with patch('sedo.services.invoice_creation.mark_invoice_corrected',
                    side_effect=WorkflowError('TEST nach Veröffentlichung')):
             response = self.client.post(reverse('sedo:invoice_create'), self.payload(correction_of=str(inv.pk)))
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'TEST nach Veröffentlichung')
         self.assertEqual(Invoice.objects.count(), 1)
         self.assertEqual((self.state(inv), self.files(), AuditLog.objects.count()), before)
 

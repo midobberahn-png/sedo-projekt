@@ -169,7 +169,8 @@ class CorrectionLockTests(TestCase):
         self._post_correction()
         before = Invoice.all_objects.count()
         resp = self._post_correction()
-        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'bereits die Korrekturrechnung')
         self.assertEqual(Invoice.all_objects.count(), before)
 
     def test_korrektur_link_fuer_stornierte_rechnung_blockiert(self):

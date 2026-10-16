@@ -104,11 +104,11 @@ jobs:
           }
           $vcHash = (Get-FileHash -LiteralPath $env:SEDO_VC -Algorithm SHA256).Hash.ToLowerInvariant()
           $defines = @('/Qp', "/DBundleDir=$bundle", "/DInstallerOutputDir=$output",
-                       '/DAppVersion=3.21.0.2', "/DWebViewInstaller=$env:SEDO_WEBVIEW",
+                       '/DAppVersion=3.21.0.3', "/DWebViewInstaller=$env:SEDO_WEBVIEW",
                        "/DVCRuntimeURL=$env:SEDO_VC_URL", "/DVCRuntimeHash=$vcHash",
                        "/DVCRuntimeVersion=$vcVersion", 'sedo_setup_windows.iss')
           & $env:SEDO_ISCC @defines
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $output 'SEDO_Rechnungstool_Setup_3.21.0.2.exe'))) {
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $output 'SEDO_Rechnungstool_Setup_3.21.0.3.exe'))) {
             throw 'Das Inno-Setup-Rezept konnte nicht kompiliert werden.'
           }
       - name: Vollständige Windows-Prüfung
@@ -130,7 +130,7 @@ jobs:
         run: |
           $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
           $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
-          python tools/windows_installer.py --checks $checks --iscc $env:SEDO_ISCC --webview-bootstrapper $env:SEDO_WEBVIEW --vc-runtime $env:SEDO_VC --vc-runtime-url $env:SEDO_VC_URL --output $package --version 3.21.0.2
+          python tools/windows_installer.py --checks $checks --iscc $env:SEDO_ISCC --webview-bootstrapper $env:SEDO_WEBVIEW --vc-runtime $env:SEDO_VC --vc-runtime-url $env:SEDO_VC_URL --output $package --version 3.21.0.3
           if ($LASTEXITCODE -ne 0) { throw 'Der Windows-Testinstaller konnte nicht gebaut werden.' }
       - name: Installation, gebündeltes Programm und Deinstallation prüfen
         shell: pwsh
@@ -138,7 +138,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
           $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
-          $setup = Join-Path $package 'SEDO_Rechnungstool_Setup_3.21.0.2.exe'
+          $setup = Join-Path $package 'SEDO_Rechnungstool_Setup_3.21.0.3.exe'
           $smoke = Join-Path $env:RUNNER_TEMP 'sedo-installationstest'
           $app = Join-Path $smoke 'Programm'
           $env:SEDO_HOME = Join-Path $smoke 'Daten'
@@ -198,7 +198,7 @@ jobs:
         with:
           name: SEDO-Windows-x64-Testinstaller
           path: |
-            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.2.zip
+            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.3.zip
             ${{ runner.temp }}/sedo-installer/SHA256.txt
             ${{ runner.temp }}/sedo-installer/INSTALLATIONSTEST.json
             ${{ runner.temp }}/sedo-checks/report.json
@@ -213,7 +213,7 @@ jobs:
           path: |
             ${{ runner.temp }}/sedo-checks/report.json
             ${{ runner.temp }}/sedo-checks/*.log
-            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.2.zip
+            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.3.zip
             ${{ runner.temp }}/sedo-installer/SHA256.txt
             ${{ runner.temp }}/sedo-installationstest/*.json
             ${{ runner.temp }}/sedo-installationstest/*.log

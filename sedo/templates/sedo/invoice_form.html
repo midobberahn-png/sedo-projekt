@@ -6,6 +6,8 @@
 {% csrf_token %}
 {% if source_offer %}<input type="hidden" name="source_offer" value="{{ source_offer.pk|unlocalize }}">{% endif %}
 {% if correction_source %}<input type="hidden" name="correction_of" value="{{ correction_source.pk|unlocalize }}">{% endif %}
+{% if not source_offer and request.POST.source_offer %}<input type="hidden" name="source_offer" value="{{ request.POST.source_offer }}">{% endif %}
+{% if not correction_source and request.POST.correction_of %}<input type="hidden" name="correction_of" value="{{ request.POST.correction_of }}">{% endif %}
 
 <div class="work-dialog invoice-flow">
   <div class="work-dialog-header">
@@ -24,10 +26,9 @@
 
     {% if source_offer %}<div class="card info-card" style="margin-bottom:12px"><strong>Angebotsbezug:</strong> Diese Rechnung wird aus Angebot {{ source_offer.number }} erstellt. Positionen können vor dem Speichern angepasst werden.</div>{% endif %}
     {% if correction_source %}<div class="card warning-card" style="margin-bottom:12px"><strong>Korrektur:</strong> Diese Korrekturrechnung bezieht sich auf {{ correction_source.number }}.</div>{% endif %}
-    {% if form.non_field_errors %}<div class="card warning-card wizard-step-error">{{ form.non_field_errors }}</div>{% endif %}
-
     <!-- ─── SCHRITT 1 · EMPFÄNGER ─────────────────────────────────── -->
     <section class="wizard-step" id="step-kunde" data-wizard-step data-step-label="Empfänger">
+      {% if form.non_field_errors %}<div class="card warning-card wizard-step-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
       <div class="wizard-step-head">
         <div class="wizard-step-icon"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></div>
         <div><h2>Wer bekommt die Rechnung?</h2></div>
@@ -45,6 +46,7 @@
           </div>
           <label for="id_customer">Oder aus der Kundenliste wählen</label>
           {{ form.customer }}{{ form.customer.errors }}
+          {% if form.customer.errors and wizard_initial.customer %}<a href="{% url 'sedo:customer_update' wizard_initial.customer.id %}" target="_blank" rel="noopener">Kundendaten in neuem Tab korrigieren</a>{% endif %}
 
 
           <div class="customer-selected-pill" id="customer-pill">

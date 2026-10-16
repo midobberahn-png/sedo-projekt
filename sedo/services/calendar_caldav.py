@@ -100,8 +100,10 @@ class ICloudDAV:
                 if not location:
                     raise CalendarError('iCloud hat keine gültige Weiterleitung geliefert.')
                 return self.request(method, checked_url(location, url), body, headers, redirects=redirects + 1)
-            if status in (401, 403):
-                raise CalendarError('iCloud-Zugang oder Kalenderberechtigung prüfen. Es wird ein App-spezifisches Passwort benötigt.')
+            if status == 401:
+                raise CalendarError('iCloud hat die Anmeldung abgelehnt. Bitte prüfen, ob der Apple-Account zum App-spezifischen Passwort gehört und das Passwort noch gültig ist.')
+            if status == 403:
+                raise CalendarError('iCloud verweigert den Kalenderzugriff. Bitte die iCloud-Kalenderberechtigung prüfen.')
             return status, {key.lower(): value for key, value in result_headers.items()}, data
         except CalendarError:
             raise

@@ -8,7 +8,8 @@ from django.test import TestCase
 from django.urls import reverse
 from lxml import html
 
-from sedo.models import Customer, CustomerObject, Invoice, Offer, OfferItem
+from sedo.models import Customer, CustomerObject, Invoice, NumberRange, Offer, OfferItem
+from sedo.services import WorkflowError
 from .file_fixtures import isolate_files
 from .test_wizard import _angebot_post
 
@@ -69,6 +70,50 @@ class InvoiceWizardV2Tests(TestCase):
         self.assertIn('checked', doc.xpath('//input[@name="save_as_recurring"]')[0].attrib)
         self.assertIn('open', doc.xpath('//details[contains(@class,"wizard-recurring")]')[0].attrib)
         self.assertEqual(Invoice.objects.count(), 0)
+
+    def test_fehlende_empfaengeradresse_bleibt_im_formular_korrigierbar(self):
+        data = self.data(action='create', name='TEST Unvollständig', street='', postcode='', city='',
+                         note='Wichtige Eingabe', **{'items-0-long_text': 'Leistung mit Details'})
+        before = Customer.objects.count()
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 200)
+        doc = html.fromstring(response.content)
+        self.assertEqual(doc.get_element_by_id('id_name').value, 'TEST Unvollständig')
+        self.assertEqual(doc.get_element_by_id('id_note').text.strip(), 'Wichtige Eingabe')
+        self.assertIn('Leistung mit Details', response.content.decode())
+        for field in ('street', 'postcode', 'city'):
+            self.assertTrue(doc.xpath(f'//*[@id="id_{field}_error"]'))
+        self.assertEqual(Customer.objects.count(), before)
+        self.assertFalse(Invoice.objects.exists())
+        self.assertFalse(NumberRange.objects.exists())
+
+        data.update(street='Testweg 3', postcode='12345', city='Teststadt')
+        corrected = self.client.post(self.url, data)
+        self.assertEqual(corrected.status_code, 302)
+        self.assertEqual(Invoice.objects.get().customer.name, 'TEST Unvollständig')
+
+    def test_unvollstaendiger_bestandskunde_zeigt_auswahlfehler(self):
+        response = self.client.post(self.url, self.data(action='create', customer=self.other.pk,
+                                                         note='Diese Angaben behalten'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id_customer_error')
+        self.assertContains(response, 'Diese Angaben behalten')
+        self.assertContains(response, reverse('sedo:customer_update', args=[self.other.pk]))
+        self.assertFalse(Invoice.objects.exists())
+
+    def test_speicherfehler_erhaelt_eingaben_und_rollt_neue_stammdaten_zurueck(self):
+        data = self.data(action='create', name='TEST Neuer Empfänger',
+                         object_name='TEST Neues Objekt', note='Nicht verlieren')
+        before = Customer.objects.count(), CustomerObject.objects.count()
+        with patch('sedo.services.invoice_creation.generate_invoice_files',
+                   side_effect=WorkflowError('TEST Belegfehler')):
+            response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'TEST Belegfehler')
+        self.assertContains(response, 'Nicht verlieren')
+        self.assertEqual((Customer.objects.count(), CustomerObject.objects.count()), before)
+        self.assertFalse(Invoice.objects.exists())
+        self.assertFalse(NumberRange.objects.exists())
 
     def test_gebundene_kopffelder_bleiben_erhalten_snapshot_nutzt_stammdaten(self):
         response = self.client.post(self.url, self.data(customer=self.customer.pk,

@@ -76,10 +76,13 @@ class CalendarConnectionForm(forms.Form):
         self.initial['revision'] = connection.revision if connection else 0
         if connection:
             self.initial['username'] = connection.username
-            self.fields['username'].disabled = True
+            # Vor dem ersten erfolgreichen Laden lässt sich ein vertippter
+            # Apple-Account berichtigen. Mit Kalendern bleibt die Bindung fest.
+            self.fields['username'].disabled = connection.enabled or connection.calendars.exists()
 
     def clean(self):
         data = super().clean()
-        if not data.get('password') and (not self.connection or not self.connection.password_encrypted):
+        if not data.get('password') and (not self.connection or not self.connection.password_encrypted
+                                         or data.get('username') != self.connection.username):
             self.add_error('password', 'Bitte ein App-spezifisches Passwort eingeben.')
         return data

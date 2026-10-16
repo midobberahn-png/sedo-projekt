@@ -175,7 +175,8 @@ BUILD_INFO.json; dazu kommen Paketierer-Tests und der Windows-Installationstest.
 Das unveränderte App-Paket wird dafür nicht neu zertifiziert. Die ZIP enthält Setup,
 `START_HIER.txt`, `START_WINDOWS_TEST.bat` und `BUILD_INFO.json`.
 Der Teststarter verwendet einen eigenen Datenordner
-`%APPDATA%\SEDO-Test-3.21.0.2` statt des regulären Datenordners.
+`%APPDATA%\SEDO-Test-3.21.0.2` statt des regulären Datenordners. Dieser
+Testdatenordner wird bei späteren Testinstaller-Updates weiterverwendet.
 Die ZIP-Prüfsumme liegt daneben.
 Betriebsdaten und Zugangsdaten sind nicht enthalten. Die Ziel-PC-Abnahme
 und eine Herausgebersignatur werden nicht als bereits erledigt ausgegeben.
