@@ -14,6 +14,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 
 from ..core.rechnungslauf_core import SELLER
+from ..core.pdf_branding import draw_sedo_mark
+from ..company_profile import sedo_letterhead_enabled
 
 # ── Farbwerte (RGB 0–1) – bewusst zurückhaltend ─────────────────────────────
 INK = (0.10, 0.11, 0.13)      # Fließtext
@@ -40,14 +42,26 @@ def draw_header(c) -> None:
     left, right = MARGIN, w - MARGIN
     top = h - 12 * mm
 
+    branded = sedo_letterhead_enabled()
+    if branded:
+        draw_sedo_mark(c, left, top, accent_color())
+
     c.setFillColorRGB(*INK)
     c.setFont('Helvetica-Bold', 9.5)
     c.drawRightString(right, top - 1 * mm, SELLER['name'])
     c.setFillColorRGB(*MUT)
-    c.setFont('Helvetica', 7)
-    c.drawRightString(right, top - 5 * mm,
-                      f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · {SELLER['country']}")
-    c.drawRightString(right, top - 9 * mm, f"Tel. {SELLER['phone']} · {SELLER['email']}")
+    if branded:
+        c.setFont('Helvetica-Oblique', 7)
+        c.drawRightString(right, top - 5 * mm, 'Sauberes Handwerk · Rund um Ihr Objekt')
+        c.setFont('Helvetica', 7)
+        c.drawRightString(right, top - 9 * mm,
+                          f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · "
+                          f"Tel. {SELLER['phone']} · {SELLER['email']}")
+    else:
+        c.setFont('Helvetica', 7)
+        c.drawRightString(right, top - 5 * mm,
+                          f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · {SELLER['country']}")
+        c.drawRightString(right, top - 9 * mm, f"Tel. {SELLER['phone']} · {SELLER['email']}")
 
     c.setStrokeColorRGB(*HAIR)
     c.setLineWidth(0.5)

@@ -41,10 +41,10 @@ from .invoice_pdf import PDF_ACCENT, draw_wrapped, create_pdf as _create_pdf, em
 
 def create_pdf(inv: InvoiceRow, out_pdf: Path, issue_date: datetime,
                period_start: datetime | None, period_end: datetime | None,
-               due_date: datetime) -> None:
+               due_date: datetime, *, branded: bool = False) -> None:
     """Keep the original import path and its configurable accent."""
     _create_pdf(inv, out_pdf, issue_date, period_start, period_end, due_date,
-                accent=PDF_ACCENT)
+                accent=PDF_ACCENT, branded=branded)
 
 
 def read_ars_mapping(input_xlsx: Path) -> list[dict[str, str]]:

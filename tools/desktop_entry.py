@@ -101,11 +101,16 @@ def check() -> int:
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/app.css', timeout=10) as response:
             assets = response.status == 200 and bool(response.read())
-        for name in ('company-setup.css', 'dashboard-widgets.css', 'dashboard-widgets.js', 'calendar.css', 'quiet-ui.css', 'quiet-ui.js', 'mail.js', 'accessibility-v2.js', 'incoming-print.js'):
+        for name in ('company-setup.css', 'dashboard-widgets.css', 'dashboard-widgets.js', 'calendar.css', 'quiet-ui.css', 'quiet-ui.js', 'mail.js', 'accessibility-v2.js', 'incoming-print.js', 'postcode-autofill.css', 'postcode-autofill.js'):
             with urllib.request.urlopen(f'http://127.0.0.1:{port}/static/sedo/{name}', timeout=10) as response:
                 assets = assets and response.status == 200 and bool(response.read())
     except OSError:
         assets = False
+    from sedo.services.postcodes import cities_for_postcode
+    from sedo.core.pdf_branding import LOGO
+    postcode_available = (cities_for_postcode('10115') == ('Berlin',)
+                          and len(cities_for_postcode('06449')) > 1)
+    letterhead_asset = LOGO.is_file()
     from sedo.services import stt_status
     whisper = bool(stt_status().get('available'))
     from sedo.desktop_print import IncomingPrintAPI
@@ -192,8 +197,12 @@ def check() -> int:
                       and isolation['resource_limits_applied'])
     if sys.platform == 'darwin' or sys.platform.startswith('linux'):
         document_probe = document_probe and isolation['filesystem_network_sandbox']
-    result = {'ok': bool(http and assets and whisper and migrated and hardlinks and validator and invoice_workflow and restoration and mail_available and calendar_available and print_available and document_probe),
+    result = {'ok': bool(http and assets and postcode_available and letterhead_asset
+                         and whisper and migrated and hardlinks and validator and invoice_workflow
+                         and restoration and mail_available and calendar_available
+                         and print_available and document_probe),
               'http_login': http, 'static_assets': assets, 'whisper_available': whisper,
+              'postcode_lookup': postcode_available, 'letterhead_asset': letterhead_asset,
               'migrations_complete': migrated, 'hardlinks': hardlinks,
               'invoice_validator_available': validator, 'restore_simulation': restoration,
               'invoice_workflow': invoice_workflow,

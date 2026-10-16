@@ -54,6 +54,27 @@ class CompanyBrandingTests(TestCase):
                     self.assertNotIn('GF:', text)
         self.assertFalse(any('sedo_logo' in path for path in image_paths))
 
+    def test_optional_sedo_letterhead_is_drawn_on_new_invoice_and_offer(self):
+        AppSetting.set('document_sedo_letterhead', '1')
+        image_paths = []
+        draw_image = canvas.Canvas.drawImage
+
+        def capture(target, image, *args, **kwargs):
+            if isinstance(image, (str, Path)):
+                image_paths.append(str(image))
+            return draw_image(target, image, *args, **kwargs)
+
+        with TemporaryDirectory() as directory, override_settings(MEDIA_ROOT=Path(directory)), \
+                patch.object(canvas.Canvas, 'drawImage', capture):
+            create_pdf(synthetic_row(), Path(directory) / 'branded-invoice.pdf',
+                       datetime(2026, 1, 1), None, None, datetime(2026, 1, 15),
+                       branded=True)
+            customer = Customer.objects.create(name='Synthetischer Kunde')
+            offer = Offer.objects.create(number='SYNTHETIC-BRAND', customer=customer)
+            OfferItem.objects.create(offer=offer, position=1, description='Testleistung', quantity=1, unit_price=10)
+            generate_offer_pdf(offer)
+        self.assertEqual(sum('sedo_logo.png' in path for path in image_paths), 2)
+
     def test_xml_representation_note_does_not_assume_company_legal_form(self):
         xml = etree.fromstring(build_xml(synthetic_row(), datetime(2026, 1, 1), None, None, datetime(2026, 1, 15)))
         notes = xml.xpath('//*[local-name()="IncludedNote"]/*[local-name()="Content"]/text()')

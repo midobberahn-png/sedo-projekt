@@ -1,10 +1,19 @@
 from decimal import Decimal
+import re
 from django import forms
 from django.forms import inlineformset_factory
 from .models import Customer, CustomerObject, CustomerNote, Invoice, InvoiceItem, Offer, OfferItem, Payment, CashbookEntry, RecurringInvoiceTemplate, RecurringInvoiceItem, ServiceCatalogItem, WorkTask
 
 CUSTOMER_WIDGET_CLASS = {'class': 'form-control form-control-sm'}
 SELECT_WIDGET_CLASS = {'class': 'form-select form-select-sm'}
+
+
+def check_german_postcode(form, data, postcode='postcode', country='country'):
+    """Enforce DE syntax; the incomplete locality index must not reject special PLZ."""
+    value = (data.get(postcode) or '').strip()
+    region = (data.get(country) or '').strip().upper()
+    if value and region in ('DE', 'DEUTSCHLAND') and not re.fullmatch(r'[0-9]{5}', value):
+        form.add_error(postcode, 'Deutsche Postleitzahlen bestehen aus genau fünf Ziffern.')
 
 
 class PositiveVatRateMixin:
@@ -50,7 +59,9 @@ class CompanyProfileForm(forms.Form):
         if self.errors:
             return values
         try:
-            return validate_profile(values)
+            cleaned = validate_profile(values)
+            check_german_postcode(self, cleaned)
+            return cleaned
         except SellerProfileError as exc:
             if exc.field in self.fields:
                 self.add_error(exc.field, str(exc))
@@ -58,6 +69,11 @@ class CompanyProfileForm(forms.Form):
             raise forms.ValidationError(str(exc)) from None
 
 class CustomerForm(forms.ModelForm):
+    def clean(self):
+        data = super().clean()
+        check_german_postcode(self, data)
+        return data
+
     class Meta:
         model = Customer
         fields = ['salutation','customer_no','customer_type','name','name2','contact_person','phone','email','street','postcode','city','country','payment_days','aareon_receiver_id']
@@ -65,6 +81,11 @@ class CustomerForm(forms.ModelForm):
         widgets.update({'salutation': forms.Select(attrs=SELECT_WIDGET_CLASS), 'customer_type': forms.Select(attrs=SELECT_WIDGET_CLASS), 'payment_days': forms.NumberInput(attrs=CUSTOMER_WIDGET_CLASS)})
 
 class CustomerObjectForm(forms.ModelForm):
+    def clean(self):
+        data = super().clean()
+        check_german_postcode(self, data)
+        return data
+
     class Meta:
         model = CustomerObject
         fields = ['customer','name','street','postcode','city','country']
@@ -107,6 +128,10 @@ class InvoiceForm(PositiveVatRateMixin, forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        if not data.get('customer'):
+            check_german_postcode(self, data)
+        if not data.get('obj'):
+            check_german_postcode(self, data, 'object_postcode', 'object_country')
         # Entwürfe dürfen unvollständig sein. Vor Ausstellung muss dieselbe
         # Empfängeradresse vorliegen, die auch der XML-Generator verlangt.
         if self.data.get('action') in ('create', 'send'):
@@ -208,6 +233,14 @@ class OfferForm(PositiveVatRateMixin, forms.ModelForm):
     object_postcode = forms.CharField(label='Objekt PLZ', required=False, widget=forms.TextInput(attrs=CUSTOMER_WIDGET_CLASS))
     object_city = forms.CharField(label='Objekt Stadt', required=False, widget=forms.TextInput(attrs=CUSTOMER_WIDGET_CLASS))
     object_country = forms.CharField(label='Objekt Land', required=False, initial='DE', widget=forms.TextInput(attrs=CUSTOMER_WIDGET_CLASS))
+
+    def clean(self):
+        data = super().clean()
+        if not data.get('customer'):
+            check_german_postcode(self, data)
+        if not data.get('obj'):
+            check_german_postcode(self, data, 'object_postcode', 'object_country')
+        return data
 
     class Meta:
         model = Offer

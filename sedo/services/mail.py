@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ..models import AppSetting
 from ..company_profile import SELLER, SellerProfileError, seller_document
+from .formatting import euro
 from .credentials import configuration, secret_for
 from .smtp_transport import DeliveryOutcome, classify_failure, verified_tls_context
 
@@ -47,14 +48,48 @@ def _attachment(attachment_path):
 @seller_document
 def invoice_email_subject_body(invoice) -> tuple[str, str]:
     """Einheitlicher Betreff + Text für eine Rechnungs-E-Mail (früher 4× dupliziert)."""
-    subject = f'Rechnung {invoice.number} – {SELLER["name"]}'
+    subject = f'Ihre Rechnung {invoice.number} von {SELLER["name"]}'
+    due = invoice.due_date.strftime('%d.%m.%Y') if invoice.due_date else None
     body = (
-        'Sehr geehrte Damen und Herren,\n\n'
-        f'anbei erhalten Sie unsere Rechnung {invoice.number}.\n\n'
-        f'Rechnungsbetrag: {invoice.gross_total} EUR\n'
-        f'Fälligkeitsdatum: {invoice.due_date or "siehe Rechnung"}\n\n'
+        'Guten Tag,\n\n'
+        f'anbei erhalten Sie unsere Rechnung {invoice.number} über {euro(invoice.gross_total)}. '
+        + (f'Der Betrag ist bis zum {due} fällig.\n\n' if due else 'Das Zahlungsziel finden Sie in der Rechnung.\n\n') +
+        'Bei Fragen zur Rechnung melden Sie sich gern bei uns.\n\n'
         f'Mit freundlichen Grüßen\n{SELLER["name"]}\n'
     )
+    return subject, body
+
+
+@seller_document
+def dunning_email_subject_body(document) -> tuple[str, str]:
+    """Chosen default texts for a prepared reminder or dunning PDF."""
+    number = document.invoice.number
+    amount = euro(document.amount_open)
+    deadline = document.due_date_new.strftime('%d.%m.%Y') if document.due_date_new else 'gemäß beigefügtem Schreiben'
+    if document.kind == 'reminder':
+        subject = f'Zahlungserinnerung zur Rechnung {number}'
+        body = (
+            'Guten Tag,\n\n'
+            f'zu unserer Rechnung {number} ist derzeit noch ein Betrag von {amount} offen. '
+            'Möglicherweise hat sich die Zahlung mit dieser Nachricht überschnitten.\n\n'
+            f'Wir bitten Sie, den offenen Betrag bis zum {deadline} zu überweisen. '
+            'Die Zahlungserinnerung finden Sie im Anhang. Falls Sie bereits gezahlt haben, '
+            'betrachten Sie diese Nachricht bitte als gegenstandslos.\n\n'
+            f'Mit freundlichen Grüßen\n{SELLER["name"]}\n'
+        )
+    elif document.kind == 'dunning':
+        subject = f'Mahnung zur Rechnung {number}'
+        body = (
+            'Sehr geehrte Damen und Herren,\n\n'
+            f'trotz Fälligkeit ist zur Rechnung {number} noch ein Betrag von {amount} offen. '
+            f'Wir bitten Sie, den ausstehenden Betrag spätestens bis zum {deadline} '
+            'unter Angabe der Rechnungsnummer zu überweisen.\n\n'
+            'Das Mahnschreiben mit den Einzelheiten finden Sie im Anhang. '
+            'Falls Sie bereits gezahlt haben, geben Sie uns bitte kurz Bescheid.\n\n'
+            f'Mit freundlichen Grüßen\n{SELLER["name"]}\n'
+        )
+    else:
+        raise ValueError('Unbekannte Mahnstufe.')
     return subject, body
 
 

@@ -12,6 +12,23 @@
 - Im Apple-Account ein App-spezifisches Passwort erzeugen und direkt in SEDO
   eintragen. Anschließend **Kalender laden**, gewünschte Kalender auswählen und
   den beidseitigen Abgleich bestätigen. Keine öffentliche Kalenderfreigabe nötig.
+
+### Wenn „Kalender laden“ mit „iCloud hat die Anmeldung abgelehnt“ endet
+
+Diese Meldung bedeutet, dass der iCloud-Server die Anmeldung mit HTTP 401
+abgelehnt hat. Sie beweist weder einen Defekt des Kalenders noch, dass das in
+SEDO eingegebene Passwort verloren ging. Im Apple-Account muss die
+Zwei-Faktor-Authentifizierung aktiv sein. Dort unter **Anmelden und Sicherheit →
+App-spezifische Passwörter** ein neues Passwort für SEDO erzeugen und es im
+SEDO-Kalenderdialog zusammen mit der E-Mail-Adresse **desselben Apple-Accounts**
+eingeben. Nach einer Änderung oder Zurücksetzung des regulären Apple-Passworts
+werden laut Apple alle zuvor erzeugten App-Passwörter widerrufen. Das neue
+Passwort nicht in Fehlerberichte oder Nachrichten kopieren.
+
+Bleibt die Ablehnung auch mit einem frisch erzeugten Passwort bestehen, den
+Fehlerzeitpunkt und die verwendete Windows-Testversion notieren und die
+Einrichtung gesondert auf dem Zielrechner prüfen. Ohne einen erfolgreichen
+Verbindungstest mit dem eigenen Account ist iCloud nicht abgenommen.
 - SEDO übernimmt neue und geänderte Termine sowie bestätigte Löschungen in beide
   Richtungen. Apple Kalender auf Mac/iPhone muss denselben iCloud-Account nutzen.
   Der Desktop-Abgleich läuft alle zwei Minuten, solange SEDO geöffnet ist;

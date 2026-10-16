@@ -15,7 +15,7 @@ from ..core.rechnungslauf_core import (
     InvoicePosition, InvoiceRow, build_xml, create_pdf, embed_xml_into_pdf,
 )
 from ..audit import write_audit
-from ..company_profile import seller_document
+from ..company_profile import sedo_letterhead_enabled, seller_document
 from ..models import AareonMapping, AppSetting, Invoice, InvoiceItem, Offer
 from .calc import recalc_invoice
 from .numbering import create_numbered_invoice, save_with_unique_number
@@ -367,7 +367,8 @@ def _generate_invoice_files_inner(invoice: Invoice) -> Invoice:
     with tempfile.TemporaryDirectory(dir=media_root, prefix='.generating_') as tmp:
         tmp_dir = Path(tmp)
         tmp_pdf = tmp_dir / pdf_path.name
-        create_pdf(row, tmp_pdf, issue_dt, ps_dt, pe_dt, due_dt)
+        create_pdf(row, tmp_pdf, issue_dt, ps_dt, pe_dt, due_dt,
+                   branded=sedo_letterhead_enabled())
         if not is_draft:
             xml_bytes = build_xml(row, issue_dt, ps_dt, pe_dt, due_dt)
             tmp_xml = tmp_dir / xml_path.name

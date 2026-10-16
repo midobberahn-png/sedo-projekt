@@ -16,7 +16,7 @@
     {% if invoice.lifecycle == 'draft' %}
       <a class="btn" href="{% url 'sedo:invoice_edit' invoice.pk %}">Bearbeiten</a>
     {% else %}
-      <form method="post" action="{% url 'sedo:invoice_email' invoice.pk %}">{% csrf_token %}<button type="submit" class="btn">{% if smtp_configured %}E-Mail senden{% else %}E-Mail-Entwurf herunterladen{% endif %}</button></form>
+      <a class="btn" href="{% url 'sedo:invoice_email' invoice.pk %}">E-Mail vorbereiten</a>
       {% if invoice.pdf_file %}<a class="btn" href="{% url 'sedo:document_preview' invoice.pdf_file.name %}?back={{ request.get_full_path|urlencode }}">PDF</a>{% endif %}
     {% endif %}
   </div>

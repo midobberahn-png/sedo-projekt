@@ -18,6 +18,7 @@ import unicodedata
 from .workflow_errors import WorkflowError
 
 PROFILE_KEY = 'seller_profile'
+SEDO_LETTERHEAD_KEY = 'document_sedo_letterhead'
 PROFILE_FIELDS = {
     'name': ('Firma / vollständiger Name', 120, True),
     'street': ('Straße und Hausnummer', 120, True),
@@ -104,6 +105,12 @@ def load_profile() -> dict[str, str]:
     except (ValueError, TypeError):
         raise SellerProfileError('Die gespeicherten Firmendaten sind ungültig. Bitte die Administration um Korrektur bitten.') from None
     return validate_profile(value)
+
+
+def sedo_letterhead_enabled() -> bool:
+    """Branding is opt-in per installation; older issued PDFs stay untouched."""
+    from .models import AppSetting
+    return AppSetting.get(SEDO_LETTERHEAD_KEY, '0') == '1'
 
 
 def profile_form_initial() -> dict[str, str]:
