@@ -1,0 +1,16 @@
+{% extends 'sedo/base.html' %}
+{% block content %}
+<div class="topbar"><div><div class="eyebrow">Ausgehende E-Mail</div><h1 class="h1">{{ title }}</h1></div></div>
+<div class="card">
+  <p>Bitte Empfänger, Text und Anlage vor dem Versand prüfen.</p>
+  <form method="post" class="stacked-form">{% csrf_token %}
+    <div class="form-row"><strong>Empfänger</strong><div>{{ recipient }}</div></div>
+    <div class="form-row"><strong>Betreff</strong><div>{{ subject }}</div></div>
+    <div class="form-row"><strong>Anlage</strong><div>{{ attachment_name }}</div></div>
+    <div class="form-row"><label for="email-body">Begleittext</label>
+      <textarea id="email-body" name="body" class="form-control" rows="13" maxlength="10000" required>{{ body }}</textarea>
+    </div>
+    <div class="toolbar"><a class="btn" href="{{ back_url }}">Abbrechen</a><button class="btn primary" type="submit">{{ submit_label }}</button></div>
+  </form>
+</div>
+{% endblock %}

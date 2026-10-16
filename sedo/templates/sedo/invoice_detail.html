@@ -103,7 +103,7 @@
   </div>
   <div class="card">
     <div class="section-head"><h2>Mahnwesen</h2><span class="muted">Dokumente</span></div>
-    <div class="table-wrap"><table class="table table-modern"><tr><th>Datum</th><th>Art</th><th>Offen</th><th>PDF</th></tr>{% for d in invoice.dunning_documents.all %}<tr><td>{{ d.document_date }}</td><td>{{ d.get_kind_display }}</td><td>{{ d.amount_open }} €</td><td>{% if d.pdf_file %}<a class="btn small" href="{% url 'sedo:document_preview' d.pdf_file.name %}?back={{ request.get_full_path|urlencode }}">Öffnen</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="4"><div class="empty-state compact">Noch keine Zahlungserinnerung/Mahnung erzeugt.</div></td></tr>{% endfor %}</table></div>
+    <div class="table-wrap"><table class="table table-modern"><tr><th>Datum</th><th>Art</th><th>Offen</th><th>PDF</th><th>E-Mail</th></tr>{% for d in invoice.dunning_documents.all %}<tr><td>{{ d.document_date }}</td><td>{{ d.get_kind_display }}</td><td>{{ d.amount_open }} €</td><td>{% if d.pdf_file %}<a class="btn small" href="{% url 'sedo:document_preview' d.pdf_file.name %}?back={{ request.get_full_path|urlencode }}">Öffnen</a>{% endif %}</td><td>{% if d.pdf_file and invoice.customer.email %}<a class="btn small" href="{% url 'sedo:dunning_email' d.pk %}">Vorbereiten</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="5"><div class="empty-state compact">Noch keine Zahlungserinnerung/Mahnung erzeugt.</div></td></tr>{% endfor %}</table></div>
   </div>
 </div>
 

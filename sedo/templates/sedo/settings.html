@@ -18,6 +18,14 @@
     <button class="btn primary" type="submit">Firmendaten speichern</button>
   </form>
 </section>
+<section class="card" id="letterhead-settings" aria-labelledby="letterhead-heading">
+  <h2 id="letterhead-heading">Briefbogen für neue PDFs</h2>
+  <p>Die ältere SEDO-Fassung setzte ein SEDO-Logo und den Schriftzug „Sauberes Handwerk · Rund um Ihr Objekt“ in den Kopf. Hier können Sie diesen Briefbogen für neue Rechnungen, Angebote, Zahlungserinnerungen und Mahnungen aktivieren. Bereits ausgestellte Originale bleiben unverändert.</p>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="save_letterhead">
+    <label class="check-line"><input type="checkbox" name="sedo_letterhead" value="1" {% if sedo_letterhead %}checked{% endif %}> SEDO-Briefbogen verwenden</label>
+    <button class="btn primary" type="submit">Briefbogen speichern</button>
+  </form>
+</section>
 {% endif %}
 {% if request.user.is_staff %}
 <section class="card" id="mail-settings" aria-labelledby="mail-settings-heading">

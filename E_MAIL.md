@@ -52,6 +52,22 @@ Provider-Dokumentation:
 Die Postfächer sind gemeinsame Firmenpostfächer für angemeldete SEDO-Nutzer.
 Einrichtung und Passwortänderungen erfordern ein Administrationskonto.
 
+## Rechnungen und Mahnschreiben versenden
+
+Im Rechnungsdetail öffnet **E-Mail vorbereiten** eine Vorschau mit Empfänger,
+Betreff, PDF-Anlage und bearbeitbarem Begleittext. Für Rechnungen ist ein
+freundlicher Standardtext mit Rechnungsbetrag und Fälligkeit vorbelegt.
+Für bereits erzeugte Zahlungserinnerungen und Mahnungen steht in derselben
+Ansicht ein jeweils eigener Text bereit: freundlich bei der Erinnerung,
+bestimmt bei der Mahnung. Betrag und neue Frist stammen aus dem gespeicherten
+Mahnschreiben. Eine Vorschau verschickt noch nichts.
+
+Bei eingerichteter SMTP-Verbindung sendet die Bestätigung die gespeicherte
+PDF-Anlage; ohne SMTP lädt SEDO einen `.eml`-Entwurf zur eigenen Prüfung und
+zum Versand im E-Mail-Programm herunter. Eine bloß heruntergeladene Datei
+gilt nicht als zugestellte Nachricht. Vor dem Versand bleiben Empfänger,
+Bankverbindung und die fachliche Richtigkeit des Anhangs zu prüfen.
+
 ## Übersicht und Belegstatus
 
 Links stehen die wichtigsten Ordner, weitere Serverordner sind aufklappbar.

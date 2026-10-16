@@ -18,6 +18,7 @@ from .forms import CustomerForm, CustomerObjectForm, CustomerNoteForm
 from .models import Customer, CustomerObject, Invoice, Offer
 from .services import offene_rechnungen
 from .services.customer_timeline import KINDS as TIMELINE_KINDS, build_customer_timeline
+from .services.postcodes import cities_for_postcode
 from .view_support import _customer_form_data
 
 
@@ -26,6 +27,15 @@ def customer_data_api(request, pk):
     """JSON-Endpoint: Kundendaten + Objekte für AJAX-Autobefüllung im Rechnungsformular."""
     customer = get_object_or_404(Customer, pk=pk)
     return JsonResponse(_customer_form_data(customer))
+
+
+@login_required
+def postcode_cities_api(request):
+    """Local lookup only: the browser sends a postcode, never a customer address."""
+    postcode = request.GET.get('postcode', '')
+    if len(postcode) != 5 or not postcode.isascii() or not postcode.isdecimal():
+        return JsonResponse({'cities': []}, status=400)
+    return JsonResponse({'cities': cities_for_postcode(postcode)})
 
 
 def _norm(v):

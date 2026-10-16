@@ -18,7 +18,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 
 from .audit import AuditWriteError, write_audit
 from .company_profile import load_profile, seller_post
@@ -558,7 +558,7 @@ def invoice_confirm_external_send(request, pk):
     return redirect('sedo:invoice_detail', pk)
 
 @login_required
-@require_POST
+@require_http_methods(['GET', 'POST'])
 def invoice_email(request, pk):
     invoice = get_object_or_404(Invoice.objects.select_related('customer'), pk=pk)
     if not invoice.customer.email:
@@ -572,6 +572,15 @@ def invoice_email(request, pk):
     except WorkflowError as fehler:
         messages.error(request, str(fehler))
         return redirect('sedo:invoice_detail', pk)
+
+    if request.method == 'GET':
+        subject, body = invoice_email_subject_body(invoice)
+        return render(request, 'sedo/document_email.html', {
+            'title': 'Rechnung per E-Mail vorbereiten', 'recipient': invoice.customer.email,
+            'subject': subject, 'body': body, 'attachment_name': f'{invoice.number}_zugferd.pdf',
+            'submit_label': 'E-Mail senden' if smtp_is_configured() else 'E-Mail-Entwurf herunterladen',
+            'back_url': reverse('sedo:invoice_detail', args=[pk]),
+        })
 
     # Ausgestellte SEDO-Belege besitzen beide Dateien. Alte Datensätze ohne
     # Dateiverweis laufen anschließend wie bisher in die harte Archivprüfung,
@@ -593,6 +602,9 @@ def invoice_email(request, pk):
     subject, body = invoice_email_subject_body(invoice)
     # Optionaler individueller Begleittext (z. B. per Magic-Tone erzeugt und geprüft)
     custom_body = (request.POST.get('body') or '').strip()
+    if len(custom_body) > 10000:
+        messages.error(request, 'Der E-Mail-Text ist zu lang (höchstens 10.000 Zeichen).')
+        return redirect('sedo:invoice_email', pk)
     if custom_body:
         body = custom_body
 

@@ -1,0 +1,4 @@
+.postcode-status { display: block; margin-top: .3rem; color: #466176; line-height: 1.35; }
+.postcode-status.postcode-warning { color: #9a4b16; }
+.postcode-choices { display: block; width: 100%; margin-top: .4rem; }
+.postcode-choices[hidden] { display: none; }

@@ -12,6 +12,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from sedo.company_profile import SELLER, seller_document
+from .pdf_branding import draw_sedo_mark
 from .invoice_common import (
     InvoiceRow, clean_text, de_money, de_qty, money, format_period_de,
     _validate_recipient,
@@ -70,7 +71,8 @@ class _PdfContext:
     draw_watermark: Callable[..., None]
     draw_table_header: Callable[[float], float]
 
-def _pdf_context(out_pdf: Path, accent: tuple[float, float, float] | None) -> _PdfContext:
+def _pdf_context(out_pdf: Path, accent: tuple[float, float, float] | None,
+                 *, branded: bool = False) -> _PdfContext:
     """Prepare dimensions and repeatable page furniture."""
     # ── Farbwerte (RGB 0-1) ──────────────────────────────────────────────
     INK = (0.10, 0.11, 0.13)      # Fliesstext
@@ -98,12 +100,23 @@ def _pdf_context(out_pdf: Path, accent: tuple[float, float, float] | None) -> _P
     # ── Kopf: Unternehmensdaten aus der lokalen Einrichtung ───────────
     def draw_header():
         top = h - 12 * mm
+        if branded:
+            draw_sedo_mark(c, left, top, ACCENT)
         fc(*INK); c.setFont("Helvetica-Bold", 9.5)
         c.drawRightString(right, top - 1 * mm, SELLER["name"])
-        fc(*MUT); c.setFont("Helvetica", 7)
-        c.drawRightString(right, top - 5 * mm,
-                          f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · {SELLER['country']}")
-        c.drawRightString(right, top - 9 * mm, f"Tel. {SELLER['phone']} · {SELLER['email']}")
+        fc(*MUT)
+        if branded:
+            c.setFont("Helvetica-Oblique", 7)
+            c.drawRightString(right, top - 5 * mm, "Sauberes Handwerk · Rund um Ihr Objekt")
+            c.setFont("Helvetica", 7)
+            c.drawRightString(right, top - 9 * mm,
+                f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · "
+                f"Tel. {SELLER['phone']} · {SELLER['email']}")
+        else:
+            c.setFont("Helvetica", 7)
+            c.drawRightString(right, top - 5 * mm,
+                              f"{SELLER['street']} · {SELLER['postcode']} {SELLER['city']} · {SELLER['country']}")
+            c.drawRightString(right, top - 9 * mm, f"Tel. {SELLER['phone']} · {SELLER['email']}")
         hairline(h - HEADER_H + 4 * mm)
 
     # ── Fuss: Haarlinie + drei Spalten Kleingedrucktes ───────────────────
@@ -380,10 +393,12 @@ def _pdf_payment(ctx: _PdfContext, inv: InvoiceRow, y: float,
 @seller_document
 def create_pdf(inv: InvoiceRow, out_pdf: Path, issue_date: datetime,
                period_start: datetime | None, period_end: datetime | None,
-               due_date: datetime, *, accent=_DEFAULT_ACCENT) -> None:
+               due_date: datetime, *, accent=_DEFAULT_ACCENT,
+               branded: bool = False) -> None:
     """Render the visible invoice from separate page, row and payment steps."""
     _validate_recipient(inv)
-    ctx = _pdf_context(out_pdf, PDF_ACCENT if accent is _DEFAULT_ACCENT else accent)
+    ctx = _pdf_context(out_pdf, PDF_ACCENT if accent is _DEFAULT_ACCENT else accent,
+                       branded=branded)
     doc_type = inv.document_type_code or "380"
     doc_title = inv.document_title or "Rechnung"
     is_storno = doc_type == "457"

@@ -47,6 +47,8 @@ datas = django_datas + whisper_datas + calendar_datas + [
     ('sedo/templates', 'sedo/templates'),
     ('sedo/static', 'sedo/static'),
     ('sedo/validation', 'sedo/validation'),
+    ('sedo/postcode_data', 'sedo/postcode_data'),
+    ('sedo/assets', 'sedo/assets'),
 ]
 # Keep operating instructions and the original dependency notices with the
 # actual app, not only with the separately published source archive. This build

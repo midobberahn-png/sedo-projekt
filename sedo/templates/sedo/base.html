@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="de">
 <head>
@@ -12,6 +13,7 @@
   <link rel="stylesheet" href="/static/sedo/accessibility-v2.css?v=2">
   <link rel="stylesheet" href="/static/sedo/theme-light-blue.css?v=1">
   <link rel="stylesheet" href="/static/sedo/operations-v1.css?v=1">
+  <link rel="stylesheet" href="{% static 'sedo/postcode-autofill.css' %}?v=1">
 <link rel="stylesheet" href="/static/sedo/quiet-ui.css?v=2">
 </head>
 <body class="app-shell">
@@ -119,6 +121,7 @@
 </div>
 
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+<script src="{% static 'sedo/postcode-autofill.js' %}?v=1" data-endpoint="{% url 'sedo:postcode_cities_api' %}"></script>
 <script src="/static/sedo/wizard.js?v=3_24"></script>
 <script src="/static/sedo/global_search.js?v=3_1"></script>
 <script src="/static/sedo/accessibility-v2.js?v=3"></script>

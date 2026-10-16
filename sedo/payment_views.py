@@ -2,18 +2,26 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 import json
 import logging
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.db.models import Q
-from django.views.decorators.http import require_POST
+from django.http import FileResponse, Http404
+from django.views.decorators.http import require_POST, require_http_methods
 from .audit import AuditWriteError, write_audit
 from .forms import BankJsonImportForm, ManualPaymentAssignForm, ManualPaymentForm
-from .models import AppSetting, Invoice, Payment
+from .models import AppSetting, DunningDocument, Invoice, Payment
+from .document_views import _read_generated_document
+from .services.dunning import mahn_hindernis
+from .services.mail import (EmailAttachment, SMTPDeliveryUncertain, create_email_draft,
+                            dunning_email_subject_body, send_email_smtp, smtp_is_configured)
+from .services.mail_send import MAX_ATTACHMENTS_BYTES
 from .services import (
     WorkflowError, ensure_zahlung_erlaubt, offene_rechnungen,
     refresh_invoice_payment_status, get_dunning_candidates,
@@ -342,3 +350,82 @@ def invoice_reminder(request, pk, kind):
     # Der verpflichtende Einzelbeleg-Audit wurde bereits atomar im Service geschrieben.
     messages.success(request, f'{doc.get_kind_display()} wurde erzeugt.')
     return redirect('sedo:invoice_detail', invoice.pk)
+
+
+@login_required
+@require_http_methods(['GET', 'POST'])
+def dunning_email(request, pk):
+    """Review and deliver an existing reminder/dunning PDF; never regenerate it."""
+    document = get_object_or_404(DunningDocument.objects.select_related('invoice__customer'), pk=pk)
+    invoice = document.invoice
+    back_url = reverse('sedo:invoice_detail', args=[invoice.pk])
+    if not invoice.customer.email:
+        messages.error(request, 'Beim Kunden ist keine E-Mail-Adresse hinterlegt.')
+        return redirect(back_url)
+    reason = mahn_hindernis(invoice)
+    if reason:
+        messages.error(request, f'Mahnversand gestoppt: {reason}')
+        return redirect(back_url)
+    current_invoice = Invoice.objects.get(pk=invoice.pk)
+    if document.amount_open != current_invoice.open_amount:
+        messages.error(request, 'Der offene Betrag hat sich seit dem Mahnschreiben geändert. Bitte kein überholtes Schreiben versenden.')
+        return redirect(back_url)
+    if document.kind == 'reminder' and DunningDocument.objects.filter(invoice=invoice, kind='dunning').exists():
+        messages.error(request, 'Zu dieser Rechnung liegt bereits eine Mahnung vor. Die ältere Zahlungserinnerung darf nicht mehr versendet werden.')
+        return redirect(back_url)
+    if not document.due_date_new or document.due_date_new < timezone.localdate():
+        messages.error(request, 'Die Zahlungsfrist im Mahnschreiben ist abgelaufen. Bitte den Beleg prüfen.')
+        return redirect(back_url)
+    if not document.pdf_file:
+        messages.error(request, 'Das Mahnschreiben hat keine PDF-Anlage.')
+        return redirect(back_url)
+    subject, default_body = dunning_email_subject_body(document)
+    if request.method == 'GET':
+        return render(request, 'sedo/document_email.html', {
+            'title': f'{document.get_kind_display()} per E-Mail vorbereiten',
+            'recipient': invoice.customer.email, 'subject': subject, 'body': default_body,
+            'attachment_name': Path(document.pdf_file.name).name,
+            'submit_label': 'E-Mail senden' if smtp_is_configured() else 'E-Mail-Entwurf herunterladen',
+            'back_url': back_url,
+        })
+    body = (request.POST.get('body') or '').strip() or default_body
+    if len(body) > 10000:
+        messages.error(request, 'Der E-Mail-Text ist zu lang (höchstens 10.000 Zeichen).')
+        return redirect('sedo:dunning_email', pk=pk)
+    try:
+        relative, data = _read_generated_document(document.pdf_file.name)
+        if relative.parts[0] != 'dunning' or relative.suffix.lower() != '.pdf' or not data.startswith(b'%PDF-') or len(data) > MAX_ATTACHMENTS_BYTES:
+            raise Http404('Das Mahnschreiben ist nicht sicher lesbar.')
+    except Http404:
+        messages.error(request, 'Die gespeicherte PDF-Anlage ist nicht sicher lesbar. Es wurde nichts versendet.')
+        return redirect(back_url)
+    attachment = EmailAttachment(relative.name, data)
+    if smtp_is_configured():
+        try:
+            send_email_smtp(invoice.customer.email, subject, body, attachment)
+        except SMTPDeliveryUncertain as exc:
+            logger.warning('SMTP-Status für %s zu %s unklar', document.kind, invoice.number)
+            messages.warning(request, str(exc))
+            return redirect(back_url)
+        except Exception:
+            logger.exception('Versand des Mahnschreibens fehlgeschlagen')
+            messages.error(request, 'Der E-Mail-Versand ist fehlgeschlagen. Bitte die E-Mail-Einstellungen prüfen.')
+            return redirect(back_url)
+        try:
+            write_audit(request, 'generate', document, 'Mahnschreiben per SMTP versendet',
+                        metadata={'vorgang': 'mahnversand', 'weg': 'smtp'})
+        except AuditWriteError:
+            messages.warning(request, 'E-Mail wurde angenommen, der Versand konnte jedoch nicht protokolliert werden. Bitte nicht ungeprüft erneut senden.')
+            return redirect(back_url)
+        messages.success(request, f'{document.get_kind_display()} wurde per E-Mail versendet.')
+        return redirect(back_url)
+    try:
+        out_dir = Path(settings.MEDIA_ROOT) / 'emails' / invoice.number
+        eml_path = create_email_draft(invoice.customer.email, subject, body, attachment,
+                                      out_dir, f'{document.kind}_{document.pk}_email')
+        write_audit(request, 'generate', document, 'E-Mail-Entwurf zum Mahnschreiben erzeugt',
+                    metadata={'vorgang': 'mahnentwurf', 'weg': 'eml'})
+        return FileResponse(open(eml_path, 'rb'), as_attachment=True, filename=eml_path.name)
+    except (OSError, AuditWriteError):
+        messages.error(request, 'Der E-Mail-Entwurf konnte nicht sicher erstellt werden.')
+        return redirect(back_url)

@@ -491,6 +491,18 @@ def settings_page(request):
                 messages.success(request, 'Firmendaten gespeichert. Bereits ausgestellte Originalbelege bleiben unverändert.')
                 return redirect(reverse('sedo:settings') + '#company-settings')
 
+        if action == 'save_letterhead':
+            if not is_administrator(request.user):
+                return HttpResponseForbidden('Nur die Administration kann den Briefbogen ändern.')
+            enabled = request.POST.get('sedo_letterhead') == '1'
+            from .company_profile import SEDO_LETTERHEAD_KEY
+            with transaction.atomic():
+                AppSetting.set(SEDO_LETTERHEAD_KEY, '1' if enabled else '0')
+                write_audit(request, 'update', object_type='AppSetting', object_repr='Briefbogen',
+                            message='SEDO-Briefbogen aktiviert' if enabled else 'SEDO-Briefbogen deaktiviert')
+            messages.success(request, 'Briefbogen für neu erzeugte PDFs gespeichert. Bereits ausgestellte Originalbelege bleiben unverändert.')
+            return redirect(reverse('sedo:settings') + '#letterhead-settings')
+
         if action == 'save_weather':
             if not request.user.is_staff:
                 return HttpResponseForbidden('Nur die Administration kann den Wetterzugang ändern.')
@@ -636,6 +648,7 @@ def settings_page(request):
         'company_form': company_form,
         'company_configured': bool(company_initial.get('name')),
         'can_edit_company': is_administrator(request.user),
+        'sedo_letterhead': AppSetting.get('document_sedo_letterhead', '0') == '1',
         'aareon_seller_id': AppSetting.get('aareon_seller_id', ''),
         'aareon_include_seller_assigned_id': AppSetting.get('aareon_include_seller_assigned_id', '0'),
         'mapping_count': AareonMapping.objects.count(),

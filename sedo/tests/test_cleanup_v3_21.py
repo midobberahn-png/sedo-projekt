@@ -6,6 +6,7 @@ kollisionssichere Nummern, exakter Zahlungsabgleich und POST-Pflicht.
 """
 from datetime import datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -118,9 +119,14 @@ class PostOnlyTests(TestCase):
         self.customer = Customer.objects.create(name='K', email='k@x.de')
         self.invoice = Invoice.objects.create(number='RE-PO-1', customer=self.customer, gross_total=Decimal('10'))
 
-    def test_email_versand_per_get_verboten(self):
-        resp = self.client.get(reverse('sedo:invoice_email', args=[self.invoice.pk]))
-        self.assertEqual(resp.status_code, 405)  # nur POST erlaubt
+    def test_email_get_zeigt_nur_vorschau_ohne_versand(self):
+        with patch('sedo.invoice_views.send_email_smtp') as send, \
+                patch('sedo.invoice_views.create_email_draft') as draft:
+            resp = self.client.get(reverse('sedo:invoice_email', args=[self.invoice.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Begleittext')
+        send.assert_not_called()
+        draft.assert_not_called()
 
     def test_storno_per_get_verboten(self):
         resp = self.client.get(reverse('sedo:invoice_storno', args=[self.invoice.pk]))
