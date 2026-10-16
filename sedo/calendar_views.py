@@ -197,25 +197,50 @@ def event_action(request, pk):
 @sensitive_post_parameters('password')
 def settings_page(request):
     connection = CalendarConnection.objects.filter(user=request.user).first()
-    form = CalendarConnectionForm(request.POST if request.POST.get('action') == 'credentials' else None,
+    action = request.POST.get('action')
+    form = CalendarConnectionForm(request.POST if action in ('credentials', 'save_discover') else None,
         connection=connection)
     if request.method == 'POST':
+        credentials_saved = False
+        discovery_attempted = False
         try:
-            action = request.POST.get('action')
-            if action == 'credentials' and form.is_valid():
-                with (connection_lease(connection.pk) if connection else nullcontext()), transaction.atomic():
-                    if connection:
+            if action in ('credentials', 'save_discover') and form.is_valid():
+                # Beim erneuten Laden ohne neue Eingabe den laufenden Abgleich
+                # nicht pausieren. Ein eingetipptes Passwort wird dagegen vor
+                # der Verbindung gespeichert und genau dafür verwendet.
+                should_save = (action == 'credentials' or not connection
+                               or bool(form.cleaned_data['password'])
+                               or form.cleaned_data['username'] != connection.username)
+                if should_save:
+                    with (connection_lease(connection.pk) if connection else nullcontext()), transaction.atomic():
+                        if connection:
+                            connection.refresh_from_db()
+                            if connection.revision != revision(request.POST):
+                                raise CalendarError('Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu öffnen.')
+                            if form.cleaned_data['username'] != connection.username and connection.calendars.exists():
+                                raise CalendarError('Der Apple-Account ist bereits mit Kalendern verknüpft und kann hier nicht gewechselt werden.')
+                            connection.username = form.cleaned_data['username']
+                        else:
+                            connection = CalendarConnection(user=request.user, username=form.cleaned_data['username'])
+                        if form.cleaned_data['password']:
+                            connection.password_encrypted = encrypt(connection, form.cleaned_data['password'])
+                        connection.enabled = False
+                        connection.last_error = ''
+                        connection.revision += 1
+                        connection.save()
+                    credentials_saved = True
+                if action == 'save_discover':
+                    expected_revision = connection.revision if credentials_saved else revision(request.POST)
+                    with connection_lease(connection.pk):
                         connection.refresh_from_db()
-                        if connection.revision != revision(request.POST):
+                        if connection.revision != expected_revision:
                             raise CalendarError('Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu öffnen.')
-                    else:
-                        connection = CalendarConnection(user=request.user, username=form.cleaned_data['username'])
-                    if form.cleaned_data['password']:
-                        connection.password_encrypted = encrypt(connection, form.cleaned_data['password'])
-                    connection.enabled = False
-                    connection.revision += 1
-                    connection.save()
-                messages.success(request, 'Zugang gespeichert. Jetzt Kalender laden und für den Abgleich auswählen.')
+                        discovery_attempted = True
+                        count = discover(connection)
+                        CalendarConnection.objects.filter(pk=connection.pk).update(last_error='')
+                    messages.success(request, f'{count} iCloud-Kalender gefunden. Bitte Kalender auswählen.')
+                else:
+                    messages.success(request, 'Zugang gespeichert. Jetzt Kalender laden und für den Abgleich auswählen.')
                 return redirect('sedo:calendar_settings')
             elif action in ('discover', 'selection', 'pause'):
                 if not connection:
@@ -225,7 +250,9 @@ def settings_page(request):
                     if connection.revision != revision(request.POST):
                         raise CalendarError('Die Einstellungen wurden zwischenzeitlich geändert. Bitte neu öffnen.')
                     if action == 'discover':
+                        discovery_attempted = True
                         count = discover(connection)
+                        CalendarConnection.objects.filter(pk=connection.pk).update(last_error='')
                         messages.success(request, f'{count} iCloud-Kalender gefunden.')
                     elif action == 'selection':
                         if request.POST.get('confirm') != 'yes':
@@ -252,6 +279,11 @@ def settings_page(request):
                     request_sync(connection.pk)
                 return redirect('sedo:calendar_settings')
         except CalendarError as exc:
+            if discovery_attempted and connection:
+                CalendarConnection.objects.filter(pk=connection.pk).update(last_error=str(exc))
+                connection.refresh_from_db()
+            if credentials_saved:
+                form = CalendarConnectionForm(connection=connection)
             messages.error(request, str(exc))
         except IntegrityError:
             messages.error(request, 'Die Einrichtung wurde bereits in einem anderen Fenster gespeichert. Bitte neu öffnen.')

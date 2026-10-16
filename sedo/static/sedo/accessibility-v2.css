@@ -37,6 +37,7 @@
 .page-shell .responsive-records td { overflow-wrap:anywhere; }
 .login-page { max-width:480px; margin:clamp(20px,8vh,80px) auto; padding:16px; }
 @media(min-width:1051px) {
+  .app-shell .sidebar-toggle { display:none; }
   .app-shell.sidebar-locked .nav-text { display:block; position:absolute; width:1px!important; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 }
 @media(max-width:1050px) {

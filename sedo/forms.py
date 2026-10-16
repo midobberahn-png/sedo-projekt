@@ -105,6 +105,22 @@ class InvoiceForm(PositiveVatRateMixin, forms.ModelForm):
     object_city = forms.CharField(label='Objekt Stadt', required=False, widget=forms.TextInput(attrs=CUSTOMER_WIDGET_CLASS))
     object_country = forms.CharField(label='Objekt Land', required=False, initial='DE', widget=forms.TextInput(attrs=CUSTOMER_WIDGET_CLASS))
 
+    def clean(self):
+        data = super().clean()
+        # Entwürfe dürfen unvollständig sein. Vor Ausstellung muss dieselbe
+        # Empfängeradresse vorliegen, die auch der XML-Generator verlangt.
+        if self.data.get('action') in ('create', 'send'):
+            customer = data.get('customer')
+            if customer:
+                if any(not str(getattr(customer, field, '') or '').strip()
+                       for field in ('name', 'street', 'postcode', 'city', 'country')):
+                    self.add_error('customer', 'Die gespeicherten Kundendaten enthalten keine vollständige Adresse. Bitte den Kunden bearbeiten oder einen neuen Empfänger erfassen.')
+            else:
+                for field in ('name', 'street', 'postcode', 'city', 'country'):
+                    if not str(data.get(field) or '').strip() and field not in self.errors:
+                        self.add_error(field, 'Für eine Rechnung bitte dieses Adressfeld ausfüllen.')
+        return data
+
     class Meta:
         model = Invoice
         fields = ['customer','obj','issue_date','period_start','period_end','vat_rate','note']

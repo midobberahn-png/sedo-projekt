@@ -11,7 +11,7 @@ from .item_positions import normalize_item_positions
 from .numbering import save_with_unique_number
 
 
-def save_new_invoice(inv, formset, *, action, source_offer=None,
+def save_new_invoice(inv, formset, *, action, prepare_invoice=None, source_offer=None,
                      correction_source=None, request=None):
     """Speichert Nummer, Positionen, Archiv und Quellen als eine Einheit.
 
@@ -19,6 +19,8 @@ def save_new_invoice(inv, formset, *, action, source_offer=None,
     Datenbank- und Datei-Rollback sowie der Schutz paralleler Vorgänge zusammen.
     """
     with datei_rueckweg() as merken, transaction.atomic():
+        if prepare_invoice is not None:
+            prepare_invoice()
         save_with_unique_number(inv, 'EN' if action == 'draft' else 'RE')
         formset.instance = inv
         formset.save()

@@ -41,7 +41,7 @@
         opened = !opened;
         sync();
         if (opened) closeButton.focus();
-      } else { collapsed = !collapsed; sync(); }
+      }
     });
     closeButton.addEventListener('click', close);
     document.addEventListener('keydown', e => {
