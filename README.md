@@ -19,6 +19,10 @@ Dafür ist keine Python-Installation nötig. Für Windows x64 gibt es einen
 [privaten Testinstaller](https://github.com/midobberahn-png/sedo-projekt/releases)
 mit getrenntem Teststarter. Auch dafür ist kein Python nötig; das Windows-Setup
 ist noch nicht herausgebersigniert und auf dem Ziel-PC noch nicht abgenommen.
+Für spätere Windows-Testversionen ist ein [Ein-Klick-Update aus der App](WINDOWS_UPDATES.md)
+vorbereitet. Die erste Version mit Update-Menü wird noch einmal wie gewohnt
+installiert; der Updatekanal wird erst nach Einrichtung des Signaturschlüssels
+aktiviert.
 
 Nach der ersten Anmeldung die eigenen Firmendaten einrichten. Zum Ausprobieren
 zunächst erfundene Kunden und Rechnungen verwenden. Zugangsdaten für optionale

@@ -57,6 +57,7 @@ for document in ('README.md', 'DEPLOYMENT_SECURITY_NOTES.md', 'BEDIENHINWEISE.md
                  'BONSAI.md', 'E_MAIL.md', 'KALENDER.md', 'EINGANGSRECHNUNGEN.md',
                  'DASHBOARD.md', 'SPAMFILTER.md'):
     datas.append((document, 'docs'))
+datas.append(('WINDOWS_UPDATES.md', 'docs'))
 for distribution in distributions():
     datas += copy_metadata(distribution.metadata['Name'])
 python_license = next((candidate for candidate in (

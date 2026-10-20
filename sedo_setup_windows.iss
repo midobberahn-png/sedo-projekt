@@ -48,7 +48,22 @@ Source: "{#WebViewInstaller}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags
 Name: "{group}\{#AppName}"; Filename: "{app}\SEDO Rechnungstool.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\SEDO Rechnungstool.exe"
 
+[Run]
+; Nur der aus SEDO gestartete Update-Lauf öffnet das Programm nach erfolgreichem Setup.
+Filename: "{app}\SEDO Rechnungstool.exe"; Flags: nowait; Check: IsSedoUpdate
+
 [Code]
+function IsSedoUpdate: Boolean;
+var I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/SEDOUPDATE=1') = 0 then begin
+      Result := True;
+      Exit;
+    end;
+end;
+
 function HasVCRuntime: Boolean;
 var Version: String; Installed: Cardinal; Current, Minimum: Int64;
 begin

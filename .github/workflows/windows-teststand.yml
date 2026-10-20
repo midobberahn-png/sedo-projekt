@@ -28,6 +28,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Windows-Version aus dem geprüften Programm lesen
+        shell: pwsh
+        run: |
+          $version = python -c "from sedo.windows_updates import WINDOWS_VERSION; print(WINDOWS_VERSION)"
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw 'Die Windows-Version konnte nicht gelesen werden.'
+          }
+          "SEDO_APP_VERSION=$version" >> $env:GITHUB_ENV
       - name: Python 3.13.15 einrichten
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -104,11 +112,11 @@ jobs:
           }
           $vcHash = (Get-FileHash -LiteralPath $env:SEDO_VC -Algorithm SHA256).Hash.ToLowerInvariant()
           $defines = @('/Qp', "/DBundleDir=$bundle", "/DInstallerOutputDir=$output",
-                       '/DAppVersion=3.21.0.4', "/DWebViewInstaller=$env:SEDO_WEBVIEW",
+                       "/DAppVersion=$env:SEDO_APP_VERSION", "/DWebViewInstaller=$env:SEDO_WEBVIEW",
                        "/DVCRuntimeURL=$env:SEDO_VC_URL", "/DVCRuntimeHash=$vcHash",
                        "/DVCRuntimeVersion=$vcVersion", 'sedo_setup_windows.iss')
           & $env:SEDO_ISCC @defines
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $output 'SEDO_Rechnungstool_Setup_3.21.0.4.exe'))) {
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $output "SEDO_Rechnungstool_Setup_$env:SEDO_APP_VERSION.exe"))) {
             throw 'Das Inno-Setup-Rezept konnte nicht kompiliert werden.'
           }
       - name: Vollständige Windows-Prüfung
@@ -130,7 +138,7 @@ jobs:
         run: |
           $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
           $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
-          python tools/windows_installer.py --checks $checks --iscc $env:SEDO_ISCC --webview-bootstrapper $env:SEDO_WEBVIEW --vc-runtime $env:SEDO_VC --vc-runtime-url $env:SEDO_VC_URL --output $package --version 3.21.0.4
+          python tools/windows_installer.py --checks $checks --iscc $env:SEDO_ISCC --webview-bootstrapper $env:SEDO_WEBVIEW --vc-runtime $env:SEDO_VC --vc-runtime-url $env:SEDO_VC_URL --output $package --version $env:SEDO_APP_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Der Windows-Testinstaller konnte nicht gebaut werden.' }
       - name: Installation, gebündeltes Programm und Deinstallation prüfen
         shell: pwsh
@@ -138,7 +146,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $checks = Join-Path $env:RUNNER_TEMP 'sedo-checks'
           $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
-          $setup = Join-Path $package 'SEDO_Rechnungstool_Setup_3.21.0.4.exe'
+          $setup = Join-Path $package "SEDO_Rechnungstool_Setup_$env:SEDO_APP_VERSION.exe"
           $smoke = Join-Path $env:RUNNER_TEMP 'sedo-installationstest'
           $app = Join-Path $smoke 'Programm'
           $env:SEDO_HOME = Join-Path $smoke 'Daten'
@@ -181,12 +189,23 @@ jobs:
           if (-not $selfCheck.ok -or -not $selfCheck.frozen -or -not $selfCheck.whisper_available) {
             throw 'Der Selbsttest der installierten Anwendung ist unvollständig.'
           }
+          $sentinel = Join-Path $env:SEDO_HOME 'update-keeps-data.txt'
+          Set-Content -LiteralPath $sentinel -Value 'isolierte-testdaten-bleiben-erhalten' -Encoding utf8
+          $upgrade = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru
+          if ($upgrade.ExitCode -ne 0 -or (Get-Content -LiteralPath $sentinel -Raw) -notmatch 'isolierte-testdaten-bleiben-erhalten') {
+            throw 'Die erneute Installation hat Testdaten verändert oder ist fehlgeschlagen.'
+          }
+          $checkAfterUpgrade = Start-Process -FilePath $exe -ArgumentList '--check-strict' -Wait -PassThru -WorkingDirectory $app -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($checkAfterUpgrade.ExitCode -ne 0) {
+            throw 'Der Selbsttest nach der erneuten Installation ist fehlgeschlagen.'
+          }
           $uninstaller = Join-Path $app 'unins000.exe'
           if (-not (Test-Path $uninstaller)) { throw 'Die Deinstallation fehlt.' }
           $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
           if ($uninstall.ExitCode -ne 0 -or (Test-Path $exe)) { throw 'Die Deinstallation ist fehlgeschlagen.' }
           $result = [ordered]@{
             installed_program_self_check = $true
+            upgrade_preserved_data = $true
             uninstall_successful = $true
             installer_sha256 = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()
             github_commit = $env:GITHUB_SHA
@@ -198,11 +217,44 @@ jobs:
         with:
           name: SEDO-Windows-x64-Testinstaller
           path: |
-            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.4.zip
+            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_*.zip
             ${{ runner.temp }}/sedo-installer/SHA256.txt
             ${{ runner.temp }}/sedo-installer/INSTALLATIONSTEST.json
             ${{ runner.temp }}/sedo-checks/report.json
             ${{ runner.temp }}/sedo-checks/native/BUILD_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Signiertes Update-Manifest für manuelle Freigabe erzeugen
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          SEDO_UPDATE_SIGNING_KEY: ${{ secrets.SEDO_UPDATE_SIGNING_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:SEDO_UPDATE_SIGNING_KEY) {
+            throw 'Der ausdrücklich freizugebende Update-Signaturschlüssel fehlt.'
+          }
+          $lock = Join-Path $env:RUNNER_TEMP 'sedo-signing.lock'
+          python -c "from tools import teststand; from pathlib import Path; entries=teststand.lock_entries(Path('requirements-release.lock').read_text(encoding='utf-8')); print(chr(10).join(e for e in entries if e.split('==')[0] in ('cryptography', 'cffi', 'pycparser')))" | Set-Content -LiteralPath $lock -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'Der Signier-Lock konnte nicht extrahiert werden.' }
+          $venv = Join-Path $env:RUNNER_TEMP 'sedo-signing-venv'
+          python -m venv $venv
+          $python = Join-Path $venv 'Scripts\python.exe'
+          & $python -m pip install --require-hashes --no-deps -r $lock
+          if ($LASTEXITCODE -ne 0) { throw 'Hash-gesperrte Signierumgebung konnte nicht erstellt werden.' }
+          $package = Join-Path $env:RUNNER_TEMP 'sedo-installer'
+          $setup = Join-Path $package "SEDO_Rechnungstool_Setup_$env:SEDO_APP_VERSION.exe"
+          & $python tools/windows_update_release.py --setup $setup --build-info (Join-Path $package 'BUILD_INFO.json') --installation-test (Join-Path $package 'INSTALLATIONSTEST.json') --output (Join-Path $package 'SEDO-update.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Das Update-Manifest konnte nicht signiert werden.' }
+      - name: Freigabedateien für den öffentlichen Binärkanal bereitstellen
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: SEDO-Windows-signiertes-Testupdate
+          path: |
+            ${{ runner.temp }}/sedo-installer/SEDO_Rechnungstool_Setup_*.exe
+            ${{ runner.temp }}/sedo-installer/SEDO-update.json
+            ${{ runner.temp }}/sedo-installer/INSTALLATIONSTEST.json
           if-no-files-found: error
           retention-days: 14
       - name: Diagnose bei fehlgeschlagener Prüfung sichern
@@ -213,7 +265,7 @@ jobs:
           path: |
             ${{ runner.temp }}/sedo-checks/report.json
             ${{ runner.temp }}/sedo-checks/*.log
-            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_3.21.0.4.zip
+            ${{ runner.temp }}/sedo-installer/SEDO_Windows_Installer_*.zip
             ${{ runner.temp }}/sedo-installer/SHA256.txt
             ${{ runner.temp }}/sedo-installationstest/*.json
             ${{ runner.temp }}/sedo-installationstest/*.log

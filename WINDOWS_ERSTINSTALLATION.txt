@@ -11,6 +11,9 @@ Python muss nicht installiert werden. Windows 10/11 mit 64 Bit wird benötigt;
 (Visual C++ und WebView2) richtet das Setup ein. Dafür werden eine
 Internetverbindung und gegebenenfalls eine Windows-Administratorfreigabe benötigt.
 Das Setup ist noch nicht mit einem Herausgeber-Zertifikat signiert.
+Ab der ersten Version mit Update-Menü lassen sich spätere Testversionen in
+SEDO über Hilfe → Auf Windows-Updates prüfen installieren. Dafür müssen der
+signierte Updatekanal eingerichtet und die neue Version freigegeben sein.
 
 Dies ist eine leere Erstinstallation. Rechnungen, Kundendaten und Kennwörter
 vom Mac sind nicht enthalten. Unter Einstellungen werden Firma, Postfächer,
