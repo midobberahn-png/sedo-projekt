@@ -204,7 +204,7 @@ def start_installer(installer: Path, installed_exe: Path, log: Path) -> None:
         raise UpdateError('SEDO muss regulär unter Windows installiert sein.')
     if not installer.is_file() or not installed_exe.is_file():
         raise UpdateError('Installiertes Programm oder geprüfter Installer fehlt.')
-    subprocess.Popen([str(installer), '/VERYSILENT', '/SUPPRESSMSGBOXES',
+    subprocess.Popen([str(installer), '/SILENT',
                       '/NORESTART', '/SP-', '/CLOSEAPPLICATIONS',
                       '/SEDOUPDATE=1', '/DIR=' + str(installed_exe.parent),
                       '/LOG=' + str(log)], cwd=installer.parent, close_fds=True)

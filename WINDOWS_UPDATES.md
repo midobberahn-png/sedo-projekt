@@ -15,7 +15,8 @@ Quellcode bleibt im privaten Projekt-Repository.
 4. SEDO lädt die Windows-Installationsdatei, prüft Größe, SHA-256 und das
    signierte Update-Manifest. Bei jeder Abweichung bleibt die alte App geöffnet.
 5. Der bestehende Inno-Installer ersetzt das Programm im selben Verzeichnis.
-   Danach startet SEDO erneut. `%APPDATA%\SEDO` und der getrennte Testordner
+   Ein Installationsfehler bleibt sichtbar; nach Erfolg startet SEDO erneut.
+   `%APPDATA%\SEDO` und der getrennte Testordner
    werden nicht durch den Installer gelöscht.
 
 Die erste Version **mit** Update-Menü muss noch einmal auf bisherigem Weg
