@@ -30,6 +30,7 @@ ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'deskto
               'manage.py', 'sedo_desktop.spec', 'build_mac.command', 'BUILD_WINDOWS.bat',
               'TESTSTAND.md', 'BEDIENHINWEISE.md', 'UX_ARBEITSOBERFLAECHE.md',
               'sedo_setup_windows.iss', 'WINDOWS_ERSTINSTALLATION.txt',
+              'WINDOWS_UPDATES.md',
               'START_WINDOWS_TEST.bat',
               '.env.example', '.gitattributes', '.gitignore', 'README.md', 'DEPLOYMENT_SECURITY_NOTES.md',
               'LOCAL_CHECKS.md', 'BONSAI.md', 'E_MAIL.md', 'KALENDER.md',

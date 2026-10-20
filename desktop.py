@@ -233,12 +233,78 @@ def main() -> int:
 
     def show_about():
         try:
+            version = ''
+            if os.name == 'nt':
+                from sedo.windows_updates import WINDOWS_VERSION
+                version = f' – Version {WINDOWS_VERSION}'
             window.evaluate_js(
-                'alert("SEDO Rechnungstool – Veröffentlichungskandidat\\n'
+                f'alert("SEDO Rechnungstool{version} – Veröffentlichungskandidat\\n'
                 'Lokales Rechnungs- und Abrechnungswerkzeug\\n'
                 'Verarbeitung auf diesem Rechner")')
         except Exception:
             pass
+
+    update_actions = []
+    update_lock = threading.Lock()
+    if os.name == 'nt' and getattr(sys, 'frozen', False):
+        def check_windows_update():
+            if not update_lock.acquire(blocking=False):
+                return
+
+            def dialog(message: str, *, confirm: bool = False):
+                import json
+                function = 'confirm' if confirm else 'alert'
+                return window.evaluate_js(f'{function}({json.dumps(message, ensure_ascii=False)})')
+
+            def notice(message: str):
+                import json
+                try:
+                    window.run_js('if (window.showToast) window.showToast('
+                                  + json.dumps(message, ensure_ascii=False) + ', "info");')
+                except Exception:
+                    pass  # Noch nicht geladene Seite darf die Prüfung nicht verhindern.
+
+            def work():
+                try:
+                    from sedo import windows_updates
+                    from sedo.backup_utils import create_backup, inspect_backup
+                    notice('SEDO prüft den Windows-Updatekanal …')
+                    update = windows_updates.check()
+                    if update is None:
+                        dialog('SEDO ist auf diesem Rechner aktuell.')
+                        return
+                    approved = dialog(
+                        f'Windows-Update {update.version} installieren?\n\n'
+                        'Bitte offene Eingaben vorher speichern. SEDO erstellt '
+                        'eine Sicherung, lädt das geprüfte Update und startet danach neu.',
+                        confirm=True)
+                    if not approved:
+                        return
+                    notice('SEDO erstellt und prüft die Datensicherung …')
+                    backup = create_backup('pre_windows_update')
+                    if inspect_backup(backup.name).get('integrity') != 'ok':
+                        raise windows_updates.UpdateError('Die Datensicherung konnte nicht geprüft werden.')
+                    notice('SEDO lädt das geprüfte Windows-Update …')
+                    home = Path(os.environ['SEDO_HOME'])
+                    installer = windows_updates.download(update, home / 'updates')
+                    log = home / 'logs' / f'windows-update-{update.version}.log'
+                    windows_updates.start_installer(installer, Path(sys.executable), log)
+                    window.destroy()
+                except Exception as exc:
+                    from sedo.windows_updates import UpdateError
+                    message = str(exc) if isinstance(exc, UpdateError) else (
+                        'Das Update konnte nicht vorbereitet werden. SEDO bleibt geöffnet; '
+                        'bitte Verbindung und freien Speicher prüfen.')
+                    try:
+                        dialog(message)
+                    except Exception:
+                        print('Windows-Update:', message, file=sys.stderr)
+                finally:
+                    update_lock.release()
+
+            threading.Thread(target=work, name='sedo-windows-update', daemon=True).start()
+
+        update_actions = [wm.MenuSeparator(), wm.MenuAction('Auf Windows-Updates prüfen', check_windows_update)]
 
     menu = [
         wm.Menu('Ablage', [
@@ -248,6 +314,7 @@ def main() -> int:
         ]),
         wm.Menu('Hilfe', [
             wm.MenuAction('Über SEDO', show_about),
+            *update_actions,
         ]),
     ]
 
