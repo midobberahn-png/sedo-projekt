@@ -23,7 +23,7 @@ from urllib.request import Request, urlopen
 WINDOWS_VERSION = '3.21.0.5'
 RELEASE_REPOSITORY = 'midobberahn-png/sedo-windows-updates'
 RELEASES_API = f'https://api.github.com/repos/{RELEASE_REPOSITORY}/releases?per_page=20'
-PUBLIC_KEY_B64 = ''  # Vor Aktivierung: eigens autorisierten öffentlichen Schlüssel eintragen.
+PUBLIC_KEY_B64 = 'Psl84XRBK8gchHE+62pRhlhqtGOyyp1n5TWkgPby6wI='
 MANIFEST_NAME = 'SEDO-update.json'
 MAX_INSTALLER_BYTES = 1024 * 1024 * 1024
 _VERSION = re.compile(r'\d+\.\d+\.\d+\.\d+\Z')
