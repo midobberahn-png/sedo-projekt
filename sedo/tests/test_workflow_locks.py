@@ -116,6 +116,16 @@ class OfferToInvoiceLockTests(TestCase):
         self.offer.save(update_fields=['status'])
         self.assertNotContains(self.client.get(detail_url), action_url)
 
+    def test_rechnungsaktion_bleibt_nach_ungueltiger_wiedervorlage_sichtbar(self):
+        self.offer.status = 'offen'
+        self.offer.save(update_fields=['status'])
+        self.client.force_login(get_user_model().objects.create_user('status-follow-up'))
+        response = self.client.post(reverse('sedo:offer_follow_up', args=[self.offer.pk]), {
+            'follow_up_date': 'kein-datum', 'follow_up_note': 'Rückruf',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, reverse('sedo:offer_to_invoice', args=[self.offer.pk]), status_code=400)
+
     def test_abgelehntes_angebot_ist_auch_ueber_direktaufrufe_gesperrt(self):
         self.offer.status = 'abgelehnt'
         self.offer.save(update_fields=['status'])

@@ -33,6 +33,14 @@ from .view_support import (
 logger = logging.getLogger('sedo')
 
 
+def _offer_detail_context(offer, follow_up_form):
+    return {
+        'offer': offer,
+        'follow_up_form': follow_up_form,
+        'can_invoice': not offer.linked_invoice_id and offer.status in INVOICEABLE_OFFER_STATUSES,
+    }
+
+
 def _offer_create_error(request, message, source_mail, web_ai_disabled):
     # Eine zurückgerollte Anlage hinterlässt PKs in den Formularinstanzen.
     # Neu binden bewahrt die POST-Eingaben ohne Verweise auf Phantom-Datensätze.
@@ -157,10 +165,7 @@ def offer_create(request):
 def offer_detail(request, pk):
     offer = get_object_or_404(Offer.objects.select_related('customer','obj','linked_invoice'), pk=pk)
     follow_up_form = OfferFollowUpForm(instance=offer)
-    return render(request, 'sedo/offer_detail.html', {
-        'offer': offer, 'follow_up_form': follow_up_form,
-        'can_invoice': not offer.linked_invoice_id and offer.status in INVOICEABLE_OFFER_STATUSES,
-    })
+    return render(request, 'sedo/offer_detail.html', _offer_detail_context(offer, follow_up_form))
 
 
 @login_required
@@ -173,7 +178,7 @@ def offer_follow_up(request, pk):
     form = OfferFollowUpForm(request.POST, instance=offer)
     if not form.is_valid():
         messages.error(request, 'Bitte Datum und Notiz der Wiedervorlage prüfen.')
-        return render(request, 'sedo/offer_detail.html', {'offer': offer, 'follow_up_form': form}, status=400)
+        return render(request, 'sedo/offer_detail.html', _offer_detail_context(offer, form), status=400)
     changed = form.save(commit=False)
     action = request.POST.get('action', 'save')
     if action == 'contacted':
