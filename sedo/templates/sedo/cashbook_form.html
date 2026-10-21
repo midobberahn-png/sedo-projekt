@@ -1,4 +1,4 @@
 {% extends 'sedo/base.html' %}{% block content %}
 <div class="topbar"><div><h1 class="h1">{{ title }}</h1></div></div>
-<div class="card"><form method="post" class="stacked-form compact-form">{% csrf_token %}{{ form.as_p }}<div class="toolbar"><button class="btn primary" type="submit">Speichern</button><a class="btn" href="{% url 'sedo:cashbook_list' %}">Abbrechen</a></div></form></div>
+<div class="card"><form method="post" class="stacked-form compact-form">{% csrf_token %}{{ form.as_p }}<div class="toolbar"><button class="btn primary" type="submit">Speichern</button><button class="btn success" type="submit" name="action" value="save_and_new">Speichern &amp; {{ title }}</button><a class="btn" href="{% url 'sedo:cashbook_list' %}">Abbrechen</a></div></form></div>
 {% endblock %}
