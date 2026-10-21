@@ -77,6 +77,78 @@ def _load_online_origin() -> str | None:
     return validate_origin(data.get('origin'))
 
 
+def _windows_update_actions(window, *, online: bool):
+    """Offer the same signed, user-initiated update in both desktop modes."""
+    if os.name != 'nt' or not getattr(sys, 'frozen', False):
+        return []
+    import webview.menu as wm
+
+    update_lock = threading.Lock()
+
+    def dialog(message: str, *, confirm: bool = False):
+        function = 'confirm' if confirm else 'alert'
+        return window.evaluate_js(f'{function}({json.dumps(message, ensure_ascii=False)})')
+
+    def notice(message: str):
+        try:
+            window.run_js('if (window.showToast) window.showToast('
+                          + json.dumps(message, ensure_ascii=False) + ', "info");')
+        except Exception:
+            pass  # A page that has not loaded yet must not prevent the update.
+
+    def check_windows_update():
+        if not update_lock.acquire(blocking=False):
+            return
+
+        def work():
+            try:
+                from sedo import windows_updates
+                notice('SEDO prüft den Windows-Updatekanal …')
+                update = windows_updates.check()
+                if update is None:
+                    dialog('SEDO ist auf diesem Rechner aktuell.')
+                    return
+                if online:
+                    explanation = ('Bitte offene Eingaben vorher speichern. SEDO lädt das '
+                                   'geprüfte Update und startet danach neu. Ihre Online-Daten '
+                                   'liegen auf dem Firmenserver.')
+                else:
+                    explanation = ('Bitte offene Eingaben vorher speichern. SEDO erstellt '
+                                   'eine Sicherung, lädt das geprüfte Update und startet danach neu.')
+                if not dialog(f'Windows-Update {update.version} installieren?\n\n'
+                              + explanation, confirm=True):
+                    return
+                if not online:
+                    from sedo.backup_utils import create_backup, inspect_backup
+                    notice('SEDO erstellt und prüft die Datensicherung …')
+                    backup = create_backup('pre_windows_update')
+                    if inspect_backup(backup.name).get('integrity') != 'ok':
+                        raise windows_updates.UpdateError('Die Datensicherung konnte nicht geprüft werden.')
+                notice('SEDO lädt das geprüfte Windows-Update …')
+                home = _user_home() if online else Path(os.environ['SEDO_HOME'])
+                log_dir = home / 'logs'
+                log_dir.mkdir(parents=True, exist_ok=True)
+                installer = windows_updates.download(update, home / 'updates')
+                log = log_dir / f'windows-update-{update.version}.log'
+                windows_updates.start_installer(installer, Path(sys.executable), log)
+                window.destroy()
+            except Exception as exc:
+                from sedo.windows_updates import UpdateError
+                message = str(exc) if isinstance(exc, UpdateError) else (
+                    'Das Update konnte nicht vorbereitet werden. SEDO bleibt geöffnet; '
+                    'bitte Verbindung und freien Speicher prüfen.')
+                try:
+                    dialog(message)
+                except Exception:
+                    print('Windows-Update:', message, file=sys.stderr)
+            finally:
+                update_lock.release()
+
+        threading.Thread(target=work, name='sedo-windows-update', daemon=True).start()
+
+    return [wm.MenuSeparator(), wm.MenuAction('Auf Windows-Updates prüfen', check_windows_update)]
+
+
 def _run_online(origin: str) -> int:
     """Remote mode starts no local database, Django server or background worker."""
     import webview
@@ -89,9 +161,10 @@ def _run_online(origin: str) -> int:
     def show_about():
         window.evaluate_js('alert("SEDO Online – gemeinsamer Datenbestand auf dem Firmenserver")')
 
+    update_actions = _windows_update_actions(window, online=True)
     menu = [
         wm.Menu('Ablage', [wm.MenuAction('SEDO beenden', lambda: window.destroy())]),
-        wm.Menu('Hilfe', [wm.MenuAction('Über SEDO Online', show_about)]),
+        wm.Menu('Hilfe', [wm.MenuAction('Über SEDO Online', show_about), *update_actions]),
     ]
     webview.start(menu=menu)
     return 0
@@ -330,67 +403,7 @@ def main() -> int:
         except Exception:
             pass
 
-    update_actions = []
-    update_lock = threading.Lock()
-    if os.name == 'nt' and getattr(sys, 'frozen', False):
-        def check_windows_update():
-            if not update_lock.acquire(blocking=False):
-                return
-
-            def dialog(message: str, *, confirm: bool = False):
-                import json
-                function = 'confirm' if confirm else 'alert'
-                return window.evaluate_js(f'{function}({json.dumps(message, ensure_ascii=False)})')
-
-            def notice(message: str):
-                import json
-                try:
-                    window.run_js('if (window.showToast) window.showToast('
-                                  + json.dumps(message, ensure_ascii=False) + ', "info");')
-                except Exception:
-                    pass  # Noch nicht geladene Seite darf die Prüfung nicht verhindern.
-
-            def work():
-                try:
-                    from sedo import windows_updates
-                    from sedo.backup_utils import create_backup, inspect_backup
-                    notice('SEDO prüft den Windows-Updatekanal …')
-                    update = windows_updates.check()
-                    if update is None:
-                        dialog('SEDO ist auf diesem Rechner aktuell.')
-                        return
-                    approved = dialog(
-                        f'Windows-Update {update.version} installieren?\n\n'
-                        'Bitte offene Eingaben vorher speichern. SEDO erstellt '
-                        'eine Sicherung, lädt das geprüfte Update und startet danach neu.',
-                        confirm=True)
-                    if not approved:
-                        return
-                    notice('SEDO erstellt und prüft die Datensicherung …')
-                    backup = create_backup('pre_windows_update')
-                    if inspect_backup(backup.name).get('integrity') != 'ok':
-                        raise windows_updates.UpdateError('Die Datensicherung konnte nicht geprüft werden.')
-                    notice('SEDO lädt das geprüfte Windows-Update …')
-                    home = Path(os.environ['SEDO_HOME'])
-                    installer = windows_updates.download(update, home / 'updates')
-                    log = home / 'logs' / f'windows-update-{update.version}.log'
-                    windows_updates.start_installer(installer, Path(sys.executable), log)
-                    window.destroy()
-                except Exception as exc:
-                    from sedo.windows_updates import UpdateError
-                    message = str(exc) if isinstance(exc, UpdateError) else (
-                        'Das Update konnte nicht vorbereitet werden. SEDO bleibt geöffnet; '
-                        'bitte Verbindung und freien Speicher prüfen.')
-                    try:
-                        dialog(message)
-                    except Exception:
-                        print('Windows-Update:', message, file=sys.stderr)
-                finally:
-                    update_lock.release()
-
-            threading.Thread(target=work, name='sedo-windows-update', daemon=True).start()
-
-        update_actions = [wm.MenuSeparator(), wm.MenuAction('Auf Windows-Updates prüfen', check_windows_update)]
+    update_actions = _windows_update_actions(window, online=False)
 
     menu = [
         wm.Menu('Ablage', [
