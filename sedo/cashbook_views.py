@@ -58,6 +58,8 @@ def cashbook_create(request, kind):
             e.save()
             write_audit(request, 'create', e, 'Kassenbuchung gespeichert')
             messages.success(request, 'Kassenbuchung gespeichert.')
+            if request.POST.get('action') == 'save_and_new':
+                return redirect('sedo:cashbook_create', kind=kind)
             return redirect(f"{reverse('sedo:cashbook_list')}?month={e.month}")
     else:
         month = last_prev.strftime('%Y-%m')
