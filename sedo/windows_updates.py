@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
-WINDOWS_VERSION = '3.21.0.6'
+WINDOWS_VERSION = '3.21.0.7'
 RELEASE_REPOSITORY = 'midobberahn-png/sedo-windows-updates'
 RELEASES_API = f'https://api.github.com/repos/{RELEASE_REPOSITORY}/releases?per_page=20'
 PUBLIC_KEY_B64 = 'Psl84XRBK8gchHE+62pRhlhqtGOyyp1n5TWkgPby6wI='
