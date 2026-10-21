@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -63,6 +64,7 @@ class DesktopOnlineModeTests(SimpleTestCase):
         self.assertFalse((self.home / 'web_connection.json').exists())
 
 
+@unittest.skipIf(os.name == 'nt', 'Der zentrale Webserver läuft auf Linux; Windows nutzt den Online-Client.')
 class HostedSettingsTests(SimpleTestCase):
     def _import(self, home, **values):
         env = os.environ.copy()

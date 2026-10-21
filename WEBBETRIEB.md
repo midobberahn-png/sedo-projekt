@@ -2,7 +2,7 @@
 
 Die erste Webversion verwendet dieselbe Django-Oberfläche wie das Desktop-Programm. Ein zentraler Server hält **eine** SQLite-Datenbank und den zugehörigen Medienordner. Mehrere Mitarbeiter greifen per Browser oder mit dem Online-Modus der aktualisierten Desktop-App auf genau diesen Server zu. Die bisherigen Desktop-Installationen verwenden bis zur ausdrücklichen Umstellung weiterhin ihre **eigenen lokalen Daten**. Es gibt keine automatische Synchronisierung oder Zusammenführung mehrerer Bestände. Da aktuell keine Echtdaten übernommen werden müssen, ist für SEDO Online ein **frischer zentraler Datenbestand** vorgesehen.
 
-Diese Anleitung setzt einen dauerhaft laufenden Python-Prozess, dauerhaften lokalen Speicher und einen HTTPS-Reverse-Proxy auf demselben Server voraus (VPS oder gleichwertiges Managed Hosting). Ein reines Dateihosting-Paket genügt dafür nicht. Hetzner ist als Anbieter genannt; das konkrete Hosting-Produkt und die Domain sind noch offen. Die Beispiel-Domain unten ist ein Platzhalter.
+Diese Anleitung setzt einen dauerhaft laufenden Python-Prozess, dauerhaften lokalen Speicher und einen HTTPS-Reverse-Proxy auf demselben **Linux-Server** voraus (VPS oder gleichwertiges Managed Hosting). Das zentrale Webprofil ist auf POSIX-Dateirechte angewiesen; Windows ist als Browser- oder Desktop-Client vorgesehen. Ein reines Dateihosting-Paket genügt dafür nicht. Hetzner ist als Anbieter genannt; das konkrete Hosting-Produkt und die Domain sind noch offen. Die Beispiel-Domain unten ist ein Platzhalter.
 
 ## Datenfluss und Grenzen
 

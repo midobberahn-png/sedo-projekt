@@ -8,6 +8,8 @@ from sedo.web_origin import validate_origin
 
 
 _home = os.environ.get('SEDO_HOME', '').strip()
+if os.name == 'nt':
+    raise ImproperlyConfigured('Der zentrale SEDO-Webserver benötigt Linux/POSIX; Windows dient als Client.')
 if not _home or not Path(_home).is_absolute():
     raise ImproperlyConfigured('SEDO_HOME muss für den Webbetrieb ein absoluter, dauerhafter Datenordner sein.')
 _home_path = Path(_home)
