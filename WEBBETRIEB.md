@@ -2,7 +2,7 @@
 
 Die erste Webversion verwendet dieselbe Django-Oberfläche wie das Desktop-Programm. Ein zentraler Server hält **eine** SQLite-Datenbank und den zugehörigen Medienordner. Mehrere Mitarbeiter greifen per Browser oder mit dem Online-Modus der aktualisierten Desktop-App auf genau diesen Server zu. Die bisherigen Desktop-Installationen verwenden bis zur ausdrücklichen Umstellung weiterhin ihre **eigenen lokalen Daten**. Es gibt keine automatische Synchronisierung oder Zusammenführung mehrerer Bestände. Da aktuell keine Echtdaten übernommen werden müssen, ist für SEDO Online ein **frischer zentraler Datenbestand** vorgesehen.
 
-Diese Anleitung setzt einen dauerhaft laufenden Python-Prozess, dauerhaften lokalen Speicher und einen HTTPS-Reverse-Proxy auf demselben **Linux-Server** voraus (VPS oder gleichwertiges Managed Hosting). Das zentrale Webprofil ist auf POSIX-Dateirechte angewiesen; Windows ist als Browser- oder Desktop-Client vorgesehen. Ein reines Dateihosting-Paket genügt dafür nicht. Hetzner ist als Anbieter genannt; das konkrete Hosting-Produkt und die Domain sind noch offen. Die Beispiel-Domain unten ist ein Platzhalter.
+Diese Anleitung setzt einen dauerhaft laufenden Python-Prozess, dauerhaften lokalen Speicher und einen HTTPS-Reverse-Proxy auf demselben **Linux-Server** voraus (VPS oder gleichwertiges Managed Hosting). Das zentrale Webprofil ist auf POSIX-Dateirechte angewiesen; Windows ist als Browser- oder Desktop-Client vorgesehen. Ein reines Dateihosting-Paket genügt dafür nicht. Konkrete Server- und Domainwerte stehen nur in der privaten Betriebsdokumentation. Die Beispiel-Domain unten ist ein Platzhalter.
 
 ## Datenfluss und Grenzen
 
@@ -12,7 +12,7 @@ Der Server muss alleiniger Eigentümer des Datenordners sein. `web.py` hält ein
 
 ## Vorbereitung auf dem Server
 
-1. Python **3.13.15**, Quellstand und eine isolierte virtuelle Umgebung bereitstellen. Die Pakete aus `requirements_web.txt` mit den Projekt-Constraints installieren. Das Webprofil installiert das auf dem Server standardmäßig deaktivierte Whisper-Diktat nicht. Vor echtem Betrieb muss das Paketprofil für die Zielplattform reproduzierbar festgeschrieben und geprüft sein.
+1. Python **3.13.15**, Quellstand, `bubblewrap` und eine isolierte virtuelle Umgebung bereitstellen. `bubblewrap` wird für die abgeschottete Dokumentverarbeitung unter Linux benötigt. Die Web-Pakete auf Linux x86_64 aus `requirements_web.lock` mit Hashprüfung und ausschließlich Binärpaketen installieren. Der Lock enthält die 41 auf dieser Plattform geprüften Pakete; `requirements_web.txt` und die Projekt-Constraints sind seine gepflegten Eingaben. Das Webprofil installiert das auf dem Server standardmäßig deaktivierte Whisper-Diktat nicht.
 2. Einen eigenen, nur für den SEDO-Dienst zugänglichen Datenordner außerhalb des Quellcodes anlegen, z. B. `/var/lib/sedo`, mit Dateimodus **0700** und ohne symbolische Verknüpfung. Sein Benutzer benötigt Schreibrechte auf `data`, `media`, `logs`, `backups` und `staticfiles`; andere lokale Konten und der Webserver-Prozess benötigen keinen direkten Zugriff auf die Geschäftsdaten.
 3. Die folgenden Werte ausschließlich als geschützte Umgebungsvariablen oder in einer privaten, nicht versionierten Datei setzen. Die Datei darf nicht über den Webserver erreichbar sein. Einen langen zufälligen `DJANGO_SECRET_KEY` einmalig erzeugen, sicher sichern und bei Updates beibehalten:
 
@@ -43,7 +43,7 @@ Anschließend Mitarbeiterkonten mit eigenen Passwörtern anlegen. Die Weboberfl�
 
 ## Abnahme vor echten Rechnungen
 
-- `DJANGO_SETTINGS_MODULE=config.settings_web python manage.py check --deploy` im Zielsystem ausführen und Warnungen einzeln bewerten. Die anfängliche kurze HSTS-Dauer ist beabsichtigt; erst nach erfolgreicher TLS-Abnahme verlängern.
+- `DJANGO_SETTINGS_MODULE=config.settings_web python manage.py check --deploy` im Zielsystem ausführen und Warnungen einzeln bewerten. Die anfängliche kurze HSTS-Dauer ist beabsichtigt; HSTS für sämtliche Subdomains und Preload bleiben aus, solange nicht alle anderen Subdomains dafür freigegeben sind. Erst nach erfolgreicher TLS-Abnahme die HSTS-Dauer verlängern.
 - Von zwei Geräten Anmeldung, Abmeldung, CSRF-Schutz, Rechnungsentwurf, PDF/XML-Erzeugung und Abruf geschützter Dokumente mit **synthetischen Daten** prüfen. Die breite `/media/`-Route muss auch nach Anmeldung HTTP 404 liefern.
 - Direkte Zugriffe auf den Waitress-Port von außen müssen scheitern; HTTP muss auf HTTPS wechseln. Zertifikat, Host-Filter, Proxy-Header, Anmeldebegrenzung und der tatsächliche Client-IP-Eintrag sind am echten Server zu prüfen.
 - Gleichzeitig erzeugte Belege müssen eindeutige Nummern erhalten; eventuelle `database is locked`-Fehler sind ein Stoppkriterium für die Freigabe. Die vorhandenen Code-Tests ersetzen diesen Mehrgeräte-Test nicht.
