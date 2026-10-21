@@ -12,6 +12,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from django.conf import settings
+
 from ..models import AppSetting
 
 AI_DEFAULT_BASE_URL = 'http://127.0.0.1:8080/v1'
@@ -55,7 +57,9 @@ def validate_local_model(value: str) -> str:
 
 def get_ai_config() -> dict:
     return {
-        'enabled': AppSetting.get('ai_local_enabled', '1') == '1',
+        'enabled': (AppSetting.get('ai_local_enabled', '1') == '1'
+                    and (not getattr(settings, 'SEDO_WEB_MODE', False)
+                         or getattr(settings, 'SEDO_WEB_AI_ENABLED', False))),
         'autostart': AppSetting.get('ai_local_autostart', '1') == '1',
         'runtime_dir': AppSetting.get('ai_local_runtime_dir', '').strip(),
         'base_url': os.environ.get('SEDO_AI_LOCAL_BASE_URL', '').strip() or

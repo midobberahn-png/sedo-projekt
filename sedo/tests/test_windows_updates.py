@@ -15,6 +15,12 @@ from tools.windows_update_release import build_manifest
 
 
 class WindowsUpdateTests(unittest.TestCase):
+    @staticmethod
+    def next_version():
+        parts = updates.WINDOWS_VERSION.split('.')
+        parts[-1] = str(int(parts[-1]) + 1)
+        return '.'.join(parts)
+
     def setUp(self):
         self.private = Ed25519PrivateKey.generate()
         public = self.private.public_key().public_bytes(
@@ -24,7 +30,8 @@ class WindowsUpdateTests(unittest.TestCase):
         self.key_patch.start()
         self.addCleanup(self.key_patch.stop)
 
-    def release(self, version='3.21.0.6', size=7):
+    def release(self, version=None, size=7):
+        version = version or self.next_version()
         tag = f'v{version}-windows'
         return {'tag_name': tag, 'prerelease': True, 'draft': False, 'assets': [
             {'name': updates.MANIFEST_NAME,
@@ -33,7 +40,8 @@ class WindowsUpdateTests(unittest.TestCase):
              'browser_download_url': updates._release_url(tag, f'SEDO_Rechnungstool_Setup_{version}.exe')},
         ]}
 
-    def manifest(self, version='3.21.0.6', payload=b'example'):
+    def manifest(self, version=None, payload=b'example'):
+        version = version or self.next_version()
         body = {'schema': 1, 'channel': 'test', 'version': version,
                 'installer_sha256': hashlib.sha256(payload).hexdigest(),
                 'installer_size': len(payload)}
@@ -45,7 +53,7 @@ class WindowsUpdateTests(unittest.TestCase):
         raw = self.manifest()
         with patch.object(updates, '_fetch', side_effect=[json.dumps([release]).encode(), raw]) as fetch:
             found = updates.check()
-        self.assertEqual(found.version, '3.21.0.6')
+        self.assertEqual(found.version, self.next_version())
         self.assertEqual(found.size, 7)
         self.assertEqual(fetch.call_count, 2)
 

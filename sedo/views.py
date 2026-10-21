@@ -479,6 +479,12 @@ def settings_page(request):
     if request.method == 'POST':
         action = request.POST.get('action') or 'save_settings'
 
+        if (action in {'save_ai', 'start_ai', 'test_ai'}
+                and getattr(settings, 'SEDO_WEB_MODE', False)
+                and not getattr(settings, 'SEDO_WEB_AI_ENABLED', False)):
+            messages.info(request, 'Die KI-Funktionen sind für SEDO Online derzeit nicht freigegeben.')
+            return redirect(reverse('sedo:settings') + '#ki-assistent')
+
         if action == 'save_company':
             if not is_administrator(request.user):
                 return HttpResponseForbidden('Nur die Administration kann die Firmendaten ändern.')
@@ -657,6 +663,8 @@ def settings_page(request):
         'mappings': AareonMapping.objects.all()[:50],
         'stats': stats,
         'ai_cfg': get_ai_config(),
+        'web_ai_disabled': (getattr(settings, 'SEDO_WEB_MODE', False)
+                            and not getattr(settings, 'SEDO_WEB_AI_ENABLED', False)),
         'ai_configured': ai_is_configured(),
         'weather_configured': bool(weather_key()),
         'ai_start_status': runtime_status(),
@@ -811,7 +819,11 @@ def backup_page(request):
                 write_audit(request, 'backup', object_type='BackupRestore', object_repr=selected,
                             message='Wiederherstellung geprüft und für den nächsten App-Start vorgemerkt',
                             metadata={'vorgang': 'restore_staged', 'safety_backup': plan['safety_backup']})
-                messages.success(request, 'Wiederherstellung ist vollständig vorbereitet. Bitte die App schließen und erneut öffnen; vor dem Start wird der geprüfte Stand eingespielt.')
+                restart = ('Bitte den SEDO-Webdienst kontrolliert neu starten.'
+                           if getattr(settings, 'SEDO_WEB_MODE', False) else
+                           'Bitte die App schließen und erneut öffnen.')
+                messages.success(request, 'Wiederherstellung ist vollständig vorbereitet. '
+                                 + restart + ' Vor dem Start wird der geprüfte Stand eingespielt.')
             return redirect('sedo:backup')
         return redirect('sedo:backup')
     if selected:
@@ -845,6 +857,7 @@ def backup_page(request):
         'backups': backups, 'selected_backup': selected,
         'restore_report': restore_report, 'pending_restore': pending_restore,
         'last_restore': last_restore,
+        'web_mode': getattr(settings, 'SEDO_WEB_MODE', False),
     }
     return render(request, 'sedo/backup.html', context)
 

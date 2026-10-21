@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
@@ -59,6 +60,8 @@ def offer_list(request):
 def offer_create(request):
     from .models import MailMessage
     from email.utils import parseaddr
+    web_ai_disabled = (getattr(settings, 'SEDO_WEB_MODE', False)
+                       and not getattr(settings, 'SEDO_WEB_AI_ENABLED', False))
     source_id = request.POST.get('source_mail') if request.method == 'POST' else request.GET.get('source_mail')
     source_mail = get_object_or_404(MailMessage.objects.defer('raw'), pk=source_id) if source_id and str(source_id).isdigit() else None
     if source_id and source_mail is None:
@@ -82,7 +85,8 @@ def offer_create(request):
                 except MailError as exc:
                     form.add_error(None, str(exc))
                     return render(request, 'sedo/offer_form.html', {'form': form, 'formset': formset,
-                        'source_mail': source_mail, 'stt_available': stt_status()['available']})
+                        'source_mail': source_mail, 'stt_available': stt_status()['available'],
+                        'web_ai_disabled': web_ai_disabled})
             customer = _customer_from_invoice_form(form)
             if not customer:
                 form.add_error('name', 'Bitte einen gespeicherten Kunden auswählen oder die Kopfdaten mit Name/Firma ausfüllen.')
@@ -126,6 +130,7 @@ def offer_create(request):
         # Lokales Whisper verfügbar? Steuert, ob das Diktat über den Server
         # transkribiert werden kann. Sonst bleibt die Texteingabe.
         'stt_available': stt_status()['available'],
+        'web_ai_disabled': web_ai_disabled,
         'source_mail': source_mail,
     })
 

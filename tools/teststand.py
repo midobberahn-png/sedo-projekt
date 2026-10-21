@@ -27,6 +27,7 @@ LABEL = 'h2.1'
 INPUTS = ('requirements.txt', 'requirements_desktop.txt',
           'requirements-release.in', 'requirements-release-constraints.txt')
 ROOT_FILES = {*INPUTS, 'requirements-release.lock', 'release-lock.json', 'desktop.py',
+              'web.py', 'requirements_web.txt', 'requirements_web.lock', 'WEBBETRIEB.md',
               'manage.py', 'sedo_desktop.spec', 'build_mac.command', 'BUILD_WINDOWS.bat',
               'TESTSTAND.md', 'BEDIENHINWEISE.md', 'UX_ARBEITSOBERFLAECHE.md',
               'sedo_setup_windows.iss', 'WINDOWS_ERSTINSTALLATION.txt',
