@@ -7,7 +7,7 @@ einem Endnutzerrechner. Ergänzende lokale Prüfungen: [LOCAL_CHECKS.md](LOCAL_C
 ## Automatische Pull-Request-Prüfung
 
 `.github/workflows/pr-regression.yml` prüft jeden Pull Request gegen `main`
-und jeden Push auf `main` auf einem macOS-15-ARM64-Runner. Für Django 5.2.17 und
+und jeden Push auf `main` auf macOS-15-ARM64-Runnern. Für Django 5.2.17 und
 6.0.9 laufen jeweils `tools/teststand.py validate`, `manage.py check`,
 `makemigrations --check --dry-run` und die vollständigen `sedo`-Tests.
 Die GitHub-Actions-Bausteine sind auf konkrete Commits festgelegt; der Job
@@ -15,11 +15,18 @@ erhält keine Betriebszugänge oder Schreibrechte am Repository. Das optionale
 Diktatpaket `faster-whisper` wird wie bei der lokalen Entwicklungsprüfung
 für diese beiden Testumgebungen ausgelassen. Die übrigen Release-Kernpakete
 nutzen die festgelegten Versionsgrenzen aus
-`requirements-release-constraints.txt`.
+`requirements-release-constraints.txt`. Zusätzlich prüft der Linux-Job
+**Webprofil / Linux** das Webprofil, Migrationen, statische Dateien und die
+Web-Regressionsfälle. Der getrennte Windows-Workflow prüft bei jedem PR den
+vollständigen Windows-Prüfstand einschließlich Installer und Installation.
+Alle vier Job-Kontexte sind im GitHub-Schutz von `main` als Pflichtprüfungen
+hinterlegt; ein fehlgeschlagener oder fehlender Job verhindert den Merge.
 
-Der PR-Check ist eine schnelle Regression, **kein Ersatz** für den
-commitgebundenen lokalen Vollprüfstand `tools/local_checks.py`, dessen
-Gegenproben, den nativen Build oder die fachliche und betriebliche Abnahme.
+Die macOS- und Linux-Jobs sind schnelle Regressionen. Der Windows-PR-Job
+führt den Windows-Vollprüfstand aus; für den Mac bleibt der commitgebundene
+lokale Vollprüfstand `tools/local_checks.py` mit Gegenproben und nativem Build
+separat erforderlich. Keine CI-Prüfung ersetzt die fachliche und betriebliche
+Abnahme auf den Einsatzgeräten.
 
 ## Was festgelegt wird
 
@@ -152,8 +159,12 @@ Windows 11 ARM über x64-Emulation). Der manuelle Bau benötigt keine GitHub
 Actions. Zusätzlich prüft `.github/workflows/windows-teststand.yml` jeden PR
 auf einem Windows-x64-Runner: vollständiger Prüfstand, Installerbau,
 Testinstallation, strenger Selbsttest und Deinstallation. Der erfolgreiche
-Actions-Lauf liefert ein kurzlebiges Testpaket, das nach unabhängiger
-Prüfsummenkontrolle als privates GitHub-Vorabrelease verteilt werden kann.
+Actions-Lauf liefert ein kurzlebiges Testpaket. Nach unabhängiger
+Prüfsummenkontrolle können Installer und signiertes Update-Manifest als
+öffentliches Vorabrelease im getrennten
+[Windows-Binärkanal](https://github.com/midobberahn-png/sedo-windows-updates/releases)
+verteilt werden. Version 3.21.0.7 ist dort veröffentlicht; die Ziel-PC-Abnahme
+steht noch aus.
 
 1. Sauberen Commit mit `python tools/local_checks.py --output C:\SEDO-Build\checks`
    vollständig prüfen. Das enthält beide Django-Reihen, Gegenproben und nativen Build.

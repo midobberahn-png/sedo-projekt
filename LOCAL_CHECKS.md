@@ -74,8 +74,10 @@ Zertifizierung und können von einem lokalen Bearbeiter verändert werden.
 
 Die automatische PR-Prüfung ist in
 [TESTSTAND.md](TESTSTAND.md#automatische-pull-request-prüfung) beschrieben.
-Sie prüft denselben Commit auf macOS ARM64 mit synthetischen Testdaten. Der
-lokale Vollprüfstand bleibt Voraussetzung für den Entwicklungs-Merge, weil die
-GitHub-Prüfung weder die Gegenproben noch den nativen Build abdeckt.
+Sie prüft denselben Commit auf macOS ARM64 und im Linux-Webprofil mit
+synthetischen Testdaten. Der Windows-PR-Job führt zusätzlich den vollständigen
+Windows-Prüfstand mit Gegenproben, nativem Build und Installer aus. Der
+commitgebundene lokale Vollprüfstand bleibt für den Entwicklungs-Merge
+Voraussetzung; der Windows-Job ersetzt keinen Mac-Build.
 Betriebsdaten, Zugangsdaten und lokale Testprotokolle werden nicht hochgeladen.
 Die lokale Prüfung verändert weder Workflow-Einstellungen noch Branch-Schutzregeln.
