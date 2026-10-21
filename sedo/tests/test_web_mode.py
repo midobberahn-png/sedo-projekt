@@ -7,9 +7,12 @@ import sys
 import tempfile
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
 
 import desktop
+from sedo.models import AppSetting
 from sedo.services.ai_local import get_ai_config
 from sedo.services.transcription import TranscriptionUnavailable, stt_status, transcribe_audio
 from sedo.web_origin import validate_origin
@@ -117,3 +120,26 @@ class HostedAiTests(TestCase):
         self.assertFalse(stt_status()['available'])
         with self.assertRaises(TranscriptionUnavailable):
             transcribe_audio(b'synthetic audio')
+
+    @override_settings(SEDO_WEB_MODE=True, SEDO_WEB_AI_ENABLED=False,
+                       SEDO_WEB_STT_ENABLED=False)
+    def test_web_offer_remains_usable_without_ai_controls(self):
+        user = get_user_model().objects.create_user('web-tester', password='synthetic-password-123')
+        self.client.force_login(user)
+        response = self.client.get(reverse('sedo:offer_create'), secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="step-ki"')
+        self.assertContains(response, 'id="step-positionen"')
+
+    @override_settings(SEDO_WEB_MODE=True, SEDO_WEB_AI_ENABLED=False)
+    def test_web_settings_explain_ai_gate_and_cannot_enable_it_in_browser(self):
+        user = get_user_model().objects.create_user('web-admin', password='synthetic-password-123',
+                                                    is_staff=True)
+        self.client.force_login(user)
+        page = self.client.get(reverse('sedo:settings'), secure=True)
+        self.assertContains(page, 'Bonsai und Diktat sind in SEDO Online derzeit deaktiviert.')
+        self.assertNotContains(page, 'KI-Einstellungen speichern')
+        response = self.client.post(reverse('sedo:settings'),
+                                    {'action': 'save_ai', 'ai_local_enabled': 'on'}, secure=True)
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(AppSetting.objects.filter(key='ai_local_enabled').exists())

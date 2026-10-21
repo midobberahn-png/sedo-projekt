@@ -479,6 +479,12 @@ def settings_page(request):
     if request.method == 'POST':
         action = request.POST.get('action') or 'save_settings'
 
+        if (action in {'save_ai', 'start_ai', 'test_ai'}
+                and getattr(settings, 'SEDO_WEB_MODE', False)
+                and not getattr(settings, 'SEDO_WEB_AI_ENABLED', False)):
+            messages.info(request, 'Die KI-Funktionen sind für SEDO Online derzeit nicht freigegeben.')
+            return redirect(reverse('sedo:settings') + '#ki-assistent')
+
         if action == 'save_company':
             if not is_administrator(request.user):
                 return HttpResponseForbidden('Nur die Administration kann die Firmendaten ändern.')
@@ -657,6 +663,8 @@ def settings_page(request):
         'mappings': AareonMapping.objects.all()[:50],
         'stats': stats,
         'ai_cfg': get_ai_config(),
+        'web_ai_disabled': (getattr(settings, 'SEDO_WEB_MODE', False)
+                            and not getattr(settings, 'SEDO_WEB_AI_ENABLED', False)),
         'ai_configured': ai_is_configured(),
         'weather_configured': bool(weather_key()),
         'ai_start_status': runtime_status(),

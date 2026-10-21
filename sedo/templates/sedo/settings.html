@@ -131,6 +131,9 @@
     {% if ai_configured %}<span class="badge green">Lokal aktiviert</span>{% else %}<span class="badge amber">Deaktiviert</span>{% endif %}
   </div>
 
+  {% if web_ai_disabled %}
+  <p class="hint">Bonsai und Diktat sind in SEDO Online derzeit deaktiviert. Angebote können weiterhin manuell erstellt werden. Eine spätere Freigabe benötigt ein geprüftes KI-Modell auf dem Firmenserver.</p>
+  {% else %}
   {% if request.user.is_staff %}
   <form method="post" class="stacked-form compact-form">
     {% csrf_token %}<input type="hidden" name="action" value="save_ai">
@@ -165,6 +168,7 @@
   </form>
   <p class="hint" role="status">{{ ai_start_status }}</p>
   {% else %}{% endif %}
+  {% endif %}
 </div>
 
 <div class="grid two-col">

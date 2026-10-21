@@ -102,6 +102,7 @@
       </div>
     </section>
 
+    {% if not web_ai_disabled %}
     <!-- ─── SCHRITT 4 · KI-ASSISTENT ──────────────────────────────── -->
     <section class="wizard-step" id="step-ki" data-wizard-step data-step-label="KI-Assistent">
       <div class="wizard-step-head">
@@ -123,6 +124,7 @@
         <div id="ai-hints"></div>
       </div>
     </section>
+    {% endif %}
 
     <!-- ─── SCHRITT 5 · POSITIONEN ────────────────────────────────── -->
     <section class="wizard-step" id="step-positionen" data-wizard-step data-step-label="Positionen">
