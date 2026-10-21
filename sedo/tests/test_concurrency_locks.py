@@ -119,6 +119,18 @@ class ParallelOfferInvoicingTests(TestCase):
         self.assertEqual(Invoice.all_objects.get(pk=self.offer.linked_invoice_id).number,
                          Invoice.objects.order_by('number').first().number)
 
+    def test_inzwischen_abgelehntes_angebot_scheitert_vor_der_verknuepfung(self):
+        # Die geladene Python-Instanz ist noch „angenommen“, die DB wurde
+        # zwischenzeitlich abgelehnt. Der abschließende UPDATE muss neu prüfen.
+        Offer.objects.filter(pk=self.offer.pk).update(status='abgelehnt')
+        with patch('sedo.services.invoices.ensure_offer_invoicing_allowed'):
+            with self.assertRaises(WorkflowError):
+                create_invoice_from_offer(self.offer)
+        self.assertFalse(Invoice.all_objects.exists())
+        self.offer.refresh_from_db()
+        self.assertEqual(self.offer.status, 'abgelehnt')
+        self.assertIsNone(self.offer.linked_invoice_id)
+
 
 class ParallelDunningTests(TestCase):
     def setUp(self):

@@ -1,12 +1,10 @@
 """Atomare Anlage einer Rechnung aus bereits validierten Formularen."""
 
 from django.db import transaction
-from django.utils import timezone
 
-from ..models import Offer
 from .calc import recalc_invoice
 from .invoice_files import datei_rueckweg
-from .invoices import WorkflowError, generate_invoice_files, mark_invoice_corrected
+from .invoices import generate_invoice_files, link_offer_to_invoice, mark_invoice_corrected
 from .item_positions import normalize_item_positions
 from .numbering import save_with_unique_number
 
@@ -30,16 +28,7 @@ def save_new_invoice(inv, formset, *, action, prepare_invoice=None, source_offer
         merken(inv)
         generate_invoice_files(inv, erstmalig=action != 'draft', request=request)
         if source_offer:
-            updated = Offer.objects.filter(
-                pk=source_offer.pk, linked_invoice__isnull=True,
-            ).exclude(status='in_rechnung').update(
-                status='in_rechnung', linked_invoice=inv,
-                updated_at=timezone.now(),
-            )
-            if not updated:
-                raise WorkflowError(
-                    f'Aus Angebot {source_offer.number} wurde soeben bereits '
-                    f'eine Rechnung erzeugt (paralleler Vorgang).')
+            link_offer_to_invoice(source_offer, inv)
         if correction_source and action != 'draft':
             mark_invoice_corrected(correction_source, request=request)
     return inv

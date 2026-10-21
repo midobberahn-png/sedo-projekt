@@ -103,6 +103,54 @@ class OfferToInvoiceLockTests(TestCase):
             create_invoice_from_offer(self.offer)
         self.assertEqual(Invoice.all_objects.filter(customer=self.customer).count(), 1)
 
+    def test_rechnungsaktion_ist_fuer_offen_und_angenommen_sichtbar(self):
+        user = get_user_model().objects.create_user('status-ui')
+        self.client.force_login(user)
+        action_url = reverse('sedo:offer_to_invoice', args=[self.offer.pk])
+        detail_url = reverse('sedo:offer_detail', args=[self.offer.pk])
+        for status in ('offen', 'angenommen'):
+            self.offer.status = status
+            self.offer.save(update_fields=['status'])
+            self.assertContains(self.client.get(detail_url), action_url)
+        self.offer.status = 'abgelehnt'
+        self.offer.save(update_fields=['status'])
+        self.assertNotContains(self.client.get(detail_url), action_url)
+
+    def test_abgelehntes_angebot_ist_auch_ueber_direktaufrufe_gesperrt(self):
+        self.offer.status = 'abgelehnt'
+        self.offer.save(update_fields=['status'])
+        with self.assertRaisesMessage(WorkflowError, 'abgelehnt'):
+            create_invoice_from_offer(self.offer)
+
+        user = get_user_model().objects.create_user('status-post')
+        self.client.force_login(user)
+        detail_url = reverse('sedo:offer_detail', args=[self.offer.pk])
+        response = self.client.post(reverse('sedo:offer_to_invoice', args=[self.offer.pk]))
+        self.assertRedirects(response, detail_url, fetch_redirect_response=False)
+        response = self.client.get(reverse('sedo:invoice_create'), {'from_offer': self.offer.pk})
+        self.assertRedirects(response, detail_url, fetch_redirect_response=False)
+        response = self.client.post(reverse('sedo:invoice_create'), {
+            'customer': self.customer.pk, 'name': self.customer.name,
+            'issue_date': '2026-08-14', 'payment_days': '14', 'vat_rate': '19.00',
+            'source_offer': self.offer.pk, 'action': 'create',
+            'items-TOTAL_FORMS': '1', 'items-INITIAL_FORMS': '0',
+            'items-MIN_NUM_FORMS': '1', 'items-MAX_NUM_FORMS': '1000',
+            'items-0-description': 'Leistung', 'items-0-quantity': '1',
+            'items-0-unit': 'Stk.', 'items-0-unit_price': '100.00',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'abgelehnt')
+        self.assertFalse(Invoice.objects.exists())
+
+    def test_verrechnetes_angebot_kann_nicht_nachtraeglich_abgelehnt_werden(self):
+        invoice = create_invoice_from_offer(self.offer)
+        user = get_user_model().objects.create_user('status-linked')
+        self.client.force_login(user)
+        self.client.post(reverse('sedo:offer_status', args=[self.offer.pk, 'abgelehnt']))
+        self.offer.refresh_from_db()
+        self.assertEqual(self.offer.status, 'in_rechnung')
+        self.assertEqual(self.offer.linked_invoice_id, invoice.pk)
+
     def test_status_in_rechnung_blockiert_auch_ohne_verknuepfung(self):
         self.offer.status = 'in_rechnung'
         self.offer.save(update_fields=['status'])
