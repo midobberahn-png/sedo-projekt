@@ -18,7 +18,7 @@ Abhängigkeiten werden beim ersten Start automatisch eingerichtet.
 Für Apple-Silicon-Macs ab macOS 14 gibt es außerdem ein signiertes und
 notarisiertes Testprogramm unter [Releases](https://github.com/midobberahn-png/sedo-projekt/releases/tag/v3.21.0-rc.1).
 Dafür ist keine Python-Installation nötig. Für Windows x64 gibt es einen
-[privaten Testinstaller](https://github.com/midobberahn-png/sedo-projekt/releases)
+[Windows-Testinstaller](https://github.com/midobberahn-png/sedo-windows-updates/releases)
 mit getrenntem Teststarter. Auch dafür ist kein Python nötig; das Windows-Setup
 ist noch nicht herausgebersigniert und auf dem Ziel-PC noch nicht abgenommen.
 Für spätere Windows-Testversionen ist ein [Ein-Klick-Update aus der App](WINDOWS_UPDATES.md)

@@ -4,7 +4,7 @@ Der Windows-Client hat unter **Hilfe → Auf Windows-Updates prüfen** einen
 benutzerinitiierten Update-Ablauf. Er liest ausschließlich die Releases des
 [öffentlichen Binärkanals](https://github.com/midobberahn-png/sedo-windows-updates).
 Dieser Kanal enthält keine Quellen, Kundendaten oder Zugangsdaten. Der
-Quellcode bleibt im privaten Projekt-Repository.
+Quellcode liegt im separaten, derzeit öffentlichen Projekt-Repository.
 
 ## Bedienablauf
 
@@ -42,7 +42,7 @@ Installationstest zwei Freigabedateien:
 Das Manifest wird nur signiert, wenn der isolierte Installationstest und die
 erneute Installation bei unveränderten Testdaten erfolgreich waren. Der
 private Signaturschlüssel gehört ausschließlich in das GitHub-Actions-Secret
-`SEDO_UPDATE_SIGNING_KEY` des privaten Quellprojekts. Sein öffentlicher
+`SEDO_UPDATE_SIGNING_KEY` des Quellprojekts. Sein öffentlicher
 Gegenpart wird in der App fest eingebaut. Solange er fehlt, lehnt die App alle
 Updates ab. Weder Schlüssel noch GitHub-Zugangstoken dürfen in den Client oder
 das öffentliche Release-Repository aufgenommen werden.
