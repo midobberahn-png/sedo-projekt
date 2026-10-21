@@ -8,6 +8,7 @@ Module:
 - ``numbering``  – Nummernkreise (kollisionssicher, GoBD)
 - ``calc``       – Betrags-/Statusberechnung
 - ``invoices``   – Rechnungslogik (Kern-Mapping, Dateien, Storno, Angebot→Rechnung)
+- ``offer_creation`` – atomare Angebotsanlage mit Datei-Rückweg
 - ``pdf``        – Angebots-/Kassenbuch-PDF
 - ``dunning``    – Mahnwesen
 - ``payments``   – Bank-JSON-Import

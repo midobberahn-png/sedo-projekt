@@ -1,4 +1,4 @@
-"""Rückweg für Dateischreibfehler im Rechnungsworkflow (keine DB-Zugriffe)."""
+"""Rückweg für Dateischreibfehler bei Rechnungen und Angeboten (keine DB-Zugriffe)."""
 from __future__ import annotations
 
 import logging
@@ -79,13 +79,14 @@ def datei_rueckweg():
     vorher, erstellt = {}, {}
     with tempfile.TemporaryDirectory(prefix='sedo_dateirueckweg_') as tmp:
         token = _RUECKWEGE.set((*_RUECKWEGE.get(), (vorher, erstellt)))
-        def merken(invoice):
+        def merken(beleg):
             root = Path(settings.MEDIA_ROOT).resolve()
-            out = root / 'generated' / invoice.number
-            paths = [out / f'{invoice.number}.pdf', out / 'factur-x.xml',
-                     out / f'{invoice.number}_zugferd.pdf']
-            paths += [Path(f.path) for f in
-                      (invoice.pdf_file, invoice.xml_file, invoice.zugferd_file) if f]
+            out = root / 'generated' / beleg.number
+            paths = [out / f'{beleg.number}.pdf']
+            if hasattr(beleg, 'xml_file'):
+                paths += [out / 'factur-x.xml', out / f'{beleg.number}_zugferd.pdf']
+            paths += [Path(f.path) for field in ('pdf_file', 'xml_file', 'zugferd_file')
+                      if (f := getattr(beleg, field, None))]
             for path in paths:
                 path = _medienpfad(path)
                 if path in vorher:

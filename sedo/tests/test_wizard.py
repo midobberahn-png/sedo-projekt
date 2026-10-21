@@ -11,6 +11,7 @@ Ausführen: python manage.py test sedo.tests.test_wizard
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 from .file_fixtures import isolate_files
 
@@ -21,7 +22,7 @@ from django.urls import reverse
 
 from django.utils import timezone
 
-from sedo.models import Customer, CustomerObject, Invoice, InvoiceItem, Offer, OfferItem
+from sedo.models import Customer, CustomerObject, Invoice, InvoiceItem, NumberRange, Offer, OfferItem
 from sedo.services import (
     _AI_SYSTEM_PROMPT_BASE,
     create_invoice_from_offer,
@@ -236,6 +237,26 @@ class FehlerImRichtigenSchrittTests(TestCase):
         self.assertEqual(offer.items.count(), 1)
         self.assertEqual(offer.items.first().long_text, 'Komplette Beräumung inklusive Entsorgung.')
         self.assertEqual(offer.net_total, Decimal('1200.00'))
+
+    def test_pdf_fehler_rollt_angebot_stammdaten_nummer_und_datei_zurueck(self):
+        """Ein gescheitertes Angebot darf weder Kunden noch eine Teil-PDF hinterlassen."""
+        def kaputtes_pdf(pdf_canvas):
+            Path(pdf_canvas._filename).write_bytes(b'%PDF-unvollstaendig')
+            raise OSError('Test: PDF-Erzeugung unterbrochen')
+
+        self.client.raise_request_exception = False
+        with patch('sedo.services.pdf.canvas.Canvas.save', kaputtes_pdf):
+            response = self.client.post(reverse('sedo:offer_create'), _angebot_post())
+
+        self.assertEqual(Offer.all_objects.count(), 0)
+        self.assertEqual(Customer.objects.count(), 0)
+        self.assertEqual(CustomerObject.objects.count(), 0)
+        self.assertEqual(NumberRange.objects.count(), 0)
+        self.assertEqual(list(Path(dj_settings.MEDIA_ROOT).rglob('*.pdf')), [])
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Angebot wurde nicht gespeichert')
+        self.assertContains(response, 'Musterkunde GmbH')
+        self.assertContains(response, 'Beräumung Reihenhaus')
 
     def test_positionsnummern_werden_durchnummeriert(self):
         """Regression: im PDF stand vorher bei jeder Position eine „1“."""

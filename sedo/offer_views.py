@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
+import logging
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -17,14 +19,33 @@ from .company_profile import load_profile, seller_post
 from .forms import OfferForm, OfferItemFormSet, OfferFollowUpForm
 from .models import Customer, Offer
 from .services import (
-    WorkflowError, next_number, save_with_unique_number, recalc_offer,
+    WorkflowError, next_number,
     generate_offer_pdf, create_invoice_from_offer, stt_status,
 )
-from .services.item_positions import normalize_item_positions as _normalize_item_positions
+from .services.mail_secrets import MailError
+from .services.offer_creation import save_new_offer
 from .services.recurring_templates import DEFAULT_PAYMENT_DAYS
 from .view_support import (
     _customer_from_invoice_form, _object_from_invoice_form, _preview_from_forms,
 )
+
+logger = logging.getLogger('sedo')
+
+
+def _offer_create_error(request, message, source_mail, web_ai_disabled):
+    # Eine zurückgerollte Anlage hinterlässt PKs in den Formularinstanzen.
+    # Neu binden bewahrt die POST-Eingaben ohne Verweise auf Phantom-Datensätze.
+    offer = Offer(number=next_number('AG'), issue_date=timezone.localdate(), vat_rate=Decimal('19.00'))
+    form = OfferForm(request.POST, instance=offer)
+    formset = OfferItemFormSet(request.POST, instance=offer)
+    form.is_valid()
+    formset.is_valid()
+    form.add_error(None, message)
+    return render(request, 'sedo/offer_form.html', {
+        'form': form, 'formset': formset, 'source_mail': source_mail,
+        'stt_available': stt_status()['available'],
+        'web_ai_disabled': web_ai_disabled,
+    })
 
 
 @login_required
@@ -76,37 +97,33 @@ def offer_create(request):
                 preview = _preview_from_forms(form, formset, title='Entwurfsansicht Angebot')
                 return render(request, 'sedo/invoice_preview.html', {'preview': preview, 'is_offer': True, 'seller': load_profile()})
             if source_mail:
-                from .services.mail_storage import pin_message
-                from .services.mail_secrets import MailError
                 from .services.mail_spam import require_business_clear
                 try:
                     require_business_clear(source_mail)
-                    pin_message(source_mail)
                 except MailError as exc:
-                    form.add_error(None, str(exc))
-                    return render(request, 'sedo/offer_form.html', {'form': form, 'formset': formset,
-                        'source_mail': source_mail, 'stt_available': stt_status()['available'],
-                        'web_ai_disabled': web_ai_disabled})
-            customer = _customer_from_invoice_form(form)
-            if not customer:
+                    return _offer_create_error(request, str(exc), source_mail, web_ai_disabled)
+            if not form.cleaned_data.get('customer') and not (form.cleaned_data.get('name') or '').strip():
                 form.add_error('name', 'Bitte einen gespeicherten Kunden auswählen oder die Kopfdaten mit Name/Firma ausfüllen.')
             else:
-                obj = _object_from_invoice_form(form, customer)
                 off = form.save(commit=False)
                 off.source_mail = source_mail
-                off.customer = customer
-                off.obj = obj
-                off.valid_until = off.issue_date + timedelta(days=form.cleaned_data.get('valid_days') or DEFAULT_PAYMENT_DAYS)
                 off.status = 'offen'
-                # Kollisionssichere Angebotsnummer vergeben und speichern
-                save_with_unique_number(off, 'AG')
-                formset.instance = off
-                formset.save()
-                # Positionsnummern normalisieren (sonst steht im PDF überall „1“)
-                _normalize_item_positions(off.items.all())
-                recalc_offer(off)
-                off.save()
-                generate_offer_pdf(off)
+
+                def prepare_offer():
+                    customer = _customer_from_invoice_form(form)
+                    off.customer = customer
+                    off.obj = _object_from_invoice_form(form, customer)
+                    off.valid_until = off.issue_date + timedelta(days=form.cleaned_data.get('valid_days') or DEFAULT_PAYMENT_DAYS)
+
+                try:
+                    save_new_offer(off, formset, prepare_offer=prepare_offer, source_mail=source_mail)
+                except MailError as exc:
+                    return _offer_create_error(request, str(exc), source_mail, web_ai_disabled)
+                except Exception:
+                    logger.exception('Angebotserstellung einschließlich PDF zurückgerollt')
+                    return _offer_create_error(request, 'Angebot wurde nicht gespeichert: PDF oder Daten konnten nicht '
+                                               'gespeichert werden. Bitte Eingaben prüfen oder erneut versuchen.',
+                                               source_mail, web_ai_disabled)
                 write_audit(request, 'create', off, f'Angebot {off.number} erstellt')
                 messages.success(request, f'Angebot {off.number} gespeichert.')
                 return redirect('sedo:offer_detail', off.pk)
