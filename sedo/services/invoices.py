@@ -563,11 +563,14 @@ def _create_storno_inner(original: Invoice, request=None, merken=None) -> Invoic
     return storno
 
 
-def ensure_offer_invoicing_allowed(offer: Offer) -> None:
-    """Blockiert die erneute Rechnungsstellung aus einem Angebot (idempotent).
+INVOICEABLE_OFFER_STATUSES = ('offen', 'angenommen')
 
-    Die UI versteckt den Button zwar, aber der Server muss selbst prüfen –
-    sonst erzeugt jeder weitere POST eine zusätzliche Rechnung.
+
+def ensure_offer_invoicing_allowed(offer: Offer) -> None:
+    """Erlaubt nur offene oder angenommene, noch nicht verrechnete Angebote.
+
+    Die UI blendet die Aktion passend ein. Direkte Aufrufe werden zusätzlich
+    serverseitig geprüft, damit weder abgelehnte noch doppelte Belege entstehen.
     """
     if offer.linked_invoice_id:
         linked = offer.linked_invoice
@@ -576,11 +579,41 @@ def ensure_offer_invoicing_allowed(offer: Offer) -> None:
             f'Aus Angebot {offer.number} wurde bereits Rechnung {number} erzeugt.')
     if offer.status == 'in_rechnung':
         raise WorkflowError(f'Angebot {offer.number} ist bereits in Rechnung gestellt.')
+    if offer.status == 'abgelehnt':
+        raise WorkflowError(
+            f'Angebot {offer.number} ist abgelehnt und darf nicht in Rechnung gestellt werden.')
+    if offer.status not in INVOICEABLE_OFFER_STATUSES:
+        raise WorkflowError(f'Angebot {offer.number} kann in diesem Status nicht in Rechnung gestellt werden.')
+
+
+def link_offer_to_invoice(offer: Offer, invoice: Invoice) -> str:
+    """Verknüpft genau einmal und gibt den vorherigen Angebotsstatus zurück.
+
+    Beide Erstellungswege rufen diese Funktion innerhalb ihrer Belegtransaktion
+    auf. Ein zwischenzeitlicher Statuswechsel oder Doppelaufruf rollt damit
+    auch die neue Rechnung und ihre Nummer zurück.
+    """
+    ensure_offer_invoicing_allowed(offer)
+    previous_status = offer.status
+    updated = Offer.objects.filter(
+        pk=offer.pk, linked_invoice__isnull=True,
+        status=previous_status,
+    ).update(
+        status='in_rechnung', linked_invoice=invoice, updated_at=timezone.now(),
+    )
+    if not updated:
+        offer.refresh_from_db(fields=['status', 'linked_invoice'])
+        ensure_offer_invoicing_allowed(offer)
+        raise WorkflowError(
+            f'Aus Angebot {offer.number} wurde soeben bereits eine Rechnung '
+            f'erzeugt (paralleler Vorgang).')
+    offer.refresh_from_db(fields=['status', 'linked_invoice'])
+    return previous_status
 
 
 @seller_document
 def create_invoice_from_offer(offer: Offer) -> Invoice:
-    """Erzeugt eine Rechnung aus einem angenommenen Angebot (atomar, idempotent)."""
+    """Erzeugt eine Rechnung aus einem offenen/angenommenen Angebot."""
     ensure_offer_invoicing_allowed(offer)
     with datei_rueckweg() as merken, transaction.atomic():
         return _create_invoice_from_offer_inner(offer, merken)
@@ -612,17 +645,5 @@ def _create_invoice_from_offer_inner(offer: Offer, merken) -> Invoice:
         )
     merken(inv)
     generate_invoice_files(inv, erstmalig=True)
-    # Guarded UPDATE statt save(): Nur wenn das Angebot noch nicht verrechnet
-    # ist, wird verknüpft. Verliert dieser Request das Rennen gegen einen
-    # parallelen, rollt die gesamte Transaktion (inkl. Rechnung + Nummer) zurück.
-    updated = Offer.objects.filter(
-        pk=offer.pk, linked_invoice__isnull=True,
-    ).exclude(status='in_rechnung').update(
-        status='in_rechnung', linked_invoice=inv, updated_at=timezone.now(),
-    )
-    if not updated:
-        raise WorkflowError(
-            f'Aus Angebot {offer.number} wurde soeben bereits eine Rechnung '
-            f'erzeugt (paralleler Vorgang).')
-    offer.refresh_from_db(fields=['status', 'linked_invoice'])
+    link_offer_to_invoice(offer, inv)
     return inv

@@ -22,6 +22,7 @@ from .services import (
     WorkflowError, next_number,
     generate_offer_pdf, create_invoice_from_offer, stt_status,
 )
+from .services.invoices import INVOICEABLE_OFFER_STATUSES
 from .services.mail_secrets import MailError
 from .services.offer_creation import save_new_offer
 from .services.recurring_templates import DEFAULT_PAYMENT_DAYS
@@ -30,6 +31,14 @@ from .view_support import (
 )
 
 logger = logging.getLogger('sedo')
+
+
+def _offer_detail_context(offer, follow_up_form):
+    return {
+        'offer': offer,
+        'follow_up_form': follow_up_form,
+        'can_invoice': not offer.linked_invoice_id and offer.status in INVOICEABLE_OFFER_STATUSES,
+    }
 
 
 def _offer_create_error(request, message, source_mail, web_ai_disabled):
@@ -156,7 +165,7 @@ def offer_create(request):
 def offer_detail(request, pk):
     offer = get_object_or_404(Offer.objects.select_related('customer','obj','linked_invoice'), pk=pk)
     follow_up_form = OfferFollowUpForm(instance=offer)
-    return render(request, 'sedo/offer_detail.html', {'offer': offer, 'follow_up_form': follow_up_form})
+    return render(request, 'sedo/offer_detail.html', _offer_detail_context(offer, follow_up_form))
 
 
 @login_required
@@ -169,7 +178,7 @@ def offer_follow_up(request, pk):
     form = OfferFollowUpForm(request.POST, instance=offer)
     if not form.is_valid():
         messages.error(request, 'Bitte Datum und Notiz der Wiedervorlage prüfen.')
-        return render(request, 'sedo/offer_detail.html', {'offer': offer, 'follow_up_form': form}, status=400)
+        return render(request, 'sedo/offer_detail.html', _offer_detail_context(offer, form), status=400)
     changed = form.save(commit=False)
     action = request.POST.get('action', 'save')
     if action == 'contacted':
@@ -195,10 +204,15 @@ def offer_generate(request, pk):
 def offer_status(request, pk, status):
     offer = get_object_or_404(Offer, pk=pk)
     if status in ['offen', 'angenommen', 'abgelehnt']:
-        offer.status = status
+        updates = {'status': status, 'updated_at': timezone.now()}
         if status != 'offen':
-            offer.follow_up_date = None
-        offer.save(update_fields=['status', 'follow_up_date', 'updated_at'])
+            updates['follow_up_date'] = None
+        updated = Offer.objects.filter(
+            pk=offer.pk, linked_invoice__isnull=True,
+        ).exclude(status='in_rechnung').update(**updates)
+        if not updated:
+            messages.error(request, 'Dieses Angebot ist bereits in Rechnung gestellt; der Status bleibt unverändert.')
+            return redirect('sedo:offer_detail', pk)
         write_audit(request, 'update', offer, f'Angebotsstatus auf {status} gesetzt')
         messages.success(request, 'Angebotsstatus aktualisiert.')
     return redirect('sedo:offer_detail', pk)
