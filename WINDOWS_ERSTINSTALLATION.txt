@@ -1,25 +1,30 @@
 SEDO Rechnungstool – Erstinstallation unter Windows
 
-1. Die ZIP-Datei vollständig entpacken (Rechtsklick, „Alle extrahieren“).
-2. Die Datei SEDO_Rechnungstool_Setup_<Version>.exe doppelklicken und installieren.
-3. Für den privaten Test START_WINDOWS_TEST.bat aus derselben ZIP doppelklicken.
-   Das normale Desktop-Symbol erst für den späteren regulären Datenbestand nutzen.
-4. Beim ersten Start das angezeigte Passwort für den Benutzer admin notieren.
+1. Die Datei SEDO_Rechnungstool_Setup_<Version>.exe aus dem offiziellen
+   Windows-Testrelease herunterladen und doppelklicken. Nur ein zusätzliches
+   Build-ZIP muss vorher vollständig entpackt werden.
+2. Bei einem solchen Build-ZIP kann START_WINDOWS_TEST.bat für den getrennten
+   lokalen Testbestand genutzt werden. Der einzelne öffentliche EXE-Download
+   enthält diesen Teststarter nicht; das normale Desktop-Symbol verwendet
+   den regulären lokalen Datenordner. Dort vor Tests gegebenenfalls eine
+   vorhandene SEDO-Sicherung erstellen.
+3. Beim ersten lokalen Start das angezeigte Passwort für admin notieren.
 
 Python muss nicht installiert werden. Windows 10/11 mit 64 Bit wird benötigt;
 32-Bit-Windows wird nicht unterstützt. Fehlende Microsoft-Laufzeiten
 (Visual C++ und WebView2) richtet das Setup ein. Dafür werden eine
 Internetverbindung und gegebenenfalls eine Windows-Administratorfreigabe benötigt.
 Das Setup ist noch nicht mit einem Herausgeber-Zertifikat signiert.
-Ab der ersten Version mit Update-Menü lassen sich spätere Testversionen in
-SEDO über Hilfe → Auf Windows-Updates prüfen installieren. Dafür müssen der
-signierte Updatekanal eingerichtet und die neue Version freigegeben sein.
+Ab Version 3.21.0.5 lassen sich spätere freigegebene Testversionen über
+Hilfe → Auf Windows-Updates prüfen installieren. Das Update-Manifest wird
+signiert geprüft; der Installer selbst hat keine Herausgebersignatur.
 
-Dies ist eine leere Erstinstallation. Rechnungen, Kundendaten und Kennwörter
-vom Mac sind nicht enthalten. Unter Einstellungen werden Firma, Postfächer,
-Bank und weitere Verbindungen eingerichtet. E-Mail-Kennwörter bitte dort
-direkt eingeben. Die Postfach-Einstellungen stehen im normalen Menü
-Einstellungen → E-Mail-Postfächer.
+Im lokalen Modus ist dies eine leere Erstinstallation. Rechnungen, Kundendaten
+und Kennwörter vom Mac sind nicht enthalten. Unter Einstellungen werden Firma,
+Postfächer, Bank und weitere Verbindungen eingerichtet. E-Mail-Kennwörter bitte
+dort direkt eingeben. Die Postfach-Einstellungen stehen im normalen Menü
+Einstellungen → E-Mail-Postfächer. Für den gemeinsamen Online-Bestand die
+interne Serveradresse verwenden; lokale Testrechnungen werden nicht synchronisiert.
 
 Der Teststarter benutzt weiterhin ausschließlich %APPDATA%\SEDO-Test-3.21.0.2.
 Auch mit dem neueren Programm bleiben damit Ihre bisherigen Testeingaben erhalten.
@@ -30,8 +35,10 @@ Die lokale Bonsai-KI wird getrennt auf dem Windows-Rechner eingerichtet.
 Das Sprachmodell für Diktate wird bei der ersten Verwendung heruntergeladen.
 Die normalen Programmfunktionen sind auch ohne eingerichtete KI nutzbar.
 
-Eigene Daten liegen unter %APPDATA%\SEDO. Updates und die Deinstallation
-entfernen diese Daten nicht. Vor einem Update eine SEDO-Sicherung erstellen.
+Reguläre lokale Daten liegen unter %APPDATA%\SEDO. Updates und die
+Deinstallation entfernen diese Daten nicht. Vor einem Update eine
+SEDO-Sicherung erstellen. Im Online-Modus liegen Rechnungsdaten auf dem
+Firmenserver und werden dort gesichert.
 
 Für eine Übernahme vorhandener Firmendaten den SEDO-Backup-Assistenten nutzen.
 Zunächst absprechen, welcher Rechner anschließend den führenden Datenbestand

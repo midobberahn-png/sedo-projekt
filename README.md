@@ -1,6 +1,6 @@
 # SEDO Rechnungstool
 
-Für die interne Webversion mit gemeinsamem Datenbestand siehe [SEDO Online](WEBBETRIEB.md). Der bisherige Desktop-Start bleibt lokal; eine Umstellung auf den Webbestand erfolgt ausdrücklich.
+Für die interne Webversion mit gemeinsamem Datenbestand siehe [SEDO Online](WEBBETRIEB.md). Desktop-Installationen bleiben lokal, bis der Online-Modus ausdrücklich eingerichtet wird.
 
 SEDO erstellt und verwaltet Rechnungen einschließlich ZUGFeRD-E-Rechnungen.
 Bonsai und Whisper verarbeiten Assistentenanfragen beziehungsweise Diktate lokal.
@@ -17,17 +17,21 @@ Abhängigkeiten werden beim ersten Start automatisch eingerichtet.
 
 Für Apple-Silicon-Macs ab macOS 14 gibt es außerdem ein signiertes und
 notarisiertes Testprogramm unter [Releases](https://github.com/midobberahn-png/sedo-projekt/releases/tag/v3.21.0-rc.1).
-Dafür ist keine Python-Installation nötig. Für Windows x64 gibt es einen
-[Windows-Testinstaller](https://github.com/midobberahn-png/sedo-windows-updates/releases)
-mit getrenntem Teststarter. Auch dafür ist kein Python nötig; das Windows-Setup
-ist noch nicht herausgebersigniert und auf dem Ziel-PC noch nicht abgenommen.
-Für spätere Windows-Testversionen ist ein [Ein-Klick-Update aus der App](WINDOWS_UPDATES.md)
-vorbereitet. Die erste Version mit Update-Menü wird noch einmal wie gewohnt
-installiert; der Updatekanal wird erst nach Einrichtung des Signaturschlüssels
-aktiviert.
+Dafür ist keine Python-Installation nötig. Für Windows x64 ist der
+[Testinstaller 3.21.0.7](https://github.com/midobberahn-png/sedo-windows-updates/releases/tag/v3.21.0.7-windows)
+öffentlich erhältlich; auch dafür ist kein Python nötig. Der einzelne
+Installer-Download enthält keinen getrennten Teststarter. Das Windows-Setup
+ist nicht mit einem Herausgeberzertifikat signiert und auf dem Ziel-PC noch
+nicht abgenommen. Version 3.21.0.7 enthält den Online-Modus und unter
+**Hilfe → Auf Windows-Updates prüfen** das [Ein-Klick-Update](WINDOWS_UPDATES.md).
+Das Update-Manifest wird kryptografisch geprüft; der Installer selbst bleibt
+ohne Herausgebersignatur. Das Update-Menü wurde bereits mit Version 3.21.0.5
+veröffentlicht. Bei einer Erstinstallation wird das aktuelle Setup benötigt;
+ein Update von einer Vorversion auf dem Ziel-PC ist noch nicht abgenommen.
 
-Nach der ersten Anmeldung die eigenen Firmendaten einrichten. Zum Ausprobieren
-zunächst erfundene Kunden und Rechnungen verwenden. Zugangsdaten für optionale
+Bei einer neuen lokalen Installation nach der ersten Anmeldung die eigenen
+Firmendaten einrichten. Zum Ausprobieren zunächst erfundene Kunden und
+Rechnungen verwenden. Zugangsdaten für optionale
 Mail-, Bank- und Kalenderdienste richtet jeder Tester selbst ein.
 
 Entwickler finden die vollständigen Tests in `sedo/tests/`; die reproduzierbare
@@ -41,7 +45,7 @@ Passwörter oder Geschäftsdaten enthalten.
 
 Dieser Branch ist ein gehärteter **Veröffentlichungskandidat**, keine bestätigte
 allgemeine Produktfreigabe. Erfolgreiche Softwaretests ersetzen weder die
-Prüfung signierter Installationspakete auf den Zielsystemen noch eine fachliche
+Prüfung der Installationspakete auf den Zielsystemen noch eine fachliche
 Abnahme von Rechnungen. Software wird hier nicht als „unhackbar“ bezeichnet.
 
 Der Quellstand enthält Code, Migrationen, Vorlagen, statische Dateien,
