@@ -4,7 +4,8 @@
     python web.py serve --port 8766
 
 Only one process may own SEDO_HOME. The public proxy must terminate TLS,
-overwrite X-Forwarded-For and forward only HTTPS requests to loopback.
+overwrite X-Forwarded-For and X-Forwarded-Proto and forward only HTTPS
+requests to loopback.
 """
 import argparse
 import os
@@ -62,8 +63,8 @@ def _serve(home, port):
         start_mail_worker()
         start_calendar_worker()
         serve(application, host='127.0.0.1', port=port, threads=4,
-              url_scheme='https', trusted_proxy='127.0.0.1',
-              trusted_proxy_count=1, trusted_proxy_headers={'x-forwarded-for'},
+              url_scheme='http', trusted_proxy='127.0.0.1',
+              trusted_proxy_count=1, trusted_proxy_headers={'x-forwarded-for', 'x-forwarded-proto'},
               clear_untrusted_proxy_headers=True,
               max_request_body_size=32 * 1024 * 1024)
 

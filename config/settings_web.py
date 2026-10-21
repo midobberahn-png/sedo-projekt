@@ -41,9 +41,9 @@ SEDO_WEB_AI_ENABLED = _env_bool('SEDO_WEB_AI_ENABLED', '0')  # noqa: F405
 SEDO_WEB_STT_ENABLED = _env_bool('SEDO_WEB_STT_ENABLED', '0')  # noqa: F405
 ALLOWED_HOSTS = [_host]
 CSRF_TRUSTED_ORIGINS = [_origin]
-# web.py binds only to loopback behind the HTTPS reverse proxy. Waitress sets
-# the WSGI scheme and client address; Django must not trust forwarding headers
-# a second time after Waitress has already processed them.
+# web.py binds only to loopback behind the HTTPS reverse proxy. Waitress uses
+# trusted, overwritten proxy headers for scheme and client address; Django
+# must not process forwarding headers a second time.
 SEDO_TRUSTED_PROXIES = []
 SECURE_PROXY_SSL_HEADER = None
 SECURE_SSL_REDIRECT = True
