@@ -440,8 +440,8 @@ class DraftWorkflowTests(TestCase):
             finalisiere_entwurf(inv)
         self.assertEqual(inv.status, 'entwurf')
 
-    def linked_offer(self):
-        offer = Offer.objects.create(number='AG2099010001', customer=self.customer, status='angenommen')
+    def linked_offer(self, *, status='angenommen'):
+        offer = Offer.objects.create(number='AG2099010001', customer=self.customer, status=status)
         response = self.client.post(reverse('sedo:invoice_create'), self.payload(source_offer=str(offer.pk)))
         self.assertEqual(response.status_code, 302)
         offer.refresh_from_db()
@@ -463,6 +463,41 @@ class DraftWorkflowTests(TestCase):
         for entry in entries:
             self.assertIn(inv.number, entry.message)
             self.assertIn(offer.number, entry.message)
+
+    def test_offenes_angebot_bleibt_nach_entwurf_verwerfen_offen(self):
+        offer, inv = self.linked_offer(status='offen')
+        self.assertTrue(AuditLog.objects.filter(
+            object_type='Offer', object_id=str(offer.pk),
+            metadata__anlass='angebot_an_entwurf',
+            metadata__rechnung_id=inv.pk,
+            metadata__vorheriger_status='offen',
+        ).exists())
+        self.client.post(reverse('sedo:invoice_delete', args=[inv.pk]))
+        offer.refresh_from_db()
+        self.assertEqual(offer.status, 'offen')
+        self.assertIsNone(offer.linked_invoice_id)
+
+    def test_alter_entwurf_ohne_statusnachweis_bleibt_verwerfbar(self):
+        inv = self.draft()
+        offer = Offer.objects.create(number='AG2099010001', customer=self.customer,
+                                     status='in_rechnung', linked_invoice=inv)
+        self.client.post(reverse('sedo:invoice_delete', args=[inv.pk]))
+        offer.refresh_from_db()
+        self.assertEqual((offer.status, offer.linked_invoice_id), ('angenommen', None))
+
+    def test_fehlender_pflichtnachweis_rollt_entwurf_und_angebot_zurueck(self):
+        offer = Offer.objects.create(number='AG2099010001', customer=self.customer, status='offen')
+        with patch('sedo.services.invoice_creation.write_audit',
+                   side_effect=AuditWriteError('Angebotsnachweis defekt')):
+            response = self.client.post(reverse('sedo:invoice_create'),
+                                        self.payload(source_offer=str(offer.pk)))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Rechnung nicht erstellt')
+        offer.refresh_from_db()
+        self.assertEqual((offer.status, offer.linked_invoice_id), ('offen', None))
+        self.assertFalse(Invoice.objects.exists())
+        self.assertFalse(NumberRange.objects.filter(prefix='EN').exists())
+        self.assertFalse(self.generated())
 
     def test_f14_zweites_pflichtaudit_rollback_des_gesamten_verwerfens(self):
         offer, inv = self.linked_offer()

@@ -586,16 +586,18 @@ def ensure_offer_invoicing_allowed(offer: Offer) -> None:
         raise WorkflowError(f'Angebot {offer.number} kann in diesem Status nicht in Rechnung gestellt werden.')
 
 
-def link_offer_to_invoice(offer: Offer, invoice: Invoice) -> None:
-    """Verknüpft nur ein weiterhin offenes/angenommenes Angebot genau einmal.
+def link_offer_to_invoice(offer: Offer, invoice: Invoice) -> str:
+    """Verknüpft genau einmal und gibt den vorherigen Angebotsstatus zurück.
 
     Beide Erstellungswege rufen diese Funktion innerhalb ihrer Belegtransaktion
     auf. Ein zwischenzeitlicher Statuswechsel oder Doppelaufruf rollt damit
     auch die neue Rechnung und ihre Nummer zurück.
     """
+    ensure_offer_invoicing_allowed(offer)
+    previous_status = offer.status
     updated = Offer.objects.filter(
         pk=offer.pk, linked_invoice__isnull=True,
-        status__in=INVOICEABLE_OFFER_STATUSES,
+        status=previous_status,
     ).update(
         status='in_rechnung', linked_invoice=invoice, updated_at=timezone.now(),
     )
@@ -606,6 +608,7 @@ def link_offer_to_invoice(offer: Offer, invoice: Invoice) -> None:
             f'Aus Angebot {offer.number} wurde soeben bereits eine Rechnung '
             f'erzeugt (paralleler Vorgang).')
     offer.refresh_from_db(fields=['status', 'linked_invoice'])
+    return previous_status
 
 
 @seller_document

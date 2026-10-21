@@ -23,7 +23,7 @@ from django.views.decorators.http import require_POST, require_http_methods
 from .audit import AuditWriteError, write_audit
 from .company_profile import load_profile, seller_post
 from .forms import InvoiceForm, InvoiceItemFormSet
-from .models import Customer, CustomerObject, Invoice, InvoiceItem, Offer
+from .models import AuditLog, Customer, CustomerObject, Invoice, InvoiceItem, Offer
 from .services import (
     WorkflowError, ausblenden_hindernis, create_email_draft, create_storno,
     ensure_correction_allowed, ensure_offer_invoicing_allowed,
@@ -35,6 +35,7 @@ from .services.invoice_archive import lese_archivdatei, pruefe_archiv
 from .services.invoice_creation import save_new_invoice
 from .services.invoice_delivery import ensure_invoice_zugferd_for_email as _ensure_invoice_zugferd_for_email
 from .services.invoice_files import datei_rueckweg
+from .services.invoices import INVOICEABLE_OFFER_STATUSES
 from .services.item_positions import normalize_item_positions as _normalize_item_positions
 from .services.mail import invoice_email_subject_body
 from .services.recurring_templates import create_recurring_template_from_invoice as _create_recurring_template_from_invoice
@@ -719,13 +720,23 @@ def invoice_delete(request, pk):
                                       else 'ausblenden', 'rechnungsnummer': no, 'angebote': bezug})
                 for angebot in angebote:
                     vorher = angebot.status
+                    link_metadata = AuditLog.objects.filter(
+                        object_type='Offer', object_id=str(angebot.pk),
+                        metadata__anlass='angebot_an_entwurf',
+                        metadata__rechnung_id=invoice.pk,
+                    ).order_by('-pk').values_list('metadata', flat=True).first() or {}
+                    restored_status = link_metadata.get('vorheriger_status')
+                    if restored_status not in INVOICEABLE_OFFER_STATUSES:
+                        # Alte Entwürfe ohne gespeicherten Ausgangsstatus behalten
+                        # den bisherigen, nachvollziehbaren Rückweg.
+                        restored_status = 'angenommen'
                     if not Offer.all_objects.filter(pk=angebot.pk, linked_invoice_id=pk).update(
-                            linked_invoice=None, status='angenommen', updated_at=timezone.now()):
+                            linked_invoice=None, status=restored_status, updated_at=timezone.now()):
                         raise WorkflowError('Die Angebotsverknüpfung wurde inzwischen geändert.')
                     angebot.refresh_from_db()
                     write_audit(request, 'update', angebot,
                                 f'Angebot {angebot.number} nach Verwerfen von Entwurf {no} freigegeben',
-                                pflicht=True, metadata={'von': vorher, 'nach': 'angenommen',
+                                pflicht=True, metadata={'von': vorher, 'nach': restored_status,
                                                        'anlass': 'entwurf_verwerfen',
                                                        'rechnungsnummer': no,
                                                        'angebotsnummer': angebot.number})
