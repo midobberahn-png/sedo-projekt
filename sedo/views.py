@@ -811,7 +811,11 @@ def backup_page(request):
                 write_audit(request, 'backup', object_type='BackupRestore', object_repr=selected,
                             message='Wiederherstellung geprüft und für den nächsten App-Start vorgemerkt',
                             metadata={'vorgang': 'restore_staged', 'safety_backup': plan['safety_backup']})
-                messages.success(request, 'Wiederherstellung ist vollständig vorbereitet. Bitte die App schließen und erneut öffnen; vor dem Start wird der geprüfte Stand eingespielt.')
+                restart = ('Bitte den SEDO-Webdienst kontrolliert neu starten.'
+                           if getattr(settings, 'SEDO_WEB_MODE', False) else
+                           'Bitte die App schließen und erneut öffnen.')
+                messages.success(request, 'Wiederherstellung ist vollständig vorbereitet. '
+                                 + restart + ' Vor dem Start wird der geprüfte Stand eingespielt.')
             return redirect('sedo:backup')
         return redirect('sedo:backup')
     if selected:
@@ -845,6 +849,7 @@ def backup_page(request):
         'backups': backups, 'selected_backup': selected,
         'restore_report': restore_report, 'pending_restore': pending_restore,
         'last_restore': last_restore,
+        'web_mode': getattr(settings, 'SEDO_WEB_MODE', False),
     }
     return render(request, 'sedo/backup.html', context)
 

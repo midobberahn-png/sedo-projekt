@@ -1,5 +1,7 @@
 # SEDO Rechnungstool
 
+Für die interne Webversion mit gemeinsamem Datenbestand siehe [SEDO Online](WEBBETRIEB.md). Der bisherige Desktop-Start bleibt lokal; eine Umstellung auf den Webbestand erfolgt ausdrücklich.
+
 SEDO erstellt und verwaltet Rechnungen einschließlich ZUGFeRD-E-Rechnungen.
 Bonsai und Whisper verarbeiten Assistentenanfragen beziehungsweise Diktate lokal.
 Eingerichtete Mail-, Kalender-, Bank- und Wetterverbindungen kommunizieren mit

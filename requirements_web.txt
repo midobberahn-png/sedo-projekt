@@ -1,0 +1,22 @@
+# Serverprofil ohne den nur auf Einzelplätzen genutzten Whisper-Modell-Download.
+# Die fachlichen Bibliotheken entsprechen requirements.txt; Änderungen dort
+# müssen auch hier geprüft werden.
+Django>=5.2,<6.1
+whitenoise
+cryptography>=46,<51
+certifi
+bleach
+fints
+mt-940
+pandas
+openpyxl
+xlrd>=2.0.2,<3
+reportlab
+pypdf
+lxml
+elementpath>=5.1,<6
+python-dateutil
+icalendar>=7.3,<8
+recurring-ical-events>=3.8,<4
+qrcode[pil]
+waitress==3.0.2

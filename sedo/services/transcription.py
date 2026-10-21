@@ -16,6 +16,8 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
+from django.conf import settings
+
 from ..models import AppSetting
 
 # Unterstützte Modellgrößen: tiny/base/small. „small“ bleibt der Standard.
@@ -62,6 +64,8 @@ def stt_model_name() -> str:
 
 def stt_status() -> dict:
     """Verfügbarkeit der lokalen Spracherkennung, ohne das Modell zu laden."""
+    if getattr(settings, 'SEDO_WEB_MODE', False) and not getattr(settings, 'SEDO_WEB_STT_ENABLED', False):
+        return {'available': False, 'reason': 'Diktat ist auf dem Webserver nicht freigegeben.'}
     try:
         import faster_whisper  # noqa: F401
     except ImportError:
@@ -122,6 +126,8 @@ def transcribe_audio(audio_bytes: bytes, suffix: str = '.webm') -> str:
     Wirft ``TranscriptionUnavailable``, wenn faster-whisper fehlt, oder
     ``ValueError`` bei leerem/zu großem Audio.
     """
+    if getattr(settings, 'SEDO_WEB_MODE', False) and not getattr(settings, 'SEDO_WEB_STT_ENABLED', False):
+        raise TranscriptionUnavailable('Diktat ist auf dem Webserver nicht freigegeben.')
     if not audio_bytes:
         raise ValueError('Es wurde kein Audio übertragen.')
     if len(audio_bytes) > STT_MAX_AUDIO_BYTES:

@@ -9,8 +9,11 @@ urlpatterns = [
     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('', include('sedo.urls')),
-    # Medien (Rechnungs-/Angebots-PDFs, ZUGFeRD, Mahnungen) auch bei DEBUG=0
-    # ausliefern – SEDO läuft als lokales Einzelplatz-Tool, es gibt keinen
-    # vorgelagerten Webserver, der media/ übernehmen könnte.
-    re_path(r'^media/(?P<path>.*)$', media_serve, {'document_root': settings.MEDIA_ROOT}, name='protected_media'),
 ]
+
+# The broad file route is needed only by the local desktop profile. In the
+# hosted profile, business documents use their narrow authenticated download
+# and preview views; arbitrary media files cannot be rendered on the app origin.
+if not getattr(settings, 'SEDO_WEB_MODE', False):
+    urlpatterns.append(re_path(r'^media/(?P<path>.*)$', media_serve,
+                               {'document_root': settings.MEDIA_ROOT}, name='protected_media'))

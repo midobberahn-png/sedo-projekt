@@ -1,4 +1,4 @@
-"""Ein Datenordner wird höchstens von einem Desktop-Prozess geöffnet."""
+"""Ein Datenordner wird höchstens von einem SEDO-Serverprozess geöffnet."""
 from pathlib import Path
 import os
 
@@ -21,5 +21,5 @@ def acquire(home):
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as exc:
         handle.close()
-        raise RuntimeError('SEDO verwendet diesen Datenordner bereits. Bitte das vorhandene Fenster öffnen.') from exc
+        raise RuntimeError('SEDO verwendet diesen Datenordner bereits. Bitte den laufenden Prozess prüfen.') from exc
     return handle

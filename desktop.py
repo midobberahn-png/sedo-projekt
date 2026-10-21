@@ -14,8 +14,10 @@ SEDO_HOME (macOS: ~/Library/Application Support/SEDO, Windows: %APPDATA%/SEDO)
 Admin-Zufallspasswort einmalig im Fenster angezeigt.
 """
 import os
+import json
 import socket
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -33,6 +35,66 @@ def _user_home() -> Path:
     else:
         base = Path.home() / '.sedo'
     return base
+
+
+def _online_config_path() -> Path:
+    return _user_home() / 'web_connection.json'
+
+
+def _save_online_origin(value: str) -> str:
+    """Switch the desktop window to the central server without moving local data."""
+    from sedo.web_origin import validate_origin
+    origin = validate_origin(value)
+    path = _online_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix='.web-connection-', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+            json.dump({'origin': origin}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary_name, 0o600)
+        os.replace(temporary_name, path)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+    return origin
+
+
+def _load_online_origin() -> str | None:
+    from sedo.web_origin import validate_origin
+    override = os.environ.get('SEDO_WEB_URL', '')
+    if override:
+        return validate_origin(override)
+    path = _online_config_path()
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        raise ValueError('Die gespeicherte Online-Adresse ist ungültig. Bitte SEDO Online neu einrichten.') from exc
+    if not isinstance(data, dict):
+        raise ValueError('Die gespeicherte Online-Adresse ist ungültig. Bitte SEDO Online neu einrichten.')
+    return validate_origin(data.get('origin'))
+
+
+def _run_online(origin: str) -> int:
+    """Remote mode starts no local database, Django server or background worker."""
+    import webview
+    import webview.menu as wm
+
+    webview.settings['ALLOW_DOWNLOADS'] = True
+    window = webview.create_window(APP_TITLE + ' Online', origin + '/',
+                                   width=1440, height=920, min_size=(1100, 700))
+
+    def show_about():
+        window.evaluate_js('alert("SEDO Online – gemeinsamer Datenbestand auf dem Firmenserver")')
+
+    menu = [
+        wm.Menu('Ablage', [wm.MenuAction('SEDO beenden', lambda: window.destroy())]),
+        wm.Menu('Hilfe', [wm.MenuAction('Über SEDO Online', show_about)]),
+    ]
+    webview.start(menu=menu)
+    return 0
 
 
 def _free_port(preferred: int = 8765) -> int:
@@ -142,6 +204,30 @@ def _self_check() -> int:
 def main() -> int:
     if '--check' in sys.argv:
         return _self_check()
+
+    if '--connect' in sys.argv:
+        if len(sys.argv) != 3 or sys.argv[1] != '--connect':
+            print('Verwendung: SEDO --connect https://sedo.example.de', file=sys.stderr)
+            return 2
+        try:
+            origin = _save_online_origin(sys.argv[2])
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        return _run_online(origin)
+    if '--local' in sys.argv:
+        if len(sys.argv) != 2:
+            print('Verwendung: SEDO --local', file=sys.stderr)
+            return 2
+        _online_config_path().unlink(missing_ok=True)
+        os.environ.pop('SEDO_WEB_URL', None)
+    try:
+        origin = _load_online_origin()
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    if origin:
+        return _run_online(origin)
 
     app, first_password = _bootstrap()
     from sedo.services.mail_worker import start_mail_worker

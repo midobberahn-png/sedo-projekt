@@ -36,7 +36,7 @@
 <div class="card warning-card">
   <div class="section-head"><h2>Wiederherstellung bereit</h2></div>
   <p><strong>{{ pending_restore.backup_name }}</strong> wurde geprüft und vorbereitet.</p>
-  <p>Schließe die SEDO-App vollständig und öffne sie erneut. Der Austausch erfolgt vor dem Datenbankstart; danach werden nötige Aktualisierungen automatisch angewendet.</p>
+  <p>{% if web_mode %}Der Administrator muss den SEDO-Webdienst kontrolliert neu starten.{% else %}Schließe die SEDO-App vollständig und öffne sie erneut.{% endif %} Der Austausch erfolgt vor dem Datenbankstart; danach werden nötige Aktualisierungen automatisch angewendet.</p>
 </div>
 {% elif last_restore %}
 <div class="card" style="border-left:4px solid var(--color-success,#16a34a)">
@@ -91,7 +91,7 @@
       <div><span>Dateien</span><strong>{{ restore_report.media_files }} Medien · {{ restore_report.size|filesizeformat }}</strong></div>
     </dl>
 
-    <form method="post" class="compact-form" onsubmit="return confirm('Geprüftes Backup für den nächsten App-Start vormerken?');">
+    <form method="post" class="compact-form" onsubmit="return confirm('Geprüftes Backup für den nächsten SEDO-Start vormerken?');">
       {% csrf_token %}<input type="hidden" name="backup" value="{{ restore_report.name }}">
       <input type="hidden" name="review_sha256" value="{{ restore_report.archive_sha256 }}">
       <label>Zur Bestätigung <strong>WIEDERHERSTELLEN</strong> eingeben
